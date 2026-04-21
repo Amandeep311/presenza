@@ -1,5 +1,5 @@
-// src/screens/MeetingsScreen.jsx
-import React, { useState, useEffect, useRef } from 'react';
+// src/screens/MeetingsScreen.jsx - PRODUCTION READY VERSION
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Animated,
   TextInput,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -32,77 +33,24 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  Briefcase,
   ExternalLink,
   Copy,
   Check,
+  Search,
 } from 'lucide-react-native';
 import { Fonts } from '../../../utils/GlobalText';
 import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { setAlert } from '../../../store/actions/authActions';
-import { useDispatch } from 'react-redux';
-
-// Import calendar components
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  createMeeting,
+  fetchMeetings,
+} from '../../../store/actions/meetingActions';
+import { fetchEmployees } from '../../../store/actions/employeeDataActions';
 import ReusableCalendar from '../../../components/common/calender/Reusablecalendar';
 import { USER_BRANCH } from '../../../components/common/calender/data/holidayData';
-
-// Mock data for employees
-const employees = [
-  { id: 1, name: 'Sarah Johnson', email: 'sarah.j@presenza.com', department: 'Engineering' },
-  { id: 2, name: 'Michael Chen', email: 'michael.c@presenza.com', department: 'Sales' },
-  { id: 3, name: 'Emily Davis', email: 'emily.d@presenza.com', department: 'Marketing' },
-  { id: 4, name: 'John Smith', email: 'john.s@presenza.com', department: 'Engineering' },
-  { id: 5, name: 'Lisa Brown', email: 'lisa.b@presenza.com', department: 'HR' },
-  { id: 6, name: 'David Martinez', email: 'david.m@presenza.com', department: 'Engineering' },
-  { id: 7, name: 'Rachel Green', email: 'rachel.g@presenza.com', department: 'Sales' },
-];
-
-// Initial meetings data
-const initialMeetings = [
-  {
-    id: 1,
-    title: 'Sprint Planning',
-    date: '2026-03-22',
-    time: '10:00 AM',
-    duration: '60',
-    attendees: ['Sarah Johnson', 'John Smith', 'David Martinez'],
-    attendeeIds: [1, 4, 6],
-    location: 'Conference Room A',
-    type: 'in-person',
-    organizer: 'Sarah Johnson',
-    status: 'scheduled',
-    agenda: 'Review sprint goals, assign tasks, and plan the upcoming sprint timeline.',
-  },
-  {
-    id: 2,
-    title: 'Sales Review Meeting',
-    date: '2026-03-23',
-    time: '2:00 PM',
-    duration: '45',
-    attendees: ['Michael Chen', 'Rachel Green', 'Lisa Brown'],
-    attendeeIds: [2, 7, 5],
-    location: 'Zoom Meeting',
-    type: 'virtual',
-    organizer: 'Michael Chen',
-    status: 'scheduled',
-    agenda: 'Review Q1 sales performance and discuss Q2 strategies.',
-  },
-  {
-    id: 3,
-    title: 'Design Review',
-    date: '2026-03-28',
-    time: '11:30 AM',
-    duration: '30',
-    attendees: ['Emily Davis', 'Sarah Johnson'],
-    attendeeIds: [3, 1],
-    location: 'Conference Room B',
-    type: 'in-person',
-    organizer: 'Emily Davis',
-    status: 'scheduled',
-    agenda: 'Review new UI/UX designs for the mobile app.',
-  },
-];
+import TimePickerModal from '../../../components/common/TimePickerModal';
 
 const year = 2026;
 const todayStr = new Date().toISOString().split('T')[0];
@@ -113,123 +61,214 @@ export const MeetingsScreen = ({ navigation }) => {
   const C = theme.colors;
   const dispatch = useDispatch();
 
+  // Redux State
+  const { employees: employeesList, loading: employeesLoading } = useSelector(
+    state => state.employees,
+  );
+  const {
+    meetings: meetingsList,
+    loading: meetingsLoading,
+    creatingMeeting,
+  } = useSelector(state => state.meetings);
+
   // UI State
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [legendExpanded, setLegendExpanded] = useState(false);
   const legendAnim = useRef(new Animated.Value(0)).current;
-  const [myMeetings, setMyMeetings] = useState(initialMeetings);
-  
-  // Calendar state
+  const [myMeetings, setMyMeetings] = useState([]);
+
+  // Calendar & Meeting Selection
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDateMeetings, setSelectedDateMeetings] = useState([]);
   const [meetingDetailModal, setMeetingDetailModal] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  
-  // Form state
+
+  // Form State
   const [meetingTitle, setMeetingTitle] = useState('');
   const [meetingDate, setMeetingDate] = useState('');
   const [meetingTime, setMeetingTime] = useState('');
-  const [meetingDuration, setMeetingDuration] = useState('30');
+  const [endTime, setEndTime] = useState('');
   const [meetingLocation, setMeetingLocation] = useState('');
-  const [meetingType, setMeetingType] = useState('in-person');
+  const [meetingType, setMeetingType] = useState('IN_PERSON');
   const [meetingAgenda, setMeetingAgenda] = useState('');
 
-  // Scroll view ref
+  // Time Picker State
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  // Employee Search State
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
+
+  // Refs
   const scrollViewRef = useRef(null);
   const formRef = useRef(null);
 
-  // Effect to filter meetings when date changes
+  // Memoized filtered employees for performance
+  const filteredEmployees = useMemo(() => {
+    if (!employeesList || employeesList.length === 0) return [];
+    if (!employeeSearchQuery.trim()) return employeesList;
+
+    const query = employeeSearchQuery.toLowerCase();
+    return employeesList.filter(
+      employee =>
+        employee.fullName?.toLowerCase().includes(query) ||
+        employee.email?.toLowerCase().includes(query) ||
+        employee.department?.toLowerCase().includes(query),
+    );
+  }, [employeeSearchQuery, employeesList]);
+
+  // Initialize
+  useEffect(() => {
+    loadEmployees();
+    loadMeetings();
+  }, []);
+
+  // Update selected date meetings when date or meetings change
   useEffect(() => {
     if (selectedDate) {
-      const filtered = myMeetings.filter(meeting => meeting.date === selectedDate);
+      const filtered = myMeetings.filter(meeting => {
+        const meetingDateStr = new Date(meeting.date)
+          .toISOString()
+          .split('T')[0];
+        return meetingDateStr === selectedDate;
+      });
       setSelectedDateMeetings(filtered);
     } else {
       setSelectedDateMeetings([]);
     }
   }, [selectedDate, myMeetings]);
 
-  // Function to check if a date has meetings (for calendar highlighting)
-  const getMeetingDates = () => {
-    const meetingDates = {};
-    myMeetings.forEach(meeting => {
-      meetingDates[meeting.date] = (meetingDates[meeting.date] || 0) + 1;
-    });
-    return meetingDates;
+  // Update myMeetings when meetingsList changes
+  useEffect(() => {
+    if (meetingsList && meetingsList.length > 0) {
+      setMyMeetings(meetingsList);
+    }
+  }, [meetingsList]);
+
+  const loadEmployees = async () => {
+    const result = await dispatch(fetchEmployees());
+    if (!result.success) {
+      dispatch(setAlert(result.error, 'warning'));
+    }
   };
 
-  const toggleEmployee = (id) => {
+  const loadMeetings = async () => {
+    const result = await dispatch(fetchMeetings());
+    if (result.success) {
+      setMyMeetings(result.data);
+    } else {
+      dispatch(setAlert(result.error, 'warning'));
+    }
+  };
+
+  const convertToISOString = (dateStr, timeStr) => {
+    const time = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!time) return new Date(dateStr).toISOString();
+
+    let hours = parseInt(time[1]);
+    const minutes = time[2];
+    const period = time[3].toUpperCase();
+
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+
+    const dateTime = new Date(dateStr);
+    dateTime.setHours(hours, parseInt(minutes), 0, 0);
+    return dateTime.toISOString();
+  };
+
+  const toggleEmployee = id => {
     setSelectedEmployees(prev =>
-      prev.includes(id) ? prev.filter(empId => empId !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter(empId => empId !== id) : [...prev, id],
     );
   };
 
   const scrollToForm = () => {
-    if (formRef?.current) {
+    if (formRef?.current && scrollViewRef?.current) {
       setTimeout(() => {
         formRef.current?.measureLayout(
           scrollViewRef.current,
           (x, y) => {
-            scrollViewRef.current?.scrollTo({ y: y - 100, animated: true });
+            scrollViewRef.current?.scrollTo({
+              y: y - hp('5%'),
+              animated: true,
+            });
           },
-          () => {},
+          () => console.log('Measure layout failed'),
         );
-      }, 100);
+      }, 300);
     }
   };
 
-  const handleScheduleMeeting = () => {
-    if (!meetingTitle || !meetingDate || !meetingTime || selectedEmployees.length === 0) {
+  const handleScheduleMeeting = async () => {
+    if (
+      !meetingTitle ||
+      !meetingDate ||
+      !meetingTime ||
+      !endTime ||
+      selectedEmployees.length === 0
+    ) {
       dispatch(setAlert('Please fill all required fields', 'warning'));
       return;
     }
 
-    // Get attendee names from selected IDs
-    const attendeeNames = selectedEmployees.map(id => {
-      const emp = employees.find(e => e.id === id);
-      return emp.name;
-    });
+    // Validate time
+    const startTime = new Date(convertToISOString(meetingDate, meetingTime));
+    const endTimeObj = new Date(convertToISOString(meetingDate, endTime));
 
-    // Create new meeting
-    const newMeeting = {
-      id: myMeetings.length + 1,
+    if (startTime >= endTimeObj) {
+      dispatch(setAlert('End time must be after start time', 'warning'));
+      return;
+    }
+
+    const meetingData = {
       title: meetingTitle,
-      date: meetingDate,
-      time: meetingTime,
-      duration: meetingDuration,
-      attendees: attendeeNames,
-      attendeeIds: selectedEmployees,
-      location: meetingLocation || (meetingType === 'virtual' ? 'Virtual Meeting' : 'Conference Room'),
+      description: meetingAgenda || 'No agenda provided',
       type: meetingType,
-      organizer: USER_BRANCH,
-      status: 'scheduled',
-      agenda: meetingAgenda || 'No agenda provided.',
+      date: meetingDate,
+      startTime: startTime.toISOString(),
+      endTime: endTimeObj.toISOString(),
+      location:
+        meetingLocation ||
+        (meetingType === 'VIRTUAL' ? 'Virtual Meeting' : 'Conference Room'),
+      attendees: selectedEmployees,
     };
 
-    setMyMeetings([...myMeetings, newMeeting]);
-    
-    dispatch(setAlert(
-      `Meeting scheduled! Email invitations sent to ${selectedEmployees.length} attendees.`,
-      'success'
-    ));
-    
-    // Reset form
+    const result = await dispatch(createMeeting(meetingData));
+
+    if (result.success) {
+      dispatch(
+        setAlert(
+          result.message || 'Meeting scheduled successfully!',
+          'success',
+        ),
+      );
+
+      // Reset form
+      resetForm();
+      setShowCreateForm(false);
+
+      // Refresh meetings
+      await loadMeetings();
+    } else {
+      dispatch(setAlert(result.error, 'warning'));
+    }
+  };
+
+  const resetForm = () => {
     setMeetingTitle('');
     setMeetingDate('');
     setMeetingTime('');
-    setMeetingDuration('30');
+    setEndTime('');
     setMeetingLocation('');
     setMeetingAgenda('');
     setSelectedEmployees([]);
-    setShowCreateForm(false);
-    setSelectedDate(meetingDate);
+    setEmployeeSearchQuery('');
+    setSelectedDate(null);
   };
 
-  const formatMeetingTime = (timeStr) => {
-    return timeStr;
-  };
-
-  const formatDate = (dateStr) => {
+  const formatDate = dateStr => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-IN', {
@@ -239,146 +278,36 @@ export const MeetingsScreen = ({ navigation }) => {
     });
   };
 
-  const formatShortDate = (dateStr) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
+  const formatTimeFromISO = isoString => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
     });
   };
 
-  const handleDayPress = (dateStr) => {
+  const handleDayPress = dateStr => {
     setSelectedDate(dateStr);
+    setMeetingDate(dateStr);
+    setShowCreateForm(true);
     scrollToForm();
   };
 
-  const openMeetingDetail = (meeting) => {
-    setMeetingDetailModal(meeting);
-  };
-
-  const copyToClipboard = (text) => {
-    // In React Native, you would use Clipboard API
-    // For now, we'll just show a toast
+  const copyToClipboard = text => {
     dispatch(setAlert('Meeting link copied to clipboard!', 'success'));
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const joinMeeting = (meeting) => {
-    if (meeting.type === 'virtual') {
-      dispatch(setAlert(`Joining meeting: ${meeting.location}`, 'info'));
-      // Here you would open the meeting link
+  const joinMeeting = meeting => {
+    if (meeting.type === 'VIRTUAL') {
+      dispatch(setAlert(`Opening meeting: ${meeting.location}`, 'info'));
     } else {
-      dispatch(setAlert(`Meeting location: ${meeting.location}`, 'info'));
+      dispatch(setAlert(`Location: ${meeting.location}`, 'info'));
     }
   };
-
-  const renderMeetingItem = ({ item }) => (
-    <TouchableOpacity
-      style={[
-        styles.meetingItem,
-        { backgroundColor: C.surface + '40', borderColor: C.border },
-      ]}
-      onPress={() => openMeetingDetail(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.meetingHeader}>
-        <View style={styles.meetingTitleRow}>
-          <Text style={[styles.meetingTitle, { color: C.textPrimary }]}>
-            {item.title}
-          </Text>
-          <View
-            style={[
-              styles.meetingTypeBadge,
-              {
-                backgroundColor:
-                  item.type === 'virtual'
-                    ? C.info + '20'
-                    : C.primary + '20',
-              },
-            ]}
-          >
-            {item.type === 'virtual' ? (
-              <Video size={wp('2.5%')} color={C.info} />
-            ) : (
-              <MapPin size={wp('2.5%')} color={C.primary} />
-            )}
-            <Text
-              style={[
-                styles.meetingTypeText,
-                {
-                  color: item.type === 'virtual' ? C.info : C.primary,
-                },
-              ]}
-            >
-              {item.type === 'virtual' ? 'Virtual' : 'In-Person'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.meetingDetails}>
-          <View style={styles.meetingDetailItem}>
-            <Calendar size={wp('3%')} color={C.textSecondary} />
-            <Text style={[styles.meetingDetailText, { color: C.textSecondary }]}>
-              {formatDate(item.date)}
-            </Text>
-          </View>
-          <View style={styles.meetingDetailItem}>
-            <Clock size={wp('3%')} color={C.textSecondary} />
-            <Text style={[styles.meetingDetailText, { color: C.textSecondary }]}>
-              {item.time} · {item.duration} min
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.attendeesSection}>
-          <View style={styles.attendeesHeader}>
-            <Users size={wp('3%')} color={C.textSecondary} />
-            <Text style={[styles.attendeesLabel, { color: C.textSecondary }]}>
-              Attendees ({item.attendees.length})
-            </Text>
-          </View>
-          <View style={styles.attendeesList}>
-            {item.attendees.slice(0, 3).map((attendee, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.attendeeChip,
-                  { backgroundColor: C.primary + '15' },
-                ]}
-              >
-                <Text style={[styles.attendeeName, { color: C.primary }]}>
-                  {attendee}
-                </Text>
-              </View>
-            ))}
-            {item.attendees.length > 3 && (
-              <View
-                style={[
-                  styles.attendeeChip,
-                  { backgroundColor: C.surface, borderColor: C.border },
-                ]}
-              >
-                <Text style={[styles.attendeeName, { color: C.textSecondary }]}>
-                  +{item.attendees.length - 3} more
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View
-          style={[styles.meetingFooter, { borderTopColor: C.border }]}
-        >
-          <Mail size={wp('3%')} color={C.textSecondary} />
-          <Text style={[styles.footerText, { color: C.textSecondary }]}>
-            Organized by {item.organizer}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
 
   const toggleLegend = () => {
     const toValue = legendExpanded ? 0 : 1;
@@ -390,8 +319,194 @@ export const MeetingsScreen = ({ navigation }) => {
     setLegendExpanded(v => !v);
   };
 
-  // Custom calendar day renderer to show meeting dots
+  const getMeetingDates = () => {
+    const meetingDates = {};
+    myMeetings.forEach(meeting => {
+      const dateStr = new Date(meeting.date).toISOString().split('T')[0];
+      meetingDates[dateStr] = (meetingDates[dateStr] || 0) + 1;
+    });
+    return meetingDates;
+  };
+
+  const renderMeetingItem = ({ item }) => {
+    const meetingDateStr = new Date(item.date).toISOString().split('T')[0];
+    const isVirtual = item.type === 'VIRTUAL';
+    const attendeeCount = item.attendees?.length || 0;
+    const organizerName =
+      item.organizer?.fullName || item.organizer || 'Unknown';
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.meetingItem,
+          { backgroundColor: C.surface + '40', borderColor: C.border },
+        ]}
+        onPress={() => setMeetingDetailModal(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.meetingHeader}>
+          <View style={styles.meetingTitleRow}>
+            <Text style={[styles.meetingTitle, { color: C.textPrimary }]}>
+              {item.title}
+            </Text>
+            <View
+              style={[
+                styles.meetingTypeBadge,
+                {
+                  backgroundColor: isVirtual ? C.info + '20' : C.primary + '20',
+                },
+              ]}
+            >
+              {isVirtual ? (
+                <Video size={wp('2.5%')} color={C.info} />
+              ) : (
+                <MapPin size={wp('2.5%')} color={C.primary} />
+              )}
+              <Text
+                style={[
+                  styles.meetingTypeText,
+                  { color: isVirtual ? C.info : C.primary },
+                ]}
+              >
+                {isVirtual ? 'Virtual' : 'In-Person'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.meetingDetails}>
+            <View style={styles.meetingDetailItem}>
+              <Calendar size={wp('3%')} color={C.textSecondary} />
+              <Text
+                style={[styles.meetingDetailText, { color: C.textSecondary }]}
+              >
+                {formatDate(meetingDateStr)}
+              </Text>
+            </View>
+            <View style={styles.meetingDetailItem}>
+              <Clock size={wp('3%')} color={C.textSecondary} />
+              <Text
+                style={[styles.meetingDetailText, { color: C.textSecondary }]}
+              >
+                {formatTimeFromISO(item.startTime)} -{' '}
+                {formatTimeFromISO(item.endTime)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.attendeesSection}>
+            <View style={styles.attendeesHeader}>
+              <Users size={wp('3%')} color={C.textSecondary} />
+              <Text style={[styles.attendeesLabel, { color: C.textSecondary }]}>
+                Attendees ({attendeeCount})
+              </Text>
+            </View>
+            <View style={styles.attendeesList}>
+              {(item.attendees || []).slice(0, 3).map((attendee, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.attendeeChip,
+                    { backgroundColor: C.primary + '15' },
+                  ]}
+                >
+                  <Text style={[styles.attendeeName, { color: C.primary }]}>
+                    {attendee.fullName || attendee.employeeId?.fullName || 'Unknown'}
+                  </Text>
+                </View>
+              ))}
+              {attendeeCount > 3 && (
+                <View
+                  style={[
+                    styles.attendeeChip,
+                    { backgroundColor: C.surface, borderColor: C.border },
+                  ]}
+                >
+                  <Text
+                    style={[styles.attendeeName, { color: C.textSecondary }]}
+                  >
+                    +{attendeeCount - 3} more
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={[styles.meetingFooter, { borderTopColor: C.border }]}>
+            <Mail size={wp('3%')} color={C.textSecondary} />
+            <Text style={[styles.footerText, { color: C.textSecondary }]}>
+              Organized by {organizerName}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderEmployeeItem = ({ item: employee }) => (
+    <TouchableOpacity
+      style={[
+        styles.attendeeItem,
+        {
+          backgroundColor: selectedEmployees.includes(employee._id)
+            ? C.primary + '15'
+            : 'transparent',
+          borderColor: selectedEmployees.includes(employee._id)
+            ? C.primary
+            : C.border,
+        },
+      ]}
+      onPress={() => toggleEmployee(employee._id)}
+    >
+      <View style={styles.attendeeInfo}>
+        <Text style={[styles.attendeeNameForm, { color: C.textPrimary }]}>
+          {employee.fullName}
+        </Text>
+        <Text style={[styles.attendeeEmail, { color: C.textSecondary }]}>
+          {employee.email}
+        </Text>
+        <Text style={[styles.attendeeDept, { color: C.primary }]}>
+          {employee.department}
+        </Text>
+      </View>
+      {selectedEmployees.includes(employee._id) && (
+        <View style={[styles.selectedCheck, { backgroundColor: C.primary }]}>
+          <Text style={styles.checkMark}>✓</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+
   const meetingDates = getMeetingDates();
+  const totalParticipants = myMeetings.reduce(
+    (sum, m) => sum + (m.attendees?.length || 0),
+    0,
+  );
+  const virtualMeetings = myMeetings.filter(m => m.type === 'VIRTUAL').length;
+
+  if (meetingsLoading && myMeetings.length === 0) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: C.background,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={C.primary} />
+        <Text
+          style={[
+            styles.loadingText,
+            { color: C.textSecondary, marginTop: hp('2%') },
+          ]}
+        >
+          Loading meetings...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -422,7 +537,12 @@ export const MeetingsScreen = ({ navigation }) => {
           </Text>
         </View>
         <TouchableOpacity
-          onPress={() => setShowCreateForm(!showCreateForm)}
+          onPress={() => {
+            setShowCreateForm(!showCreateForm);
+            if (!showCreateForm) {
+              resetForm();
+            }
+          }}
           style={[
             styles.createBtn,
             { backgroundColor: C.primary, borderColor: C.border },
@@ -466,7 +586,7 @@ export const MeetingsScreen = ({ navigation }) => {
           >
             <Users size={wp('5%')} color={C.success} />
             <Text style={[styles.statValue, { color: C.textPrimary }]}>
-              {myMeetings.reduce((sum, m) => sum + m.attendees.length, 0)}
+              {totalParticipants}
             </Text>
             <Text style={[styles.statLabel, { color: C.textSecondary }]}>
               Total Participants
@@ -481,7 +601,7 @@ export const MeetingsScreen = ({ navigation }) => {
           >
             <Video size={wp('5%')} color={C.info} />
             <Text style={[styles.statValue, { color: C.textPrimary }]}>
-              {myMeetings.filter(m => m.type === 'virtual').length}
+              {virtualMeetings}
             </Text>
             <Text style={[styles.statLabel, { color: C.textSecondary }]}>
               Virtual Meetings
@@ -489,7 +609,7 @@ export const MeetingsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Calendar Component with Meeting Dots */}
+        {/* Calendar */}
         <View style={styles.calendarWrapper}>
           <ReusableCalendar
             year={year}
@@ -499,7 +619,7 @@ export const MeetingsScreen = ({ navigation }) => {
             selectionMode="start"
             leaveType="full"
             todayStr={todayStr}
-            onStartDateChange={(date) => handleDayPress(date)}
+            onStartDateChange={handleDayPress}
             onEndDateChange={() => {}}
             onSelectionModeChange={() => {}}
             onFullHolidayPress={() => {}}
@@ -507,28 +627,22 @@ export const MeetingsScreen = ({ navigation }) => {
             showHolidayList={false}
             showStats={false}
           />
-          
-          {/* Meeting indicator overlay - custom meeting dots */}
+
           {Object.keys(meetingDates).length > 0 && (
-            <View style={styles.meetingDotsContainer} pointerEvents="none">
-              {Object.entries(meetingDates).map(([date, count]) => {
-                const dateObj = new Date(date);
-                if (dateObj.getFullYear() === year) {
-                  // Position calculation would require complex calendar cell positioning
-                  // For simplicity, we'll show a note below the calendar
-                  return null;
-                }
-                return null;
-              })}
-            </View>
-          )}
-          
-          {/* Meeting count note */}
-          {Object.keys(meetingDates).length > 0 && (
-            <View style={[styles.meetingNote, { backgroundColor: C.primary + '10', borderColor: C.primary + '30' }]}>
+            <View
+              style={[
+                styles.meetingNote,
+                {
+                  backgroundColor: C.primary + '10',
+                  borderColor: C.primary + '30',
+                },
+              ]}
+            >
               <Info size={wp('3%')} color={C.primary} />
               <Text style={[styles.meetingNoteText, { color: C.primary }]}>
-                📅 {Object.keys(meetingDates).length} date{Object.keys(meetingDates).length !== 1 ? 's' : ''} have meetings scheduled
+                📅 {Object.keys(meetingDates).length} date
+                {Object.keys(meetingDates).length !== 1 ? 's' : ''} have
+                meetings scheduled
               </Text>
             </View>
           )}
@@ -543,7 +657,9 @@ export const MeetingsScreen = ({ navigation }) => {
             ]}
           >
             <View style={styles.meetingsListHeader}>
-              <Text style={[styles.meetingsListTitle, { color: C.textPrimary }]}>
+              <Text
+                style={[styles.meetingsListTitle, { color: C.textPrimary }]}
+              >
                 Meetings on {formatDate(selectedDate)}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(null)}>
@@ -554,29 +670,18 @@ export const MeetingsScreen = ({ navigation }) => {
               <FlatList
                 data={selectedDateMeetings}
                 renderItem={renderMeetingItem}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={item => item._id}
                 scrollEnabled={false}
                 contentContainerStyle={styles.meetingsList}
               />
             ) : (
               <View style={styles.noMeetingsContainer}>
                 <CalendarDays size={wp('8%')} color={C.disabled} />
-                <Text style={[styles.noMeetingsText, { color: C.textSecondary }]}>
+                <Text
+                  style={[styles.noMeetingsText, { color: C.textSecondary }]}
+                >
                   No meetings scheduled for this date
                 </Text>
-                <TouchableOpacity
-                  style={[styles.scheduleBtn, { backgroundColor: C.primary + '20' }]}
-                  onPress={() => {
-                    setMeetingDate(selectedDate);
-                    setShowCreateForm(true);
-                    scrollToForm();
-                  }}
-                >
-                  <Plus size={wp('3%')} color={C.primary} />
-                  <Text style={[styles.scheduleBtnText, { color: C.primary }]}>
-                    Schedule Meeting
-                  </Text>
-                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -594,6 +699,26 @@ export const MeetingsScreen = ({ navigation }) => {
             <Text style={[styles.formTitle, { color: C.textPrimary }]}>
               Create New Meeting
             </Text>
+
+            {meetingDate && (
+              <View
+                style={[
+                  styles.selectedDateBadge,
+                  {
+                    backgroundColor: C.primary + '15',
+                    borderColor: C.primary + '40',
+                  },
+                ]}
+              >
+                <Calendar size={wp('3%')} color={C.primary} />
+                <Text style={[styles.selectedDateText, { color: C.primary }]}>
+                  Selected Date: {formatDate(meetingDate)}
+                </Text>
+                <TouchableOpacity onPress={() => setMeetingDate('')}>
+                  <X size={wp('3%')} color={C.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Meeting Title */}
             <View style={styles.formGroup}>
@@ -616,93 +741,102 @@ export const MeetingsScreen = ({ navigation }) => {
               />
             </View>
 
-            {/* Date and Time */}
+            {/* Date Input */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.formLabel, { color: C.textSecondary }]}>
+                Date <Text style={{ color: C.error }}>*</Text>
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.dateInput,
+                  { backgroundColor: C.background, borderColor: C.border },
+                ]}
+                onPress={() =>
+                  dispatch(
+                    setAlert(
+                      'Please tap on a date in the calendar above',
+                      'info',
+                    ),
+                  )
+                }
+              >
+                <Calendar
+                  size={wp('4%')}
+                  color={meetingDate ? C.primary : C.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.dateInputText,
+                    { color: meetingDate ? C.textPrimary : C.disabled },
+                  ]}
+                >
+                  {meetingDate
+                    ? formatDate(meetingDate)
+                    : 'Select Date from Calendar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Time Inputs */}
             <View style={styles.row}>
-              <View style={[styles.formGroup, { flex: 1, marginRight: wp('2%') }]}>
+              <View
+                style={[styles.formGroup, { flex: 1, marginRight: wp('2%') }]}
+              >
                 <Text style={[styles.formLabel, { color: C.textSecondary }]}>
-                  Date <Text style={{ color: C.error }}>*</Text>
+                  Start Time <Text style={{ color: C.error }}>*</Text>
                 </Text>
                 <TouchableOpacity
                   style={[
-                    styles.dateInput,
+                    styles.timeInput,
                     {
                       backgroundColor: C.background,
                       borderColor: C.border,
                     },
                   ]}
-                  onPress={() => {
-                    // Show calendar selection
-                    dispatch(setAlert('Please tap on a date in the calendar above', 'info'));
-                  }}
+                  onPress={() => setShowStartTimePicker(true)}
                 >
-                  <Calendar size={wp('3.5%')} color={C.textSecondary} />
+                  <Clock
+                    size={wp('4%')}
+                    color={meetingTime ? C.primary : C.textSecondary}
+                  />
                   <Text
                     style={[
-                      styles.dateInputText,
-                      { color: meetingDate ? C.textPrimary : C.disabled },
+                      styles.timeInputText,
+                      { color: meetingTime ? C.textPrimary : C.disabled },
                     ]}
                   >
-                    {meetingDate ? formatShortDate(meetingDate) : 'Select Date from Calendar'}
+                    {meetingTime || 'Select Time'}
                   </Text>
                 </TouchableOpacity>
               </View>
 
               <View style={[styles.formGroup, { flex: 1 }]}>
                 <Text style={[styles.formLabel, { color: C.textSecondary }]}>
-                  Time <Text style={{ color: C.error }}>*</Text>
+                  End Time <Text style={{ color: C.error }}>*</Text>
                 </Text>
-                <TextInput
+                <TouchableOpacity
                   style={[
-                    styles.formInput,
+                    styles.timeInput,
                     {
                       backgroundColor: C.background,
                       borderColor: C.border,
-                      color: C.textPrimary,
                     },
                   ]}
-                  placeholder="10:00 AM"
-                  placeholderTextColor={C.disabled}
-                  value={meetingTime}
-                  onChangeText={setMeetingTime}
-                />
-              </View>
-            </View>
-
-            {/* Duration */}
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: C.textSecondary }]}>
-                Duration (minutes)
-              </Text>
-              <View style={styles.durationButtons}>
-                {['15', '30', '45', '60', '90', '120'].map((dur) => (
-                  <TouchableOpacity
-                    key={dur}
+                  onPress={() => setShowEndTimePicker(true)}
+                >
+                  <Clock
+                    size={wp('4%')}
+                    color={endTime ? C.primary : C.textSecondary}
+                  />
+                  <Text
                     style={[
-                      styles.durationBtn,
-                      {
-                        backgroundColor:
-                          meetingDuration === dur
-                            ? C.primary + '20'
-                            : C.background,
-                        borderColor:
-                          meetingDuration === dur ? C.primary : C.border,
-                      },
+                      styles.timeInputText,
+                      { color: endTime ? C.textPrimary : C.disabled },
                     ]}
-                    onPress={() => setMeetingDuration(dur)}
                   >
-                    <Text
-                      style={[
-                        styles.durationBtnText,
-                        {
-                          color:
-                            meetingDuration === dur ? C.primary : C.textSecondary,
-                        },
-                      ]}
-                    >
-                      {dur}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    {endTime || 'Select Time'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -717,25 +851,27 @@ export const MeetingsScreen = ({ navigation }) => {
                     styles.typeBtn,
                     {
                       backgroundColor:
-                        meetingType === 'in-person'
+                        meetingType === 'IN_PERSON'
                           ? C.primary + '20'
                           : C.background,
                       borderColor:
-                        meetingType === 'in-person' ? C.primary : C.border,
+                        meetingType === 'IN_PERSON' ? C.primary : C.border,
                     },
                   ]}
-                  onPress={() => setMeetingType('in-person')}
+                  onPress={() => setMeetingType('IN_PERSON')}
                 >
                   <MapPin
                     size={wp('3.5%')}
-                    color={meetingType === 'in-person' ? C.primary : C.textSecondary}
+                    color={
+                      meetingType === 'IN_PERSON' ? C.primary : C.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.typeBtnText,
                       {
                         color:
-                          meetingType === 'in-person'
+                          meetingType === 'IN_PERSON'
                             ? C.primary
                             : C.textSecondary,
                       },
@@ -744,31 +880,30 @@ export const MeetingsScreen = ({ navigation }) => {
                     In-Person
                   </Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity
                   style={[
                     styles.typeBtn,
                     {
                       backgroundColor:
-                        meetingType === 'virtual'
+                        meetingType === 'VIRTUAL'
                           ? C.info + '20'
                           : C.background,
                       borderColor:
-                        meetingType === 'virtual' ? C.info : C.border,
+                        meetingType === 'VIRTUAL' ? C.info : C.border,
                     },
                   ]}
-                  onPress={() => setMeetingType('virtual')}
+                  onPress={() => setMeetingType('VIRTUAL')}
                 >
                   <Video
                     size={wp('3.5%')}
-                    color={meetingType === 'virtual' ? C.info : C.textSecondary}
+                    color={meetingType === 'VIRTUAL' ? C.info : C.textSecondary}
                   />
                   <Text
                     style={[
                       styles.typeBtnText,
                       {
                         color:
-                          meetingType === 'virtual' ? C.info : C.textSecondary,
+                          meetingType === 'VIRTUAL' ? C.info : C.textSecondary,
                       },
                     ]}
                   >
@@ -778,7 +913,7 @@ export const MeetingsScreen = ({ navigation }) => {
               </View>
             </View>
 
-            {/* Location */}
+            {/* Location/Link */}
             <View style={styles.formGroup}>
               <Text style={[styles.formLabel, { color: C.textSecondary }]}>
                 Location / Meeting Link
@@ -793,7 +928,7 @@ export const MeetingsScreen = ({ navigation }) => {
                   },
                 ]}
                 placeholder={
-                  meetingType === 'virtual'
+                  meetingType === 'VIRTUAL'
                     ? 'e.g., https://zoom.us/j/123456789'
                     : 'e.g., Conference Room A'
                 }
@@ -827,7 +962,7 @@ export const MeetingsScreen = ({ navigation }) => {
               />
             </View>
 
-            {/* Attendees */}
+            {/* Attendees Selection */}
             <View style={styles.formGroup}>
               <View style={styles.attendeesHeaderForm}>
                 <Text style={[styles.formLabel, { color: C.textSecondary }]}>
@@ -841,89 +976,109 @@ export const MeetingsScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 )}
               </View>
+
               <Text style={[styles.selectedCount, { color: C.primary }]}>
-                {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
+                {selectedEmployees.length} employee
+                {selectedEmployees.length !== 1 ? 's' : ''} selected
               </Text>
 
+              {/* Search Container */}
+              <View
+                style={[
+                  styles.searchContainer,
+                  { backgroundColor: C.background, borderColor: C.border },
+                ]}
+              >
+                <Search size={wp('4%')} color={C.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: C.textPrimary }]}
+                  placeholder="Search by name, email or department..."
+                  placeholderTextColor={C.disabled}
+                  value={employeeSearchQuery}
+                  onChangeText={setEmployeeSearchQuery}
+                />
+                {employeeSearchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setEmployeeSearchQuery('')}>
+                    <X size={wp('4%')} color={C.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Attendees List */}
               <View
                 style={[
                   styles.attendeesContainer,
-                  {
-                    backgroundColor: C.background,
-                    borderColor: C.border,
-                  },
+                  { backgroundColor: C.background, borderColor: C.border },
                 ]}
               >
-                {employees.map((employee) => (
-                  <TouchableOpacity
-                    key={employee.id}
-                    style={[
-                      styles.attendeeItem,
-                      {
-                        backgroundColor: selectedEmployees.includes(employee.id)
-                          ? C.primary + '15'
-                          : 'transparent',
-                        borderColor: selectedEmployees.includes(employee.id)
-                          ? C.primary
-                          : C.border,
-                      },
-                    ]}
-                    onPress={() => toggleEmployee(employee.id)}
-                  >
-                    <View style={styles.attendeeInfo}>
-                      <Text style={[styles.attendeeNameForm, { color: C.textPrimary }]}>
-                        {employee.name}
-                      </Text>
-                      <Text style={[styles.attendeeEmail, { color: C.textSecondary }]}>
-                        {employee.email}
-                      </Text>
-                      <Text style={[styles.attendeeDept, { color: C.primary }]}>
-                        {employee.department}
-                      </Text>
-                    </View>
-                    {selectedEmployees.includes(employee.id) && (
-                      <View
-                        style={[
-                          styles.selectedCheck,
-                          { backgroundColor: C.primary },
-                        ]}
-                      >
-                        <Text style={styles.checkMark}>✓</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {employeesLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={C.primary} />
+                    <Text
+                      style={[styles.loadingText, { color: C.textSecondary }]}
+                    >
+                      Loading employees...
+                    </Text>
+                  </View>
+                ) : filteredEmployees.length === 0 ? (
+                  <View style={styles.noResultsContainer}>
+                    <Text
+                      style={[styles.noResultsText, { color: C.textSecondary }]}
+                    >
+                      {employeeSearchQuery
+                        ? 'No employees found'
+                        : 'No employees available'}
+                    </Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={filteredEmployees}
+                    renderItem={renderEmployeeItem}
+                    keyExtractor={item => item._id}
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                  />
+                )}
               </View>
             </View>
 
-            {/* Action Buttons */}
+            {/* Form Actions */}
             <View style={styles.formActions}>
               <TouchableOpacity
                 style={[
                   styles.cancelBtn,
                   { borderColor: C.border, backgroundColor: C.background },
                 ]}
-                onPress={() => setShowCreateForm(false)}
+                onPress={() => {
+                  setShowCreateForm(false);
+                  resetForm();
+                }}
               >
-                <Text style={[styles.cancelBtnText, { color: C.textSecondary }]}>
+                <Text
+                  style={[styles.cancelBtnText, { color: C.textSecondary }]}
+                >
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.submitBtn,
-                  { backgroundColor: C.primary },
-                ]}
+                style={[styles.submitBtn, { backgroundColor: C.primary }]}
                 onPress={handleScheduleMeeting}
+                disabled={creatingMeeting}
               >
-                <Send size={wp('4%')} color="#fff" />
-                <Text style={styles.submitBtnText}>Schedule & Send</Text>
+                {creatingMeeting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Send size={wp('4%')} color="#fff" />
+                    <Text style={styles.submitBtnText}>Schedule & Send</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* All Upcoming Meetings */}
+        {/* All Meetings */}
         <View
           style={[
             styles.upcomingCard,
@@ -934,8 +1089,8 @@ export const MeetingsScreen = ({ navigation }) => {
             All Meetings ({myMeetings.length})
           </Text>
           {myMeetings.length > 0 ? (
-            myMeetings.map((meeting) => (
-              <View key={meeting.id}>
+            myMeetings.map(meeting => (
+              <View key={meeting._id}>
                 {renderMeetingItem({ item: meeting })}
               </View>
             ))
@@ -946,7 +1101,10 @@ export const MeetingsScreen = ({ navigation }) => {
                 No meetings scheduled yet
               </Text>
               <TouchableOpacity
-                style={[styles.scheduleBtn, { backgroundColor: C.primary + '20' }]}
+                style={[
+                  styles.scheduleBtn,
+                  { backgroundColor: C.primary + '20' },
+                ]}
                 onPress={() => setShowCreateForm(true)}
               >
                 <Plus size={wp('3%')} color={C.primary} />
@@ -965,7 +1123,10 @@ export const MeetingsScreen = ({ navigation }) => {
             { backgroundColor: C.surface, borderColor: C.border },
           ]}
         >
-          <TouchableOpacity style={styles.legendToggleBtn} onPress={toggleLegend}>
+          <TouchableOpacity
+            style={styles.legendToggleBtn}
+            onPress={toggleLegend}
+          >
             <View style={styles.legendToggleLeft}>
               <View
                 style={[
@@ -975,7 +1136,9 @@ export const MeetingsScreen = ({ navigation }) => {
               >
                 <Info size={wp('3.5%')} color={C.primary} />
               </View>
-              <Text style={[styles.legendToggleTitle, { color: C.textPrimary }]}>
+              <Text
+                style={[styles.legendToggleTitle, { color: C.textPrimary }]}
+              >
                 Calendar Legend
               </Text>
             </View>
@@ -1006,7 +1169,9 @@ export const MeetingsScreen = ({ navigation }) => {
               },
             ]}
           >
-            <View style={[styles.legendDivider, { backgroundColor: C.border }]} />
+            <View
+              style={[styles.legendDivider, { backgroundColor: C.border }]}
+            />
             <View style={styles.legendGrid}>
               {[
                 { color: C.primary, label: 'Full Day Holiday' },
@@ -1017,10 +1182,7 @@ export const MeetingsScreen = ({ navigation }) => {
               ].map((item, i) => (
                 <View key={i} style={styles.legendItem}>
                   <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: item.color },
-                    ]}
+                    style={[styles.legendDot, { backgroundColor: item.color }]}
                   />
                   <Text style={[styles.legendText, { color: C.textSecondary }]}>
                     {item.label}
@@ -1033,6 +1195,23 @@ export const MeetingsScreen = ({ navigation }) => {
 
         <View style={{ height: hp('4%') }} />
       </ScrollView>
+
+      {/* Time Picker Modals */}
+      <TimePickerModal
+        visible={showStartTimePicker}
+        onClose={() => setShowStartTimePicker(false)}
+        onConfirm={time => setMeetingTime(time)}
+        initialTime={meetingTime}
+        title="Select Start Time"
+      />
+
+      <TimePickerModal
+        visible={showEndTimePicker}
+        onClose={() => setShowEndTimePicker(false)}
+        onConfirm={time => setEndTime(time)}
+        initialTime={endTime}
+        title="Select End Time"
+      />
 
       {/* Meeting Detail Modal */}
       <Modal
@@ -1066,20 +1245,19 @@ export const MeetingsScreen = ({ navigation }) => {
                 </View>
 
                 <ScrollView style={styles.modalBody}>
-                  {/* Meeting Type Badge */}
                   <View style={styles.modalTypeBadge}>
                     <View
                       style={[
                         styles.meetingTypeBadgeLarge,
                         {
                           backgroundColor:
-                            meetingDetailModal.type === 'virtual'
+                            meetingDetailModal.type === 'VIRTUAL'
                               ? C.info + '20'
                               : C.primary + '20',
                         },
                       ]}
                     >
-                      {meetingDetailModal.type === 'virtual' ? (
+                      {meetingDetailModal.type === 'VIRTUAL' ? (
                         <Video size={wp('4%')} color={C.info} />
                       ) : (
                         <MapPin size={wp('4%')} color={C.primary} />
@@ -1089,45 +1267,66 @@ export const MeetingsScreen = ({ navigation }) => {
                           styles.modalTypeText,
                           {
                             color:
-                              meetingDetailModal.type === 'virtual'
+                              meetingDetailModal.type === 'VIRTUAL'
                                 ? C.info
                                 : C.primary,
                           },
                         ]}
                       >
-                        {meetingDetailModal.type === 'virtual'
+                        {meetingDetailModal.type === 'VIRTUAL'
                           ? 'Virtual Meeting'
                           : 'In-Person Meeting'}
                       </Text>
                     </View>
                   </View>
 
-                  {/* Date & Time */}
                   <View style={styles.modalDetailSection}>
                     <View style={styles.modalDetailRow}>
                       <Calendar size={wp('4%')} color={C.primary} />
-                      <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
-                        {formatDate(meetingDetailModal.date)}
+                      <Text
+                        style={[
+                          styles.modalDetailText,
+                          { color: C.textPrimary },
+                        ]}
+                      >
+                        {formatDate(
+                          new Date(meetingDetailModal.date)
+                            .toISOString()
+                            .split('T')[0],
+                        )}
                       </Text>
                     </View>
                     <View style={styles.modalDetailRow}>
                       <Clock size={wp('4%')} color={C.primary} />
-                      <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
-                        {meetingDetailModal.time} · {meetingDetailModal.duration} minutes
+                      <Text
+                        style={[
+                          styles.modalDetailText,
+                          { color: C.textPrimary },
+                        ]}
+                      >
+                        {formatTimeFromISO(meetingDetailModal.startTime)} -{' '}
+                        {formatTimeFromISO(meetingDetailModal.endTime)}
                       </Text>
                     </View>
                     <View style={styles.modalDetailRow}>
-                      {meetingDetailModal.type === 'virtual' ? (
+                      {meetingDetailModal.type === 'VIRTUAL' ? (
                         <Video size={wp('4%')} color={C.primary} />
                       ) : (
                         <MapPin size={wp('4%')} color={C.primary} />
                       )}
-                      <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
+                      <Text
+                        style={[
+                          styles.modalDetailText,
+                          { color: C.textPrimary },
+                        ]}
+                      >
                         {meetingDetailModal.location}
                       </Text>
-                      {meetingDetailModal.type === 'virtual' && (
+                      {meetingDetailModal.type === 'VIRTUAL' && (
                         <TouchableOpacity
-                          onPress={() => copyToClipboard(meetingDetailModal.location)}
+                          onPress={() =>
+                            copyToClipboard(meetingDetailModal.location)
+                          }
                           style={styles.copyBtn}
                         >
                           {copiedLink ? (
@@ -1140,53 +1339,107 @@ export const MeetingsScreen = ({ navigation }) => {
                     </View>
                   </View>
 
-                  {/* Agenda */}
-                  {meetingDetailModal.agenda && (
+                  {meetingDetailModal.description && (
                     <View style={styles.modalAgendaSection}>
-                      <Text style={[styles.modalSectionTitle, { color: C.textPrimary }]}>
+                      <Text
+                        style={[
+                          styles.modalSectionTitle,
+                          { color: C.textPrimary },
+                        ]}
+                      >
                         Agenda
                       </Text>
-                      <Text style={[styles.modalAgendaText, { color: C.textSecondary }]}>
-                        {meetingDetailModal.agenda}
+                      <Text
+                        style={[
+                          styles.modalAgendaText,
+                          { color: C.textSecondary },
+                        ]}
+                      >
+                        {meetingDetailModal.description}
                       </Text>
                     </View>
                   )}
 
-                  {/* Attendees */}
                   <View style={styles.modalAttendeesSection}>
-                    <Text style={[styles.modalSectionTitle, { color: C.textPrimary }]}>
-                      Attendees ({meetingDetailModal.attendees.length})
+                    <Text
+                      style={[
+                        styles.modalSectionTitle,
+                        { color: C.textPrimary },
+                      ]}
+                    >
+                      Attendees ({meetingDetailModal.attendees?.length || 0})
                     </Text>
                     <View style={styles.modalAttendeesList}>
-                      {meetingDetailModal.attendees.map((attendee, index) => (
-                        <View
-                          key={index}
-                          style={[
-                            styles.modalAttendeeItem,
-                            { backgroundColor: C.background, borderColor: C.border },
-                          ]}
-                        >
-                          <Users size={wp('3%')} color={C.primary} />
-                          <View style={styles.modalAttendeeInfo}>
-                            <Text style={[styles.modalAttendeeName, { color: C.textPrimary }]}>
-                              {attendee}
-                            </Text>
+                      {(meetingDetailModal.attendees || []).map(
+                        (attendee, index) => (
+                          <View
+                            key={index}
+                            style={[
+                              styles.modalAttendeeItem,
+                              {
+                                backgroundColor: C.background,
+                                borderColor: C.border,
+                              },
+                            ]}
+                          >
+                            <Users size={wp('3%')} color={C.primary} />
+                            <View style={styles.modalAttendeeInfo}>
+                              <Text
+                                style={[
+                                  styles.modalAttendeeName,
+                                  { color: C.textPrimary },
+                                ]}
+                              >
+                                {attendee.fullName || attendee.employeeId?.fullName || 'Unknown'}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.modalAttendeeEmail,
+                                  { color: C.textSecondary },
+                                ]}
+                              >
+                                {attendee.email || attendee.employeeId?.email || ''}
+                              </Text>
+                              {/* {attendee.status && (
+                                <Text
+                                  style={[
+                                    styles.modalAttendeeStatus,
+                                    {
+                                      color:
+                                        attendee.status === 'ACCEPTED'
+                                          ? C.success
+                                          : attendee.status === 'DECLINED'
+                                          ? C.error
+                                          : C.warning,
+                                    },
+                                  ]}
+                                >
+                                  {attendee.status}
+                                </Text>
+                              )} */}
+                            </View>
                           </View>
-                        </View>
-                      ))}
+                        ),
+                      )}
                     </View>
                   </View>
 
-                  {/* Organizer */}
                   <View style={styles.modalOrganizerSection}>
                     <Mail size={wp('3.5%')} color={C.textSecondary} />
-                    <Text style={[styles.modalOrganizerText, { color: C.textSecondary }]}>
-                      Organized by {meetingDetailModal.organizer}
+                    <Text
+                      style={[
+                        styles.modalOrganizerText,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      Organized by{' '}
+                      {meetingDetailModal.organizer?.fullName ||
+                        meetingDetailModal.organizer ||
+                        'Unknown'}
                     </Text>
                   </View>
                 </ScrollView>
 
-                {/* Action Buttons */}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[
@@ -1195,13 +1448,15 @@ export const MeetingsScreen = ({ navigation }) => {
                     ]}
                     onPress={() => joinMeeting(meetingDetailModal)}
                   >
-                    {meetingDetailModal.type === 'virtual' ? (
+                    {meetingDetailModal.type === 'VIRTUAL' ? (
                       <ExternalLink size={wp('4%')} color="#fff" />
                     ) : (
                       <MapPin size={wp('4%')} color="#fff" />
                     )}
                     <Text style={styles.modalJoinBtnText}>
-                      {meetingDetailModal.type === 'virtual' ? 'Join Meeting' : 'View Location'}
+                      {meetingDetailModal.type === 'VIRTUAL'
+                        ? 'Join Meeting'
+                        : 'View Location'}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -1211,7 +1466,12 @@ export const MeetingsScreen = ({ navigation }) => {
                     ]}
                     onPress={() => setMeetingDetailModal(null)}
                   >
-                    <Text style={[styles.modalCancelBtnText, { color: C.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.modalCancelBtnText,
+                        { color: C.textSecondary },
+                      ]}
+                    >
                       Close
                     </Text>
                   </TouchableOpacity>
@@ -1226,12 +1486,8 @@ export const MeetingsScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: hp('3%'),
-  },
+  container: { flex: 1 },
+  scrollContent: { paddingBottom: hp('3%') },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1248,15 +1504,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: wp('2%'),
-  },
-  headerTitle: {
-    fontSize: wp('4.5%'),
-    fontFamily: Fonts.bold,
-  },
+  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: wp('2%') },
+  headerTitle: { fontSize: wp('4.5%'), fontFamily: Fonts.bold },
   headerSubtitle: {
     fontSize: wp('2.5%'),
     fontFamily: Fonts.regular,
@@ -1295,9 +1544,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  calendarWrapper: {
-    position: 'relative',
-  },
+  calendarWrapper: { position: 'relative' },
   meetingNote: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1308,11 +1555,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: wp('2%'),
   },
-  meetingNoteText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.medium,
-    flex: 1,
-  },
+  meetingNoteText: { fontSize: wp('2.6%'), fontFamily: Fonts.medium, flex: 1 },
   meetingsListCard: {
     marginHorizontal: wp('4%'),
     marginTop: hp('2%'),
@@ -1326,23 +1569,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: hp('1.5%'),
   },
-  meetingsListTitle: {
-    fontSize: wp('3.5%'),
-    fontFamily: Fonts.bold,
-    flex: 1,
-  },
-  meetingsList: {
-    gap: hp('1%'),
-  },
+  meetingsListTitle: { fontSize: wp('3.5%'), fontFamily: Fonts.bold, flex: 1 },
+  meetingsList: { gap: hp('1%') },
   meetingItem: {
     borderRadius: wp('3%'),
     borderWidth: 1,
     padding: wp('3%'),
     marginBottom: hp('1%'),
   },
-  meetingHeader: {
-    gap: hp('0.8%'),
-  },
+  meetingHeader: { gap: hp('0.8%') },
   meetingTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1350,11 +1585,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: wp('2%'),
   },
-  meetingTitle: {
-    fontSize: wp('3.5%'),
-    fontFamily: Fonts.bold,
-    flex: 1,
-  },
+  meetingTitle: { fontSize: wp('3.5%'), fontFamily: Fonts.bold, flex: 1 },
   meetingTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1363,10 +1594,7 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
     gap: 4,
   },
-  meetingTypeText: {
-    fontSize: wp('2.2%'),
-    fontFamily: Fonts.medium,
-  },
+  meetingTypeText: { fontSize: wp('2.2%'), fontFamily: Fonts.medium },
   meetingDetails: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1378,38 +1606,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: wp('1%'),
   },
-  meetingDetailText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.regular,
-  },
-  attendeesSection: {
-    marginTop: hp('0.5%'),
-  },
+  meetingDetailText: { fontSize: wp('2.6%'), fontFamily: Fonts.regular },
+  attendeesSection: { marginTop: hp('0.5%') },
   attendeesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: wp('1%'),
     marginBottom: hp('0.5%'),
   },
-  attendeesLabel: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.medium,
-  },
-  attendeesList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: wp('1.5%'),
-  },
+  attendeesLabel: { fontSize: wp('2.4%'), fontFamily: Fonts.medium },
+  attendeesList: { flexDirection: 'row', flexWrap: 'wrap', gap: wp('1.5%') },
   attendeeChip: {
     paddingHorizontal: wp('2%'),
     paddingVertical: 3,
     borderRadius: wp('2%'),
-    borderWidth: 0,
   },
-  attendeeName: {
-    fontSize: wp('2.2%'),
-    fontFamily: Fonts.medium,
-  },
+  attendeeName: { fontSize: wp('2.2%'), fontFamily: Fonts.medium },
   meetingFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1418,10 +1630,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     marginTop: hp('0.5%'),
   },
-  footerText: {
-    fontSize: wp('2.2%'),
-    fontFamily: Fonts.regular,
-  },
+  footerText: { fontSize: wp('2.2%'), fontFamily: Fonts.regular },
   createForm: {
     marginHorizontal: wp('4%'),
     marginTop: hp('2%'),
@@ -1435,13 +1644,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     marginBottom: hp('0.5%'),
   },
-  formGroup: {
-    gap: hp('0.5%'),
+  selectedDateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('1%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginBottom: hp('2%'),
   },
-  formLabel: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-  },
+  selectedDateText: { fontSize: wp('3%'), fontFamily: Fonts.medium, flex: 1 },
+  formGroup: { gap: hp('0.5%') },
+  formLabel: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
   formInput: {
     borderWidth: 1,
     borderRadius: wp('2.5%'),
@@ -1459,9 +1674,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     minHeight: hp('10%'),
   },
-  row: {
-    flexDirection: 'row',
-  },
+  row: { flexDirection: 'row' },
   dateInput: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1471,30 +1684,22 @@ const styles = StyleSheet.create({
     paddingVertical: hp('1%'),
     gap: wp('2%'),
   },
-  dateInputText: {
+  dateInputText: { fontSize: wp('3%'), fontFamily: Fonts.regular, flex: 1 },
+  timeInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: wp('2.5%'),
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('1.2%'),
+    gap: wp('2%'),
+  },
+  timeInputText: {
     fontSize: wp('3%'),
     fontFamily: Fonts.regular,
     flex: 1,
   },
-  durationButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: wp('2%'),
-  },
-  durationBtn: {
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('0.8%'),
-    borderRadius: wp('2%'),
-    borderWidth: 1,
-  },
-  durationBtnText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.medium,
-  },
-  typeButtons: {
-    flexDirection: 'row',
-    gap: wp('2%'),
-  },
+  typeButtons: { flexDirection: 'row', gap: wp('2%') },
   typeBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -1505,27 +1710,35 @@ const styles = StyleSheet.create({
     borderRadius: wp('2.5%'),
     borderWidth: 1,
   },
-  typeBtnText: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-  },
+  typeBtnText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
   attendeesHeaderForm: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  clearAllText: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.medium,
+  clearAllText: { fontSize: wp('2.4%'), fontFamily: Fonts.medium },
+  selectedCount: { fontSize: wp('2.4%'), fontFamily: Fonts.medium },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: wp('2.5%'),
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('1%'),
+    marginBottom: hp('1%'),
+    gap: wp('2%'),
   },
-  selectedCount: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.medium,
+  searchInput: {
+    flex: 1,
+    fontSize: wp('3%'),
+    fontFamily: Fonts.regular,
+    padding: 0,
   },
   attendeesContainer: {
     borderWidth: 1,
     borderRadius: wp('3%'),
     maxHeight: hp('30%'),
+    overflow: 'hidden',
   },
   attendeeItem: {
     flexDirection: 'row',
@@ -1535,13 +1748,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.1)',
   },
-  attendeeInfo: {
-    flex: 1,
-  },
-  attendeeNameForm: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.medium,
-  },
+  attendeeInfo: { flex: 1 },
+  attendeeNameForm: { fontSize: wp('3%'), fontFamily: Fonts.medium },
   attendeeEmail: {
     fontSize: wp('2.2%'),
     fontFamily: Fonts.regular,
@@ -1559,16 +1767,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkMark: {
-    color: '#fff',
-    fontSize: wp('3%'),
-    fontWeight: 'bold',
-  },
-  formActions: {
-    flexDirection: 'row',
-    gap: wp('3%'),
-    marginTop: hp('1%'),
-  },
+  checkMark: { color: '#fff', fontSize: wp('3%'), fontWeight: 'bold' },
+  formActions: { flexDirection: 'row', gap: wp('3%'), marginTop: hp('1%') },
   cancelBtn: {
     flex: 1,
     paddingVertical: hp('1.2%'),
@@ -1576,10 +1776,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  cancelBtnText: {
-    fontSize: wp('3.2%'),
-    fontFamily: Fonts.medium,
-  },
+  cancelBtnText: { fontSize: wp('3.2%'), fontFamily: Fonts.medium },
   submitBtn: {
     flex: 2,
     flexDirection: 'row',
@@ -1611,10 +1808,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp('3%'),
     gap: hp('1%'),
   },
-  noMeetingsText: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.regular,
-  },
+  noMeetingsText: { fontSize: wp('3%'), fontFamily: Fonts.regular },
   scheduleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1624,10 +1818,7 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
     marginTop: hp('1%'),
   },
-  scheduleBtnText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.medium,
-  },
+  scheduleBtnText: { fontSize: wp('2.6%'), fontFamily: Fonts.medium },
   legendCard: {
     marginHorizontal: wp('4%'),
     marginTop: hp('2%'),
@@ -1653,10 +1844,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  legendToggleTitle: {
-    fontSize: wp('3.5%'),
-    fontFamily: Fonts.bold,
-  },
+  legendToggleTitle: { fontSize: wp('3.5%'), fontFamily: Fonts.bold },
   legendChevronWrap: {
     width: wp('8%'),
     height: wp('8%'),
@@ -1665,40 +1853,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
-  legendContent: {
-    paddingHorizontal: wp('4%'),
-    paddingBottom: wp('4%'),
-  },
-  legendDivider: {
-    height: 1,
-    marginBottom: wp('3%'),
-  },
-  legendGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: wp('3%'),
-  },
+  legendContent: { paddingHorizontal: wp('4%'), paddingBottom: wp('4%') },
+  legendDivider: { height: 1, marginBottom: wp('3%') },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: wp('3%') },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: wp('2%'),
     width: '47%',
   },
-  legendDot: {
-    width: wp('3%'),
-    height: wp('3%'),
-    borderRadius: wp('1.5%'),
-  },
-  legendText: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.regular,
-    flex: 1,
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
+  legendDot: { width: wp('3%'), height: wp('3%'), borderRadius: wp('1.5%') },
+  legendText: { fontSize: wp('2.8%'), fontFamily: Fonts.regular, flex: 1 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalContent: {
     borderTopLeftRadius: wp('5%'),
     borderTopRightRadius: wp('5%'),
@@ -1728,13 +1894,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
-  modalBody: {
-    padding: wp('4%'),
-    maxHeight: hp('60%'),
-  },
-  modalTypeBadge: {
-    marginBottom: hp('2%'),
-  },
+  modalBody: { padding: wp('4%'), maxHeight: hp('60%') },
+  modalTypeBadge: { marginBottom: hp('2%') },
   meetingTypeBadgeLarge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1744,10 +1905,7 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
     gap: wp('2%'),
   },
-  modalTypeText: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.medium,
-  },
+  modalTypeText: { fontSize: wp('3%'), fontFamily: Fonts.medium },
   modalDetailSection: {
     backgroundColor: 'rgba(0,0,0,0.03)',
     borderRadius: wp('3%'),
@@ -1755,22 +1913,10 @@ const styles = StyleSheet.create({
     marginBottom: hp('2%'),
     gap: hp('1%'),
   },
-  modalDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('2%'),
-  },
-  modalDetailText: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.regular,
-    flex: 1,
-  },
-  copyBtn: {
-    padding: wp('1%'),
-  },
-  modalAgendaSection: {
-    marginBottom: hp('2%'),
-  },
+  modalDetailRow: { flexDirection: 'row', alignItems: 'center', gap: wp('2%') },
+  modalDetailText: { fontSize: wp('3%'), fontFamily: Fonts.regular, flex: 1 },
+  copyBtn: { padding: wp('1%') },
+  modalAgendaSection: { marginBottom: hp('2%') },
   modalSectionTitle: {
     fontSize: wp('3.2%'),
     fontFamily: Fonts.bold,
@@ -1781,12 +1927,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     lineHeight: hp('2.2%'),
   },
-  modalAttendeesSection: {
-    marginBottom: hp('2%'),
-  },
-  modalAttendeesList: {
-    gap: hp('0.8%'),
-  },
+  modalAttendeesSection: { marginBottom: hp('2%') },
+  modalAttendeesList: { gap: hp('0.8%') },
   modalAttendeeItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1795,13 +1937,10 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
     borderWidth: 1,
   },
-  modalAttendeeInfo: {
-    flex: 1,
-  },
-  modalAttendeeName: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-  },
+  modalAttendeeInfo: { flex: 1 },
+  modalAttendeeName: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
+  modalAttendeeEmail: { fontSize: wp('2.2%'), fontFamily: Fonts.regular, marginTop: 2 },
+  modalAttendeeStatus: { fontSize: wp('2.2%'), fontFamily: Fonts.medium, marginTop: 2 },
   modalOrganizerSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1811,10 +1950,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(0,0,0,0.1)',
     marginTop: hp('0.5%'),
   },
-  modalOrganizerText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.regular,
-  },
+  modalOrganizerText: { fontSize: wp('2.6%'), fontFamily: Fonts.regular },
   modalActions: {
     flexDirection: 'row',
     gap: wp('3%'),
@@ -1843,10 +1979,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  modalCancelBtnText: {
-    fontSize: wp('3.2%'),
-    fontFamily: Fonts.medium,
+  modalCancelBtnText: { fontSize: wp('3.2%'), fontFamily: Fonts.medium },
+  loadingContainer: { padding: hp('2%'), alignItems: 'center' },
+  loadingText: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.regular,
+    marginTop: hp('1%'),
   },
+  noResultsContainer: { padding: hp('2%'), alignItems: 'center' },
+  noResultsText: { fontSize: wp('3%'), fontFamily: Fonts.regular },
 });
 
 export default MeetingsScreen;

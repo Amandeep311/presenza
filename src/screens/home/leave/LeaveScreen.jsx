@@ -14,7 +14,7 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import {} from 'react-native';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { applyLeave, fetchLeaves } from '../../../store/actions/leaveActions';
 import {
   widthPercentageToDP as wp,
@@ -43,7 +43,7 @@ import { Colors, Fonts } from '../../../utils/GlobalText';
 import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { setAlert } from '../../../store/actions/authActions';
-import {ReusableCalendar} from '../../../components/common/ReusableCalendar';
+import { ReusableCalendar } from '../../../components/common/ReusableCalendar';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const USER_BRANCH = 'CHD'; // Current user's branch
@@ -585,141 +585,147 @@ const LeaveScreen = ({ navigation }) => {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   // Inside the component, add the getDayInfo function:
-const getDayInfoForCalendar = (day, dateStr) => {
-  const dayOfWeek = new Date(year, currentMonth, day).getDay();
-  const isSunday = dayOfWeek === 0;
-  const isSecondSat = day === secondSat;
-  const isFourthSat = day === fourthSat;
-  const holiday = HOLIDAY_MAP[dateStr];
-  const isPast = new Date(dateStr) < new Date(todayStr);
-  
-  const branchHoliday = holiday ? isHolidayForBranch(dateStr, USER_BRANCH) : null;
-  const isHalf = branchHoliday && (branchHoliday.type === 'half1' || branchHoliday.type === 'half2');
-  const isFullHoliday = branchHoliday && branchHoliday.type === 'full';
-  
-  const isOff = isSunday || isSecondSat || isFourthSat;
-  const inRange = startDate && endDate && dateStr >= startDate && dateStr <= endDate;
-  const isStart = dateStr === startDate;
-  const isEnd = dateStr === (endDate || startDate);
-  const isSingleSelected = isStart && (!endDate || startDate === endDate);
-  const isRangeMid = inRange && !isStart && !isEnd;
-  const isRangeStart = isStart && startDate !== endDate && endDate;
-  const isRangeEnd = isEnd && startDate !== endDate && endDate;
-  
-  let backgroundColor = 'transparent';
-  let textColor = C.textPrimary;
-  let fontFamily = Fonts.medium;
-  let borderColor = 'transparent';
-  let borderWidth = 0;
-  let showDot = false;
-  let dotColor = '';
-  let showHalfIcon = false;
-  let halfIconColor = '';
-  let isHoliday = false;
-  let holidayInfo = null;
-  
-  if (isPast) {
-    textColor = C.disabled;
-  }
-  
-  if (isOff && !holiday) {
-    backgroundColor = C.error + '12';
-    textColor = C.error;
-    fontFamily = Fonts.bold;
-    isHoliday = true;
-  }
-  
-  if (isFullHoliday && branchHoliday) {
-    backgroundColor = C.primary + '18';
-    textColor = C.primary;
-    fontFamily = Fonts.bold;
-    showDot = true;
-    dotColor = C.primary;
-    isHoliday = true;
-    holidayInfo = {
-      name: holiday.name,
-      type: 'full',
-      color: C.primary,
-      branches: Object.entries(holiday.branches).map(([b, t]) => ({
-        name: b,
-        color: t === 'full' ? C.primary : C.warning,
-        isUser: b === USER_BRANCH
-      }))
+  const getDayInfoForCalendar = (day, dateStr) => {
+    const dayOfWeek = new Date(year, currentMonth, day).getDay();
+    const isSunday = dayOfWeek === 0;
+    const isSecondSat = day === secondSat;
+    const isFourthSat = day === fourthSat;
+    const holiday = HOLIDAY_MAP[dateStr];
+    const isPast = new Date(dateStr) < new Date(todayStr);
+
+    const branchHoliday = holiday
+      ? isHolidayForBranch(dateStr, USER_BRANCH)
+      : null;
+    const isHalf =
+      branchHoliday &&
+      (branchHoliday.type === 'half1' || branchHoliday.type === 'half2');
+    const isFullHoliday = branchHoliday && branchHoliday.type === 'full';
+
+    const isOff = isSunday || isSecondSat || isFourthSat;
+    const inRange =
+      startDate && endDate && dateStr >= startDate && dateStr <= endDate;
+    const isStart = dateStr === startDate;
+    const isEnd = dateStr === (endDate || startDate);
+    const isSingleSelected = isStart && (!endDate || startDate === endDate);
+    const isRangeMid = inRange && !isStart && !isEnd;
+    const isRangeStart = isStart && startDate !== endDate && endDate;
+    const isRangeEnd = isEnd && startDate !== endDate && endDate;
+
+    let backgroundColor = 'transparent';
+    let textColor = C.textPrimary;
+    let fontFamily = Fonts.medium;
+    let borderColor = 'transparent';
+    let borderWidth = 0;
+    let showDot = false;
+    let dotColor = '';
+    let showHalfIcon = false;
+    let halfIconColor = '';
+    let isHoliday = false;
+    let holidayInfo = null;
+
+    if (isPast) {
+      textColor = C.disabled;
+    }
+
+    if (isOff && !holiday) {
+      backgroundColor = C.error + '12';
+      textColor = C.error;
+      fontFamily = Fonts.bold;
+      isHoliday = true;
+    }
+
+    if (isFullHoliday && branchHoliday) {
+      backgroundColor = C.primary + '18';
+      textColor = C.primary;
+      fontFamily = Fonts.bold;
+      showDot = true;
+      dotColor = C.primary;
+      isHoliday = true;
+      holidayInfo = {
+        name: holiday.name,
+        type: 'full',
+        color: C.primary,
+        branches: Object.entries(holiday.branches).map(([b, t]) => ({
+          name: b,
+          color: t === 'full' ? C.primary : C.warning,
+          isUser: b === USER_BRANCH,
+        })),
+      };
+    }
+
+    if (isHalf && branchHoliday) {
+      backgroundColor = C.warning + '18';
+      textColor = C.warning;
+      fontFamily = Fonts.bold;
+      showHalfIcon = true;
+      halfIconColor = C.warning;
+      isHoliday = true;
+      holidayInfo = {
+        name: holiday.name,
+        type: branchHoliday.type,
+        color: C.warning,
+        branches: Object.entries(holiday.branches).map(([b, t]) => ({
+          name: b,
+          color: t === 'full' ? C.primary : C.warning,
+          isUser: b === USER_BRANCH,
+        })),
+      };
+    }
+
+    if (isSingleSelected) {
+      backgroundColor = C.primary;
+      textColor = '#fff';
+      borderColor = C.primary;
+    }
+
+    if (isRangeStart || isRangeEnd) {
+      backgroundColor = C.primary;
+      textColor = '#fff';
+    }
+
+    if (isRangeMid) {
+      backgroundColor = C.primary + '28';
+      textColor = C.primary;
+    }
+
+    return {
+      backgroundColor,
+      textColor,
+      fontFamily,
+      borderColor,
+      borderWidth,
+      showDot,
+      dotColor,
+      showHalfIcon,
+      halfIconColor,
+      isHoliday,
+      holidayInfo,
+      isWeeklyOff: isOff && !holiday,
+      isSunday,
+      isSecondSat,
+      isFourthSat,
+      holiday: holidayInfo,
+      branches: holidayInfo?.branches || [],
+      holidayColor: isFullHoliday ? C.primary : isHalf ? C.warning : null,
+      holidayType: isFullHoliday ? 'full' : isHalf ? branchHoliday?.type : null,
     };
-  }
-  
-  if (isHalf && branchHoliday) {
-    backgroundColor = C.warning + '18';
-    textColor = C.warning;
-    fontFamily = Fonts.bold;
-    showHalfIcon = true;
-    halfIconColor = C.warning;
-    isHoliday = true;
-    holidayInfo = {
-      name: holiday.name,
-      type: branchHoliday.type,
-      color: C.warning,
-      branches: Object.entries(holiday.branches).map(([b, t]) => ({
-        name: b,
-        color: t === 'full' ? C.primary : C.warning,
-        isUser: b === USER_BRANCH
-      }))
-    };
-  }
-  
-  if (isSingleSelected) {
-    backgroundColor = C.primary;
-    textColor = '#fff';
-    borderColor = C.primary;
-  }
-  
-  if (isRangeStart || isRangeEnd) {
-    backgroundColor = C.primary;
-    textColor = '#fff';
-  }
-  
-  if (isRangeMid) {
-    backgroundColor = C.primary + '28';
-    textColor = C.primary;
-  }
-  
-  return {
-    backgroundColor,
-    textColor,
-    fontFamily,
-    borderColor,
-    borderWidth,
-    showDot,
-    dotColor,
-    showHalfIcon,
-    halfIconColor,
-    isHoliday,
-    holidayInfo,
-    isWeeklyOff: isOff && !holiday,
-    isSunday,
-    isSecondSat,
-    isFourthSat,
-    holiday: holidayInfo,
-    branches: holidayInfo?.branches || [],
-    holidayColor: isFullHoliday ? C.primary : isHalf ? C.warning : null,
-    holidayType: isFullHoliday ? 'full' : isHalf ? branchHoliday?.type : null,
   };
-};
+
+  const { profile } = useSelector(state => state.employeeProfile);
+  const userProfile = profile?.[0] || {};
 
   // ── Leave Balance ─────────────────────────────────────────────────────────
   const LEAVE_BALANCE = {
-    total: { total: 12, used: 4 },
-    // sick: { total: 12, used: 2 },
-    // earned: { total: 15, used: 7 },
-    short: { totalPerMonth: 2, usedThisMonth: 1 },
+    total: {
+      total: userProfile.totalLeaveRemaining || 0,
+      used: userProfile.totalLeaveUsed || 0,
+    },
+    short: {
+      totalPerMonth: 2, // Keep this as is - seems to be a monthly limit
+      usedThisMonth: userProfile.totalShortLeaveUsed || 0,
+    },
   };
-  const totalRemaining =
-    LEAVE_BALANCE.total.total - LEAVE_BALANCE.total.used;
-  // const casualRemaining =
-  //   LEAVE_BALANCE.casual.total - LEAVE_BALANCE.casual.used;
-  // const sickRemaining = LEAVE_BALANCE.sick.total - LEAVE_BALANCE.sick.used;
-  // const earnedRemaining =
-  //   LEAVE_BALANCE.earned.total - LEAVE_BALANCE.earned.used;
+  const totalRemaining = LEAVE_BALANCE.total.total;
   const shortRemaining =
     LEAVE_BALANCE.short.totalPerMonth - LEAVE_BALANCE.short.usedThisMonth;
 
@@ -913,10 +919,21 @@ const getDayInfoForCalendar = (day, dateStr) => {
     if (!day) return;
     const dateStr = toDateStr(year, currentMonth, day);
     const dateObj = new Date(dateStr);
-
     const todayOnly = new Date(todayStr);
+
     if (dateObj < todayOnly) {
       showHolidayInfo(day, dateStr);
+      return;
+    }
+
+    if (
+      selectionMode === 'end' &&
+      dateStr === startDate &&
+      leaveType !== 'half' &&
+      leaveType !== 'short'
+    ) {
+      // Optionally show a message
+      dispatch(setAlert('Please select a different date for end date', 'info'));
       return;
     }
 
@@ -1051,14 +1068,22 @@ const getDayInfoForCalendar = (day, dateStr) => {
       todayDate.getDate() === day;
     const isPast = new Date(dateStr) < new Date(todayStr);
 
-    const effectiveEnd = endDate || startDate;
-    const inRange =
-      startDate &&
-      effectiveEnd &&
-      dateStr >= startDate &&
-      dateStr <= effectiveEnd;
-    const isStart = dateStr === startDate;
-    const isEnd = dateStr === (endDate || startDate);
+    // FIX: Properly determine if date is in range
+    let inRange = false;
+    let isStart = false;
+    let isEnd = false;
+
+    if (startDate && endDate) {
+      // Both dates selected - proper range
+      inRange = dateStr >= startDate && dateStr <= endDate;
+      isStart = dateStr === startDate;
+      isEnd = dateStr === endDate;
+    } else if (startDate && !endDate) {
+      // Only start date selected
+      inRange = dateStr === startDate;
+      isStart = dateStr === startDate;
+      isEnd = false;
+    }
 
     return {
       isSunday,
@@ -4116,6 +4141,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: hp('0.8%'),
     alignItems: 'center',
+    justifyContent:'center',
     borderRadius: 20,
   },
   leaveTypeText: { fontSize: wp('3%'), fontFamily: Fonts.medium },

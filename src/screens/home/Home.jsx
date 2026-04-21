@@ -233,13 +233,13 @@ const HomeScreen = ({ navigation }) => {
     }
 
     if (label === t.home.reimbursement) {
-      navigation.navigate('Reimbursement');
-      return;
+      // navigation.navigate('Reimbursement');
+      // return;
     }
 
     if (label === t.home.salarySlip) {
-      navigation.navigate('SalarySlip');
-      return;
+      // navigation.navigate('SalarySlip');
+      // return;
     }
 
     if (label === t.home.meetings) {
@@ -631,30 +631,31 @@ const HomeScreen = ({ navigation }) => {
             {quickActions.map((item, index) => {
               const isBreakAction = item.label === t.home.idleTracking;
               const isVisitAction = item.label === 'Visit';
-              const isActive = isBreakAction && isOnBreak;
+              const showGreenDot = isBreakAction && isOnBreak;
               const disabled = isLoading;
-              //  ||
-              // (isBreakAction && (!isPunchedIn || isOnBreak)) ||
-              // (isVisitAction && !isPunchedIn);
 
               return (
-                <QuickActionCard
-                  key={index}
-                  icon={item.icon}
-                  label={item.label}
-                  color={item.color}
-                  onPress={() => handleQuickActionPress(item.label)}
-                  disabled={disabled}
-                  isActive={isActive}
-                  hint={
-                    (isBreakAction || isVisitAction) &&
-                    !isPunchedIn &&
-                    !isActive
-                      ? t.attendance.needCheckIn || 'Need check-in'
-                      : undefined
-                  }
-                  theme={theme}
-                />
+                <View key={index} style={styles.actionCardWrapper}>
+                  {showGreenDot && (
+                    <View style={[styles.greenDot, { backgroundColor: C.success }]} />
+                  )}
+                  <QuickActionCard
+                    icon={item.icon}
+                    label={item.label}
+                    color={item.color}
+                    onPress={() => handleQuickActionPress(item.label)}
+                    disabled={disabled}
+                    isActive={false}
+                    hint={
+                      (isBreakAction || isVisitAction) &&
+                      !isPunchedIn &&
+                      !showGreenDot
+                        ? t.attendance.needCheckIn || 'Need check-in'
+                        : undefined
+                    }
+                    theme={theme}
+                  />
+                </View>
               );
             })}
           </View>
@@ -664,7 +665,7 @@ const HomeScreen = ({ navigation }) => {
             <Text style={[styles.sectionLabel, { color: C.textSecondary }]}>
               {t.home.todaysActivity}
             </Text>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[
                 styles.formatPill,
                 { backgroundColor: C.surface, borderColor: C.border },
@@ -676,7 +677,7 @@ const HomeScreen = ({ navigation }) => {
                   'Auto'}
               </Text>
               <ChevronDown size={wp('3.5%')} color={C.textSecondary} />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
 
           {showFormatOptions && (
@@ -1034,12 +1035,12 @@ const HomeScreen = ({ navigation }) => {
   );
 };
 
-// Styles (only the ones that couldn't be moved to components)
+// Styles
 const CARD_H_PAD = wp('4%');
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: wp('4%'),
+    paddingHorizontal: wp('2%'),
     paddingBottom: hp('2%'),
   },
   overlay: {
@@ -1069,12 +1070,27 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+    marginBottom:hp('2%')
   },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: wp('2.5%'),
-    alignItems:'baseline'
+        alignItems:'baseline',
+    justifyContent: 'space-between',
+  },
+  actionCardWrapper: {
+    width: '21%',
+    position: 'relative',
+  },
+  greenDot: {
+    width: wp('2.5%'),
+    height: wp('2.5%'),
+    borderRadius: wp('1.25%'),
+    position: 'absolute',
+    top: -hp('0.8%'),
+    right: wp('1%'),
+    zIndex: 10,
   },
   formatPill: {
     flexDirection: 'row',
@@ -1120,6 +1136,7 @@ const styles = StyleSheet.create({
     padding: CARD_H_PAD,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: wp('2%'),
+    flexWrap: 'wrap',
   },
   cardUserRow: {
     flexDirection: 'row',
@@ -1174,6 +1191,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: CARD_H_PAD,
     paddingVertical: hp('1.4%'),
     borderBottomWidth: StyleSheet.hairlineWidth,
+    flexWrap: 'wrap',
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,

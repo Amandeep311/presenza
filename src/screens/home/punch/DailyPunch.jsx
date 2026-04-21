@@ -1100,7 +1100,7 @@ const styles = StyleSheet.create({
     height: wp('52%'),
     borderRadius: wp('26%'),
     borderWidth: 2,
-    marginTop: -hp('7.5%'),
+    marginTop: -hp('8.5%'),
   },
   punchCircle: {
     width: wp('46%'),

@@ -15,7 +15,7 @@ import {
   heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Power } from 'lucide-react-native';
+import { ArrowLeft, Hand, Icon, Power } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Fonts } from '../../utils/GlobalText';
@@ -93,7 +93,7 @@ const CustomHeader = ({
                 {greeting || 'Hello,'}
               </Text>
               <Text style={[styles.name, { color: C.textPrimary }]}>
-                {userName || 'User'} 👋
+                {userName || 'User'}
               </Text>
               <Text style={[styles.date, { color: C.textSecondary }]}>
                 {date}
@@ -192,6 +192,7 @@ const styles = StyleSheet.create({
 name: {
   fontSize: wp('5%'),
   fontFamily: Fonts.bold,
+  marginTop: hp('0.5%'),
 },
 
 date: {

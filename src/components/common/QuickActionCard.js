@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     width: (wp('100%') - wp('8%')) / 5, // 5 items per row with spacing
     aspectRatio: 1, // Makes it square
     borderRadius: wp('3%'),
-    paddingVertical: hp('1.5%'),
+    paddingVertical: hp('2%'),
     paddingHorizontal: wp('2%'),
     alignItems: 'center',
     justifyContent: 'center',
