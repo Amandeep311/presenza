@@ -1,4 +1,5 @@
-import * as Keychain from 'react-native-keychain';
+// keychainHelper.js - Remove dangerous clears
+
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -7,23 +8,14 @@ const REFRESH_SERVICE_ID = 'com.presenza.app.refresh';
 
 export const saveTokens = async (accessToken, refreshToken, user) => {
   try {
-    console.log('💾 Saving tokens to AsyncStorage...');
+    console.log('💾 Saving tokens...');
 
-    // Save access token
     await AsyncStorage.setItem(SERVICE_ID, accessToken);
-    console.log('✅ Access token saved');
-
-    // Save refresh token
     await AsyncStorage.setItem(REFRESH_SERVICE_ID, refreshToken);
-    console.log('✅ Refresh token saved');
-
-    // Save user data in EncryptedStorage
     await EncryptedStorage.setItem('user_data', JSON.stringify(user));
-    console.log('✅ User data saved');
-
-    // Also save in AsyncStorage for quick access
     await AsyncStorage.setItem('user', JSON.stringify(user));
 
+    console.log('✅ Tokens saved');
     return true;
   } catch (error) {
     console.log('❌ Error saving tokens:', error);
@@ -31,19 +23,15 @@ export const saveTokens = async (accessToken, refreshToken, user) => {
   }
 };
 
-// Get access token from AsyncStorage
 export const getAccessToken = async () => {
   try {
-    const token = await AsyncStorage.getItem(SERVICE_ID);
-    console.log('🔑 Access token retrieved:', token);
-    return token;
+    return await AsyncStorage.getItem(SERVICE_ID);
   } catch (error) {
     console.log('❌ Error getting access token:', error);
     return null;
   }
 };
 
-// Get refresh token from AsyncStorage
 export const getRefreshToken = async () => {
   try {
     return await AsyncStorage.getItem(REFRESH_SERVICE_ID);
@@ -53,7 +41,6 @@ export const getRefreshToken = async () => {
   }
 };
 
-// Get user from EncryptedStorage
 export const getUser = async () => {
   try {
     const userData = await EncryptedStorage.getItem('user_data');
@@ -64,7 +51,6 @@ export const getUser = async () => {
   }
 };
 
-// Debug function to see what's in AsyncStorage
 export const debugStorage = async () => {
   try {
     console.log('🔍 DEBUG: Checking AsyncStorage contents');
@@ -84,53 +70,32 @@ export const debugStorage = async () => {
   }
 };
 
-// Force clear all tokens
-export const forceClearTokens = async () => {
-  try {
-    console.log('💪 Force clearing all tokens...');
-
-    await AsyncStorage.multiRemove([SERVICE_ID, REFRESH_SERVICE_ID, 'user']);
-    await EncryptedStorage.removeItem('user_data');
-    await EncryptedStorage.clear();
-
-    console.log('✅ All tokens cleared');
-    return true;
-  } catch (error) {
-    console.log('❌ Force clear failed:', error);
-    return false;
-  }
-};
-
-// Clear tokens
 export const clearTokens = async () => {
   try {
-    console.log('🧹 Clearing all tokens...');
+    console.log('🧹 Clearing tokens...');
 
+    // Remove ONLY our specific keys
     await AsyncStorage.multiRemove([SERVICE_ID, REFRESH_SERVICE_ID, 'user']);
     await EncryptedStorage.removeItem('user_data');
-    await EncryptedStorage.clear();
 
     console.log('✅ Tokens cleared');
     return true;
   } catch (error) {
     console.log('❌ Error clearing tokens:', error);
-    return await forceClearTokens();
+    
+    // Try one more time with individual removes
+    try {
+      await AsyncStorage.removeItem(SERVICE_ID);
+      await AsyncStorage.removeItem(REFRESH_SERVICE_ID);
+      await AsyncStorage.removeItem('user');
+      await EncryptedStorage.removeItem('user_data');
+      console.log('✅ Force clear successful');
+      return true;
+    } catch (e) {
+      console.log('❌ Force clear failed:', e);
+      return false;
+    }
   }
 };
 
-// Reset everything
-export const resetEverything = async () => {
-  try {
-    console.log('🔄 Resetting everything...');
-
-    await AsyncStorage.multiRemove([SERVICE_ID, REFRESH_SERVICE_ID, 'user']);
-    await EncryptedStorage.clear();
-    await AsyncStorage.clear();
-
-    console.log('✅ Everything reset');
-    return true;
-  } catch (error) {
-    console.log('❌ Reset failed:', error);
-    return false;
-  }
-};
+// Remove resetEverything function as it's dangerous

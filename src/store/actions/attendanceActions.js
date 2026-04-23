@@ -7,7 +7,7 @@ import { launchCamera } from 'react-native-image-picker';
 import { requestCameraPermission } from '../../utils/utils';
 import apiService from '../../services/apiService';
 import * as types from './types';
-import { setAlert } from './authActions';
+import { logout, setAlert } from './authActions';
 import NetInfo from '@react-native-community/netinfo';
 import { Platform } from 'react-native';
 import ImageResizer from 'react-native-image-resizer';
@@ -372,48 +372,54 @@ export const punchOut = () => async dispatch => {
 };
 
 // ==================== GET ATTENDANCE HISTORY ====================
-export const getAttendanceHistory =
-  (params = {}) =>
-  async dispatch => {
-    try {
-      console.log('📊 Fetching attendance history...');
-      dispatch({ type: types.ATTENDANCE_HISTORY_REQUEST });
+// attendanceActions.js - Add SESSION_EXPIRED handling
 
-      const queryParams = new URLSearchParams();
-      if (params.month) queryParams.append('month', params.month);
-      if (params.year) queryParams.append('year', params.year);
-      if (params.limit) queryParams.append('limit', params.limit);
+export const getAttendanceHistory = (params = {}) => async dispatch => {
+  try {
+    console.log('📊 Fetching attendance history...');
+    dispatch({ type: types.ATTENDANCE_HISTORY_REQUEST });
 
-      const queryString = queryParams.toString();
-      const endpoint = `/attendance/history${
-        queryString ? `?${queryString}` : ''
-      }`;
+    const queryParams = new URLSearchParams();
+    if (params.month) queryParams.append('month', params.month);
+    if (params.year) queryParams.append('year', params.year);
+    if (params.limit) queryParams.append('limit', params.limit);
 
-      const response = await apiService.get(endpoint);
+    const queryString = queryParams.toString();
+    const endpoint = `/attendance/history${
+      queryString ? `?${queryString}` : ''
+    }`;
 
-      console.log('📡 Response status:', response.status);
+    const response = await apiService.get(endpoint);
 
-      if (response.status !== 200) {
-        throw new Error(response.data?.message || 'Failed to fetch history');
-      }
-
-      const historyData = response.data?.data || [];
-      console.log('✅ History fetched:', historyData, 'records');
-
-      dispatch({
-        type: types.ATTENDANCE_HISTORY_SUCCESS,
-        payload: historyData,
-      });
-      return { success: true, data: historyData };
-    } catch (error) {
-      console.log('❌ Get history error:', error.message);
-      dispatch({
-        type: types.ATTENDANCE_HISTORY_FAIL,
-        payload: error.message || 'Failed to fetch history',
-      });
-      return { success: false, error: error.message };
+    if (response.status !== 200) {
+      throw new Error(response.data?.message || 'Failed to fetch history');
     }
-  };
+
+    const historyData = response.data?.data || [];
+    console.log('✅ History fetched:', historyData.length, 'records');
+
+    dispatch({
+      type: types.ATTENDANCE_HISTORY_SUCCESS,
+      payload: historyData,
+    });
+    return { success: true, data: historyData };
+  } catch (error) {
+    console.log('❌ Get history error:', error.message);
+    
+    // Check for session expiry
+    if (error.message === 'SESSION_EXPIRED' || error.isSessionExpired) {
+      console.log('🔐 Session expired, logging out...');
+      await dispatch(logout());
+      return { success: false, error: 'SESSION_EXPIRED' };
+    }
+    
+    dispatch({
+      type: types.ATTENDANCE_HISTORY_FAIL,
+      payload: error.message || 'Failed to fetch history',
+    });
+    return { success: false, error: error.message };
+  }
+};
 
 // ==================== GET TODAY'S ATTENDANCE ====================
 export const getTodayAttendance = () => async dispatch => {

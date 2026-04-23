@@ -24,6 +24,11 @@ import { checkAuthState, hideAlert } from '../store/actions/authActions';
 import { debugStorage } from '../utils/keychainHelper';
 import LeaveScreen from '../screens/home/leave/LeaveScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
+import SalarySlip from '../screens/home/salarySlip/SalarySlip';
+import Reimbursement from '../screens/home/reimbursement/Reimbursement';
+import Meetings from '../screens/home/meetings/Meetings';
+import KRA from '../screens/home/kra/KRA';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -44,19 +49,28 @@ const AppStack = () => (
     <Stack.Screen name="Reports" component={ReportsScreen} />
     <Stack.Screen name="Leave" component={LeaveScreen} />
     <Stack.Screen name="AppSettings" component={SettingsScreen} />
+    <Stack.Screen name="SalarySlip" component={SalarySlip} />
+    <Stack.Screen name="Reimbursement" component={Reimbursement} />
+        <Stack.Screen name="Meetings" component={Meetings} />
+    <Stack.Screen name="KRA" component={KRA} />
+
   </Stack.Navigator>
 );
 
 const AppNavigator = () => {
   const dispatch = useDispatch();
   const { isAuthenticated, loading } = useSelector(state => state.auth);
+  console.log(
+    'auth state:::::::',
+    useSelector(state => state.auth),
+  );
   const { alert } = useSelector(state => state.ui);
 
   const [forceUpdate, setForceUpdate] = useState(false);
   const [storeUrl, setStoreUrl] = useState('');
   const [storeVersion, setStoreVersion] = useState('');
 
-  // 🔥 Version Check
+  // Version Check
   const checkAppVersion = async () => {
     try {
       const res = await VersionCheck.needUpdate();
@@ -78,7 +92,7 @@ const AppNavigator = () => {
     }
   };
 
-  // 🔁 Recheck when app comes back from background
+  // Recheck when app comes back from background
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
@@ -123,14 +137,13 @@ const AppNavigator = () => {
             </Text>
 
             {storeVersion ? (
-              <Text style={styles.version}>
-                Latest Version: {storeVersion}
-              </Text>
+              <Text style={styles.version}>Latest Version: {storeVersion}</Text>
             ) : null}
 
             <TouchableOpacity
               style={styles.button}
-              onPress={() => Linking.openURL(storeUrl)}>
+              onPress={() => Linking.openURL(storeUrl)}
+            >
               <Text style={styles.buttonText}>Update Now</Text>
             </TouchableOpacity>
           </View>

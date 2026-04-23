@@ -24,6 +24,7 @@ target 'Presenza' do
 
   # rn_maps_path = '../node_modules/react-native-maps'
   # pod 'react-native-maps', path: rn_maps_path
+  pod 'RNFS', :path => '../node_modules/react-native-fs'
 
   # Permissions setup
   setup_permissions([

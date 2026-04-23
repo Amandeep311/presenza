@@ -1,5 +1,6 @@
 import * as types from './types';
 import apiService from '../../services/apiService';
+import { logout } from './authActions';
 
 export const getEmployeeProfile = () => async dispatch => {
   try {
@@ -10,8 +11,6 @@ export const getEmployeeProfile = () => async dispatch => {
     });
 
     const response = await apiService.get('/employee/profile');
-
-    console.log('📡 Response status:', response.status);
 
     if (response.status !== 200) {
       throw new Error(response.data?.message || 'Failed to fetch profile');
@@ -32,13 +31,20 @@ export const getEmployeeProfile = () => async dispatch => {
     };
   } catch (error) {
     console.log('❌ Profile fetch error:', error.message);
-
+    
+    // Check for session expiry
+    if (error.message === 'SESSION_EXPIRED' || error.isSessionExpired) {
+      console.log('🔐 Session expired during profile fetch, logging out...');
+      await dispatch(logout());
+      return {
+        success: false,
+        error: 'SESSION_EXPIRED',
+      };
+    }
+    
     dispatch({
       type: types.EMPLOYEE_PROFILE_FAIL,
-      payload:
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to fetch profile',
+      payload: error.response?.data?.message || error.message || 'Failed to fetch profile',
     });
 
     return {

@@ -10,6 +10,8 @@ import {
   StatusBar,
   AppState,
   ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -190,6 +192,7 @@ const DailyPunch = ({ navigation }) => {
   }, [dotOpacityAnim]);
 
   // ── Location check function ──
+
   const checkLocationAutomatically = useCallback(async () => {
     if (hasActiveSession || isLocationFetchingRef.current) return;
 
@@ -199,12 +202,30 @@ const DailyPunch = ({ navigation }) => {
 
     try {
       const hasPermission = await checkAndRequestLocationPermission();
+
       if (!hasPermission) {
+        Alert.alert(
+          'Permission Required',
+          'Location permission is required to punch in. Please allow access.',
+          [
+            {
+              text: 'Retry',
+              onPress: () => checkLocationAutomatically(),
+            },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
+
         setIsInsideGeofence(null);
         return;
       }
 
       const locationData = await getCurrentLocation();
+
       const dist = getDistanceMeters(
         locationData.latitude,
         locationData.longitude,
@@ -213,6 +234,7 @@ const DailyPunch = ({ navigation }) => {
       );
 
       const inside = dist <= OFFICE_CONFIG.radiusMeters;
+
       setIsInsideGeofence(inside);
       setDistance(Math.round(dist));
       setUserCoords({
@@ -221,6 +243,13 @@ const DailyPunch = ({ navigation }) => {
       });
     } catch (e) {
       console.log('Location error:', e);
+
+      Alert.alert(
+        'Location Error',
+        'Unable to fetch location. Please try again.',
+        [{ text: 'Retry', onPress: () => checkLocationAutomatically() }],
+      );
+
       setIsInsideGeofence(null);
     } finally {
       setIsCheckingLocation(false);
@@ -1071,7 +1100,7 @@ const styles = StyleSheet.create({
     height: wp('52%'),
     borderRadius: wp('26%'),
     borderWidth: 2,
-    marginTop: -hp('7.5%'),
+    marginTop: -hp('8.5%'),
   },
   punchCircle: {
     width: wp('46%'),

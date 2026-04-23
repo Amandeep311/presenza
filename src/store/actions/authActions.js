@@ -331,12 +331,13 @@ export const refreshToken = refreshToken => async dispatch => {
 };
 
 // ==================== SIMPLE LOGOUT ACTIONS ====================
+
 export const logout = () => async dispatch => {
   try {
     console.log('🚪 Logout started...');
 
+    // Try to call logout API (don't wait for it)
     const accessToken = await getAccessToken();
-
     if (accessToken) {
       try {
         await fetch(`${BASE_URL}/auth/logout`, {
@@ -345,25 +346,32 @@ export const logout = () => async dispatch => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-        });
+        }).catch(e => console.log('Logout API call failed:', e));
       } catch (e) {
-        console.log('API call failed, continuing...');
+        console.log('Logout API error:', e);
       }
     }
 
-    // Clear everything from AsyncStorage
-    await clearTokens();
-    await EncryptedStorage.clear();
-    await AsyncStorage.clear();
-
+    // Clear ONLY our specific keys, NOT everything
+    await clearTokens(); // This should clear only our tokens
+    
+    // IMPORTANT: Don't use AsyncStorage.clear() as it will wipe everything
+    // Don't use EncryptedStorage.clear() as it will wipe everything
+    
+    // Dispatch logout action to clear Redux state
     dispatch({ type: LOGOUT });
+    
+    // Reset all other states
+    dispatch({ type: 'ATTENDANCE_RESET_STATE' });
+    dispatch({ type: 'EMPLOYEE_PROFILE_RESET' });
+    dispatch({ type: 'LEAVE_RESET_STATE' });
+    
     dispatch(setAlert('Logged out successfully', 'success'));
-
     console.log('✅ Logout complete');
   } catch (error) {
     console.log('❌ Logout error:', error);
+    // Even if error, clear Redux state
     dispatch({ type: LOGOUT });
-    dispatch(setAlert('Logged out', 'info'));
   }
 };
 

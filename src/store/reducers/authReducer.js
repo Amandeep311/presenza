@@ -21,31 +21,24 @@ export const SET_BIOMETRIC_AVAILABLE = 'SET_BIOMETRIC_AVAILABLE';
 export const AUTH_LOADING = 'AUTH_LOADING';
 
 const initialState = {
-  // Loading state
-  loading: true, // Start with loading true
-  
-  // Auth states
+  loading: true,
   isAuthenticated: false,
   accessToken: null,
   refreshToken: null,
   user: null,
   biometricAvailable: false,
-  
-  // Send OTP states
   sendOtpLoading: false,
   sendOtpSuccess: false,
   sendOtpError: null,
   sentEmail: null,
-  
-  // Verify OTP states
   verifyOtpLoading: false,
   verifyOtpSuccess: false,
   verifyOtpError: null,
-  
-  // Biometric states
-  biometricLoading: false,
-  biometricSuccess: false,
-  biometricError: null,
+  biometricLoginLoading: false,
+  biometricLoginSuccess: false,
+  biometricLoginError: null,
+  refreshTokenLoading: false,
+  refreshTokenError: null,
 };
 
 const authReducer = (state = initialState, action) => {

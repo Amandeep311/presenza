@@ -1,3 +1,5 @@
+// apiService.js - Complete fixed version
+
 import {
   getAccessToken,
   getRefreshToken,
@@ -10,6 +12,9 @@ import { store } from '../store/store';
 import NetInfo from '@react-native-community/netinfo';
 import { Platform } from 'react-native';
 import axios from 'axios';
+
+// Import the logout action
+import { logout } from '../store/actions/authActions';
 
 class ApiService {
   constructor() {
@@ -54,18 +59,22 @@ class ApiService {
   }
 
   async handleSessionExpiry() {
-    await clearTokens();
+    console.log('🧹 Handling session expiry - clearing all tokens...');
+    
+    try {
+      // Clear tokens from storage
+      await clearTokens();
+      console.log('✅ Tokens cleared successfully');
+    } catch (error) {
+      console.log('❌ Error clearing tokens:', error);
+    }
 
+    // IMPORTANT: Dispatch logout action to clear Redux state and trigger navigation
     if (store && store.dispatch) {
-      store.dispatch({ type: 'LOGOUT' });
-
-      store.dispatch({
-        type: 'UI_SET_ALERT',
-        payload: {
-          message: 'Session expired. Please login again.',
-          type: 'error',
-        },
-      });
+      console.log('🔄 Dispatching logout action...');
+      
+      // Dispatch the logout action which will clear Redux state and navigate
+      await store.dispatch(logout());
     }
   }
 
@@ -83,9 +92,8 @@ class ApiService {
 
       console.log('📡 Calling refresh token endpoint...');
 
-      // Use a separate axios instance (not this.axiosInstance) to avoid interceptor loop
       const response = await axios.post(
-        `${this.baseURL}/auth/refresh-token`,
+        `${this.baseURL}/auth/refresh-tokens`,
         {
           refreshToken: refreshToken,
         },
@@ -158,7 +166,6 @@ class ApiService {
   initializeInterceptors() {
     /**
      * REQUEST INTERCEPTOR
-     * Attach access token + metadata to every request
      */
     this.axiosInstance.interceptors.request.use(
       async config => {
@@ -181,33 +188,43 @@ class ApiService {
 
     /**
      * RESPONSE INTERCEPTOR
-     * On 401 → attempt token refresh → retry original request
-     * On no token error → attempt token refresh → retry original request
      */
     this.axiosInstance.interceptors.response.use(
-      // Pass through successful responses
       response => response,
 
       async error => {
         const originalRequest = error.config;
 
-        // No response means network/timeout error — don't attempt refresh
+        // No response means network/timeout error
         if (!error.response) {
-          console.log('❌ No response received (network/timeout):', error.message);
+          console.log('❌ No response received:', error.message);
           return Promise.reject(error);
         }
 
         const status = error.response.status;
         const responseData = error.response.data;
+        const errorMessage = responseData?.message || error.message;
 
-        console.log(`❌ API Error ${status}:`, responseData?.message || error.message);
+        console.log(`❌ API Error ${status}:`, errorMessage);
+
+        // CRITICAL: Handle token expired
+        if (
+          errorMessage === 'Token expired' ||
+          (status === 401 && errorMessage === 'Token expired')
+        ) {
+          console.log('🔐 Token expired detected, logging out immediately...');
+          await this.handleSessionExpiry();
+          
+          // Create a custom error with a flag
+          const sessionError = new Error('SESSION_EXPIRED');
+          sessionError.isSessionExpired = true;
+          return Promise.reject(sessionError);
+        }
 
         /**
-         * Handle 401 Unauthorized
-         * Triggers on: expired token, invalid token, missing token
+         * Handle 401 Unauthorized - Try refresh
          */
         if (status === 401 && !originalRequest._retry) {
-
           // If already refreshing, queue the request
           if (this.isRefreshing) {
             console.log('🔄 Queuing request while refreshing...');
@@ -233,14 +250,22 @@ class ApiService {
 
             // Retry original request with new token
             originalRequest.headers.Authorization = 'Bearer ' + accessToken;
-            console.log('🔁 Retrying original request with refreshed token...');
+            console.log('🔁 Retrying original request...');
             return this.axiosInstance(originalRequest);
-
           } catch (refreshError) {
             console.log('❌ Token refresh failed, logging out...');
             this.processQueue(refreshError, null);
-            return Promise.reject(refreshError);
-
+            
+            // Check if it's a session expiry error
+            if (refreshError.message === 'SESSION_EXPIRED' || 
+                refreshError.isSessionExpired) {
+              return Promise.reject(refreshError);
+            }
+            
+            // Throw session expired
+            const sessionError = new Error('SESSION_EXPIRED');
+            sessionError.isSessionExpired = true;
+            return Promise.reject(sessionError);
           } finally {
             this.isRefreshing = false;
           }

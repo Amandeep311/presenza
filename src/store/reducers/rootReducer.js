@@ -4,13 +4,19 @@ import attendanceReducer from './attendanceReducer';
 import uiReducer from './uiReducer';
 import leaveReducer from './leaveReducer';
 import { employeeProfileReducer } from './employeeReducer';
+import kraReducer from './kraReducer';
+import employeeReducer from './employeeDataReducer';
+import meetingReducer from './meetingReducer';
 
 const appReducer = combineReducers({
   auth: authReducer,
   attendance: attendanceReducer, 
   ui: uiReducer,
   leave: leaveReducer,
-    employeeProfile: employeeProfileReducer,
+  employeeProfile: employeeProfileReducer,
+  kra: kraReducer,
+  employees: employeeReducer,
+  meetings: meetingReducer,
 });
 
 const rootReducer = (state, action) => {
