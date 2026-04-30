@@ -1,4 +1,3 @@
-// src/screens/MeetingsScreen.jsx - PRODUCTION READY VERSION
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -13,6 +12,8 @@ import {
   TextInput,
   FlatList,
   ActivityIndicator,
+  Linking,
+  Clipboard,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -37,6 +38,7 @@ import {
   Copy,
   Check,
   Search,
+  AlertCircle,
 } from 'lucide-react-native';
 import { Fonts } from '../../../utils/GlobalText';
 import { useTheme } from '../../../context/ThemeContext';
@@ -51,9 +53,59 @@ import { fetchEmployees } from '../../../store/actions/employeeDataActions';
 import ReusableCalendar from '../../../components/common/calender/Reusablecalendar';
 import { USER_BRANCH } from '../../../components/common/calender/data/holidayData';
 import TimePickerModal from '../../../components/common/TimePickerModal';
+import { showToast } from '../../../components/common/ToastProvider';
 
 const year = 2026;
 const todayStr = new Date().toISOString().split('T')[0];
+
+// ================= URL VALIDATION HELPER =================
+const isValidURL = urlString => {
+  try {
+    if (!urlString) return false;
+
+    // enforce protocol strictly
+    if (!/^https?:\/\//i.test(urlString)) {
+      return false;
+    }
+
+    const url = new URL(urlString);
+
+    // hostname must contain a dot (real domain)
+    if (!url.hostname || !url.hostname.includes('.')) {
+      return false;
+    }
+
+    // reject spaces or weird strings
+    if (/\s/.test(urlString)) {
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
+// ================= OPEN MEETING HELPER =================
+const openMeetingLink = async url => {
+  try {
+    let formattedURL = url;
+
+    if (!/^https?:\/\//i.test(url)) {
+      formattedURL = 'https://' + url;
+    }
+
+    await Linking.openURL(formattedURL);
+
+    return { success: true };
+  } catch (error) {
+    console.log('Error opening link:', error);
+    return {
+      success: false,
+      error: 'Unable to open meeting link',
+    };
+  }
+};
 
 export const MeetingsScreen = ({ navigation }) => {
   const { theme } = useTheme();
@@ -78,6 +130,10 @@ export const MeetingsScreen = ({ navigation }) => {
   const legendAnim = useRef(new Animated.Value(0)).current;
   const [myMeetings, setMyMeetings] = useState([]);
 
+  // All Meetings Dropdown State
+  const [allMeetingsExpanded, setAllMeetingsExpanded] = useState(true);
+  const allMeetingsAnim = useRef(new Animated.Value(1)).current;
+
   // Calendar & Meeting Selection
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDateMeetings, setSelectedDateMeetings] = useState([]);
@@ -92,6 +148,7 @@ export const MeetingsScreen = ({ navigation }) => {
   const [meetingLocation, setMeetingLocation] = useState('');
   const [meetingType, setMeetingType] = useState('IN_PERSON');
   const [meetingAgenda, setMeetingAgenda] = useState('');
+  const [urlError, setUrlError] = useState(''); // ✅ NEW: URL validation error state
 
   // Time Picker State
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -103,20 +160,26 @@ export const MeetingsScreen = ({ navigation }) => {
   // Refs
   const scrollViewRef = useRef(null);
   const formRef = useRef(null);
+  const { user } = useSelector(state => state.auth);
 
   // Memoized filtered employees for performance
   const filteredEmployees = useMemo(() => {
     if (!employeesList || employeesList.length === 0) return [];
-    if (!employeeSearchQuery.trim()) return employeesList;
+
+    let filtered = employeesList.filter(
+      employee => employee._id !== user?._id && employee.email !== user?.email,
+    );
+
+    if (!employeeSearchQuery.trim()) return filtered;
 
     const query = employeeSearchQuery.toLowerCase();
-    return employeesList.filter(
+    return filtered.filter(
       employee =>
         employee.fullName?.toLowerCase().includes(query) ||
         employee.email?.toLowerCase().includes(query) ||
         employee.department?.toLowerCase().includes(query),
     );
-  }, [employeeSearchQuery, employeesList]);
+  }, [employeeSearchQuery, employeesList, user]);
 
   // Initialize
   useEffect(() => {
@@ -149,7 +212,7 @@ export const MeetingsScreen = ({ navigation }) => {
   const loadEmployees = async () => {
     const result = await dispatch(fetchEmployees());
     if (!result.success) {
-      dispatch(setAlert(result.error, 'warning'));
+      showToast(result.error, 'warning');
     }
   };
 
@@ -158,7 +221,7 @@ export const MeetingsScreen = ({ navigation }) => {
     if (result.success) {
       setMyMeetings(result.data);
     } else {
-      dispatch(setAlert(result.error, 'warning'));
+      showToast(result.error, 'warning');
     }
   };
 
@@ -201,6 +264,24 @@ export const MeetingsScreen = ({ navigation }) => {
     }
   };
 
+  // ✅ NEW: Handle URL change with validation
+  const handleMeetingLocationChange = text => {
+    setMeetingLocation(text);
+
+    // Only validate if user is typing something and meeting type is virtual
+    if (meetingType === 'VIRTUAL' && text.trim()) {
+      if (isValidURL(text)) {
+        setUrlError(''); // Clear error if valid
+      } else {
+        setUrlError(
+          'Please enter a valid URL (e.g., https://zoom.us/j/123456789)',
+        );
+      }
+    } else {
+      setUrlError(''); // Clear error for in-person or empty field
+    }
+  };
+
   const handleScheduleMeeting = async () => {
     if (
       !meetingTitle ||
@@ -209,7 +290,38 @@ export const MeetingsScreen = ({ navigation }) => {
       !endTime ||
       selectedEmployees.length === 0
     ) {
-      dispatch(setAlert('Please fill all required fields', 'warning'));
+      showToast('Please fill all required fields', 'warning');
+      return;
+    }
+
+    // ✅ NEW: Validate virtual meeting link
+    if (meetingType === 'VIRTUAL' && !meetingLocation.trim()) {
+      showToast(
+        'Please provide a meeting link for virtual meeting',
+        'warning'
+      );
+      return;
+    }
+
+    // ✅ NEW: Validate URL format for virtual meetings
+    if (meetingType === 'VIRTUAL' && !isValidURL(meetingLocation)) {
+      showToast(
+        'Please enter a valid meeting URL (e.g., https://zoom.us/j/123456789)',
+        'warning'
+      );
+      return;
+    }
+
+    // Filter out the organizer from attendees (safety check)
+    const filteredAttendees = selectedEmployees.filter(
+      attendeeId => attendeeId !== user?._id,
+    );
+
+    if (filteredAttendees.length === 0) {
+      showToast(
+        'Please select at least one attendee other than yourself',
+        'warning'
+      );
       return;
     }
 
@@ -218,7 +330,7 @@ export const MeetingsScreen = ({ navigation }) => {
     const endTimeObj = new Date(convertToISOString(meetingDate, endTime));
 
     if (startTime >= endTimeObj) {
-      dispatch(setAlert('End time must be after start time', 'warning'));
+      showToast('End time must be after start time', 'warning');
       return;
     }
 
@@ -229,20 +341,16 @@ export const MeetingsScreen = ({ navigation }) => {
       date: meetingDate,
       startTime: startTime.toISOString(),
       endTime: endTimeObj.toISOString(),
-      location:
-        meetingLocation ||
-        (meetingType === 'VIRTUAL' ? 'Virtual Meeting' : 'Conference Room'),
-      attendees: selectedEmployees,
+      location: meetingLocation,
+      attendees: filteredAttendees,
     };
 
     const result = await dispatch(createMeeting(meetingData));
 
     if (result.success) {
-      dispatch(
-        setAlert(
-          result.message || 'Meeting scheduled successfully!',
-          'success',
-        ),
+      showToast(
+        result.message || 'Meeting scheduled successfully!',
+        'success'
       );
 
       // Reset form
@@ -252,7 +360,7 @@ export const MeetingsScreen = ({ navigation }) => {
       // Refresh meetings
       await loadMeetings();
     } else {
-      dispatch(setAlert(result.error, 'warning'));
+      showToast(result.error, 'warning');
     }
   };
 
@@ -266,6 +374,7 @@ export const MeetingsScreen = ({ navigation }) => {
     setSelectedEmployees([]);
     setEmployeeSearchQuery('');
     setSelectedDate(null);
+    setUrlError('');
   };
 
   const formatDate = dateStr => {
@@ -296,16 +405,32 @@ export const MeetingsScreen = ({ navigation }) => {
   };
 
   const copyToClipboard = text => {
-    dispatch(setAlert('Meeting link copied to clipboard!', 'success'));
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    try {
+      Clipboard.setString(text); // ❌ no await
+
+      showToast('Meeting link copied!', 'success');
+
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch (error) {
+      showToast('Failed to copy link', 'warning');
+    }
   };
 
-  const joinMeeting = meeting => {
+  // ✅ NEW: Improved joinMeeting function
+  const joinMeeting = async meeting => {
     if (meeting.type === 'VIRTUAL') {
-      dispatch(setAlert(`Opening meeting: ${meeting.location}`, 'info'));
+      // Open in default browser
+      const result = await openMeetingLink(meeting.location, meeting.title);
+
+      if (result.success) {
+        showToast(`Opening ${meeting.title}...`, 'success');
+      } else {
+        showToast(result.error, 'error');
+      }
     } else {
-      dispatch(setAlert(`Location: ${meeting.location}`, 'info'));
+      // For in-person, show location
+      showToast(`📍 Location: ${meeting.location}`, 'info');
     }
   };
 
@@ -317,6 +442,16 @@ export const MeetingsScreen = ({ navigation }) => {
       useNativeDriver: false,
     }).start();
     setLegendExpanded(v => !v);
+  };
+
+  const toggleAllMeetings = () => {
+    const toValue = allMeetingsExpanded ? 0 : 1;
+    Animated.timing(allMeetingsAnim, {
+      toValue,
+      duration: 280,
+      useNativeDriver: false,
+    }).start();
+    setAllMeetingsExpanded(v => !v);
   };
 
   const getMeetingDates = () => {
@@ -410,7 +545,9 @@ export const MeetingsScreen = ({ navigation }) => {
                   ]}
                 >
                   <Text style={[styles.attendeeName, { color: C.primary }]}>
-                    {attendee.fullName || attendee.employeeId?.fullName || 'Unknown'}
+                    {attendee.fullName ||
+                      attendee.employeeId?.fullName ||
+                      'Unknown'}
                   </Text>
                 </View>
               ))}
@@ -476,6 +613,172 @@ export const MeetingsScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  const renderItem = ({ item }) => {
+    switch (item.type) {
+      case 'header':
+        return (
+          <View style={styles.modalTypeBadge}>
+            <View
+              style={[
+                styles.meetingTypeBadgeLarge,
+                {
+                  backgroundColor:
+                    meetingDetailModal.type === 'VIRTUAL'
+                      ? C.info + '20'
+                      : C.primary + '20',
+                },
+              ]}
+            >
+              {meetingDetailModal.type === 'VIRTUAL' ? (
+                <Video size={wp('4%')} color={C.info} />
+              ) : (
+                <MapPin size={wp('4%')} color={C.primary} />
+              )}
+              <Text
+                style={[
+                  styles.modalTypeText,
+                  {
+                    color:
+                      meetingDetailModal.type === 'VIRTUAL'
+                        ? C.info
+                        : C.primary,
+                  },
+                ]}
+              >
+                {meetingDetailModal.type === 'VIRTUAL'
+                  ? 'Virtual Meeting'
+                  : 'In-Person Meeting'}
+              </Text>
+            </View>
+          </View>
+        );
+
+      case 'details':
+        return (
+          <View style={styles.modalDetailSection}>
+            <View style={styles.modalDetailRow}>
+              <Calendar size={wp('4%')} color={C.primary} />
+              <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
+                {formatDate(
+                  new Date(meetingDetailModal.date).toISOString().split('T')[0],
+                )}
+              </Text>
+            </View>
+
+            <View style={styles.modalDetailRow}>
+              <Clock size={wp('4%')} color={C.primary} />
+              <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
+                {formatTimeFromISO(meetingDetailModal.startTime)} -{' '}
+                {formatTimeFromISO(meetingDetailModal.endTime)}
+              </Text>
+            </View>
+
+            <View style={styles.modalDetailRow}>
+              {meetingDetailModal.type === 'VIRTUAL' ? (
+                <Video size={wp('4%')} color={C.primary} />
+              ) : (
+                <MapPin size={wp('4%')} color={C.primary} />
+              )}
+              <Text style={[styles.modalDetailText, { color: C.textPrimary }]}>
+                {meetingDetailModal.location}
+              </Text>
+
+              {meetingDetailModal.type === 'VIRTUAL' && (
+                <TouchableOpacity
+                  onPress={() => copyToClipboard(meetingDetailModal.location)}
+                  style={styles.copyBtn}
+                >
+                  {copiedLink ? (
+                    <Check size={wp('3%')} color={C.success} />
+                  ) : (
+                    <Copy size={wp('3%')} color={C.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        );
+
+      case 'agenda':
+        return (
+          <View style={styles.modalAgendaSection}>
+            <Text style={[styles.modalSectionTitle, { color: C.textPrimary }]}>
+              Agenda
+            </Text>
+            <Text style={[styles.modalAgendaText, { color: C.textSecondary }]}>
+              {meetingDetailModal.description}
+            </Text>
+          </View>
+        );
+
+      case 'attendee':
+        return (
+          <View
+            style={[
+              styles.modalAttendeeItem,
+              {
+                backgroundColor: C.background,
+                borderColor: C.border,
+              },
+            ]}
+          >
+            <Users size={wp('3%')} color={C.primary} />
+            <View style={styles.modalAttendeeInfo}>
+              <Text
+                style={[styles.modalAttendeeName, { color: C.textPrimary }]}
+              >
+                {item.data.fullName ||
+                  item.data.employeeId?.fullName ||
+                  'Unknown'}
+              </Text>
+              <Text
+                style={[styles.modalAttendeeEmail, { color: C.textSecondary }]}
+              >
+                {item.data.email || item.data.employeeId?.email || ''}
+              </Text>
+            </View>
+          </View>
+        );
+
+      case 'organizer':
+        return (
+          <View style={styles.modalOrganizerSection}>
+            <Mail size={wp('3.5%')} color={C.textSecondary} />
+            <Text
+              style={[styles.modalOrganizerText, { color: C.textSecondary }]}
+            >
+              Organized by{' '}
+              {meetingDetailModal.organizer?.fullName ||
+                meetingDetailModal.organizer ||
+                'Unknown'}
+            </Text>
+          </View>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  const listData = meetingDetailModal
+    ? [
+        { id: 'header', type: 'header' },
+        { id: 'details', type: 'details' },
+
+        ...(meetingDetailModal?.description
+          ? [{ id: 'agenda', type: 'agenda' }]
+          : []),
+
+        ...(meetingDetailModal?.attendees || []).map((att, index) => ({
+          id: `attendee-${index}`,
+          type: 'attendee',
+          data: att,
+        })),
+
+        { id: 'organizer', type: 'organizer' },
+      ]
+    : [];
+
   const meetingDates = getMeetingDates();
   const totalParticipants = myMeetings.reduce(
     (sum, m) => sum + (m.attendees?.length || 0),
@@ -507,6 +810,8 @@ export const MeetingsScreen = ({ navigation }) => {
       </View>
     );
   }
+
+  const isUrlInvalid = meetingType === 'VIRTUAL' && urlError.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -561,7 +866,48 @@ export const MeetingsScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Stats Cards */}
+       
+
+        {/* Calendar */}
+        <View style={styles.calendarWrapper}>
+          <ReusableCalendar
+            year={year}
+            userBranch={USER_BRANCH}
+            startDate={selectedDate}
+            endDate={null}
+            selectionMode="start"
+            leaveType="full"
+            todayStr={todayStr}
+            onStartDateChange={handleDayPress}
+            onEndDateChange={() => {}}
+            onSelectionModeChange={() => {}}
+            onFullHolidayPress={() => {}}
+            onHalfHolidayPress={() => {}}
+            showHolidayList={false}
+            showStats={false}
+          />
+
+          {Object.keys(meetingDates).length > 0 && (
+            <View
+              style={[
+                styles.meetingNote,
+                {
+                  backgroundColor: C.primary + '10',
+                  borderColor: C.primary + '30',
+                },
+              ]}
+            >
+              <Info size={wp('3%')} color={C.primary} />
+              <Text style={[styles.meetingNoteText, { color: C.primary }]}>
+                📅 {Object.keys(meetingDates).length} date
+                {Object.keys(meetingDates).length !== 1 ? 's' : ''} have
+                meetings scheduled
+              </Text>
+            </View>
+          )}
+        </View>
+
+         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View
             style={[
@@ -609,45 +955,6 @@ export const MeetingsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Calendar */}
-        <View style={styles.calendarWrapper}>
-          <ReusableCalendar
-            year={year}
-            userBranch={USER_BRANCH}
-            startDate={selectedDate}
-            endDate={null}
-            selectionMode="start"
-            leaveType="full"
-            todayStr={todayStr}
-            onStartDateChange={handleDayPress}
-            onEndDateChange={() => {}}
-            onSelectionModeChange={() => {}}
-            onFullHolidayPress={() => {}}
-            onHalfHolidayPress={() => {}}
-            showHolidayList={false}
-            showStats={false}
-          />
-
-          {Object.keys(meetingDates).length > 0 && (
-            <View
-              style={[
-                styles.meetingNote,
-                {
-                  backgroundColor: C.primary + '10',
-                  borderColor: C.primary + '30',
-                },
-              ]}
-            >
-              <Info size={wp('3%')} color={C.primary} />
-              <Text style={[styles.meetingNoteText, { color: C.primary }]}>
-                📅 {Object.keys(meetingDates).length} date
-                {Object.keys(meetingDates).length !== 1 ? 's' : ''} have
-                meetings scheduled
-              </Text>
-            </View>
-          )}
-        </View>
-
         {/* Selected Date Meetings */}
         {selectedDate && (
           <View
@@ -667,13 +974,28 @@ export const MeetingsScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
             {selectedDateMeetings.length > 0 ? (
-              <FlatList
-                data={selectedDateMeetings}
-                renderItem={renderMeetingItem}
-                keyExtractor={item => item._id}
-                scrollEnabled={false}
-                contentContainerStyle={styles.meetingsList}
-              />
+              <Animated.View
+            style={[
+              styles.allMeetingsContent,
+              {
+                maxHeight: allMeetingsAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 500],
+                }),
+                opacity: allMeetingsAnim,
+                overflow: 'hidden',
+              },
+            ]}
+          >
+                <FlatList
+                  data={selectedDateMeetings}
+                  renderItem={renderMeetingItem}
+                  keyExtractor={item => item._id}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                  contentContainerStyle={styles.meetingsList}
+                />
+              </Animated.View>
             ) : (
               <View style={styles.noMeetingsContainer}>
                 <CalendarDays size={wp('8%')} color={C.disabled} />
@@ -752,11 +1074,9 @@ export const MeetingsScreen = ({ navigation }) => {
                   { backgroundColor: C.background, borderColor: C.border },
                 ]}
                 onPress={() =>
-                  dispatch(
-                    setAlert(
-                      'Please tap on a date in the calendar above',
-                      'info',
-                    ),
+                  showToast(
+                    'Please tap on a date in the calendar above',
+                    'info',
                   )
                 }
               >
@@ -858,7 +1178,10 @@ export const MeetingsScreen = ({ navigation }) => {
                         meetingType === 'IN_PERSON' ? C.primary : C.border,
                     },
                   ]}
-                  onPress={() => setMeetingType('IN_PERSON')}
+                  onPress={() => {
+                    setMeetingType('IN_PERSON');
+                    setUrlError(''); // Clear URL error when switching type
+                  }}
                 >
                   <MapPin
                     size={wp('3.5%')}
@@ -892,7 +1215,10 @@ export const MeetingsScreen = ({ navigation }) => {
                         meetingType === 'VIRTUAL' ? C.info : C.border,
                     },
                   ]}
-                  onPress={() => setMeetingType('VIRTUAL')}
+                  onPress={() => {
+                    setMeetingType('VIRTUAL');
+                    setUrlError(''); // Clear URL error when switching type
+                  }}
                 >
                   <Video
                     size={wp('3.5%')}
@@ -913,17 +1239,20 @@ export const MeetingsScreen = ({ navigation }) => {
               </View>
             </View>
 
-            {/* Location/Link */}
+            {/* Location/Link Input with Validation */}
             <View style={styles.formGroup}>
               <Text style={[styles.formLabel, { color: C.textSecondary }]}>
-                Location / Meeting Link
+                Location / Meeting Link{' '}
+                {meetingType === 'VIRTUAL' && (
+                  <Text style={{ color: C.error }}>*</Text>
+                )}
               </Text>
               <TextInput
                 style={[
                   styles.formInput,
                   {
                     backgroundColor: C.background,
-                    borderColor: C.border,
+                    borderColor: urlError ? C.error : C.border,
                     color: C.textPrimary,
                   },
                 ]}
@@ -934,8 +1263,53 @@ export const MeetingsScreen = ({ navigation }) => {
                 }
                 placeholderTextColor={C.disabled}
                 value={meetingLocation}
-                onChangeText={setMeetingLocation}
+                onChangeText={handleMeetingLocationChange}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
+
+              {/* ✅ NEW: URL Validation Error Display */}
+              {urlError && (
+                <View
+                  style={[
+                    styles.urlErrorContainer,
+                    {
+                      backgroundColor: C.error + '10',
+                      borderColor: C.error + '30',
+                    },
+                  ]}
+                >
+                  <AlertCircle size={wp('3.5%')} color={C.error} />
+                  <Text style={[styles.urlErrorText, { color: C.error }]}>
+                    {urlError}
+                  </Text>
+                </View>
+              )}
+
+              {/* ✅ NEW: Valid URL Indicator */}
+              {meetingType === 'VIRTUAL' && meetingLocation && !urlError && (
+                <View
+                  style={[
+                    styles.urlSuccessContainer,
+                    {
+                      backgroundColor: C.success + '10',
+                      borderColor: C.success + '30',
+                    },
+                  ]}
+                >
+                  <Check size={wp('3.5%')} color={C.success} />
+                  <Text style={[styles.urlSuccessText, { color: C.success }]}>
+                    Valid meeting URL
+                  </Text>
+                </View>
+              )}
+
+              {/* ✅ NEW: URL Format Help Text */}
+              {meetingType === 'VIRTUAL' && (
+                <Text style={[styles.urlHelpText, { color: C.textSecondary }]}>
+                  Supports: Zoom, Google Meet, Teams, Webex, and other platforms
+                </Text>
+              )}
             </View>
 
             {/* Agenda */}
@@ -1027,7 +1401,7 @@ export const MeetingsScreen = ({ navigation }) => {
                     >
                       {employeeSearchQuery
                         ? 'No employees found'
-                        : 'No employees available'}
+                        : 'No other employees available'}
                     </Text>
                   </View>
                 ) : (
@@ -1061,9 +1435,17 @@ export const MeetingsScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.submitBtn, { backgroundColor: C.primary }]}
+                style={[
+                  styles.submitBtn,
+                  {
+                    backgroundColor: C.primary,
+                    opacity: meetingType === 'VIRTUAL' && urlError ? 0.5 : 1,
+                  },
+                ]}
                 onPress={handleScheduleMeeting}
-                disabled={creatingMeeting}
+                
+                        disabled={creatingMeeting || isUrlInvalid}
+
               >
                 {creatingMeeting ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -1078,46 +1460,105 @@ export const MeetingsScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* All Meetings */}
+        {/* All Meetings - Dropdown */}
         <View
           style={[
             styles.upcomingCard,
             { backgroundColor: C.surface, borderColor: C.border },
           ]}
         >
-          <Text style={[styles.upcomingTitle, { color: C.textPrimary }]}>
-            All Meetings ({myMeetings.length})
-          </Text>
-          {myMeetings.length > 0 ? (
-            myMeetings.map(meeting => (
-              <View key={meeting._id}>
-                {renderMeetingItem({ item: meeting })}
-              </View>
-            ))
-          ) : (
-            <View style={styles.noMeetingsContainer}>
-              <CalendarDays size={wp('8%')} color={C.disabled} />
-              <Text style={[styles.noMeetingsText, { color: C.textSecondary }]}>
-                No meetings scheduled yet
-              </Text>
-              <TouchableOpacity
+          <TouchableOpacity
+            style={styles.allMeetingsToggleBtn}
+            onPress={toggleAllMeetings}
+            activeOpacity={0.7}
+          >
+            <View style={styles.allMeetingsToggleLeft}>
+              <View
                 style={[
-                  styles.scheduleBtn,
-                  { backgroundColor: C.primary + '20' },
+                  styles.allMeetingsToggleIcon,
+                  { backgroundColor: C.primary + '18' },
                 ]}
-                onPress={() => setShowCreateForm(true)}
               >
-                <Plus size={wp('3%')} color={C.primary} />
-                <Text style={[styles.scheduleBtnText, { color: C.primary }]}>
-                  Schedule Your First Meeting
-                </Text>
-              </TouchableOpacity>
+                <CalendarDays size={wp('3.5%')} color={C.primary} />
+              </View>
+              <Text
+                style={[
+                  styles.allMeetingsToggleTitle,
+                  { color: C.textPrimary },
+                ]}
+              >
+                All Meetings ({myMeetings.length})
+              </Text>
             </View>
-          )}
+            <View
+              style={[
+                styles.legendChevronWrap,
+                { backgroundColor: C.background, borderColor: C.border },
+              ]}
+            >
+              {allMeetingsExpanded ? (
+                <ChevronUp size={wp('4%')} color={C.textSecondary} />
+              ) : (
+                <ChevronDown size={wp('4%')} color={C.textSecondary} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          <Animated.View
+            style={[
+              styles.allMeetingsContent,
+              {
+                maxHeight: allMeetingsAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 500],
+                }),
+                opacity: allMeetingsAnim,
+                overflow: 'hidden',
+              },
+            ]}
+          >
+            <View
+              style={[styles.legendDivider, { backgroundColor: C.border }]}
+            />
+
+            {myMeetings.length > 0 ? (
+              <FlatList
+                data={myMeetings}
+                renderItem={renderMeetingItem}
+                keyExtractor={item => item._id}
+                scrollEnabled={true}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                style={styles.allMeetingsFlatList}
+                contentContainerStyle={styles.allMeetingsListContent}
+              />
+            ) : (
+              <View style={styles.noMeetingsContainer}>
+                <CalendarDays size={wp('8%')} color={C.disabled} />
+                <Text
+                  style={[styles.noMeetingsText, { color: C.textSecondary }]}
+                >
+                  No meetings scheduled yet
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.scheduleBtn,
+                    { backgroundColor: C.primary + '20' },
+                  ]}
+                  onPress={() => setShowCreateForm(true)}
+                >
+                  <Plus size={wp('3%')} color={C.primary} />
+                  <Text style={[styles.scheduleBtnText, { color: C.primary }]}>
+                    Schedule Your First Meeting
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </Animated.View>
         </View>
 
         {/* Legend */}
-        <View
+        {/* <View
           style={[
             styles.legendCard,
             { backgroundColor: C.surface, borderColor: C.border },
@@ -1191,7 +1632,7 @@ export const MeetingsScreen = ({ navigation }) => {
               ))}
             </View>
           </Animated.View>
-        </View>
+        </View> */}
 
         <View style={{ height: hp('4%') }} />
       </ScrollView>
@@ -1244,203 +1685,16 @@ export const MeetingsScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.modalBody}>
-                  <View style={styles.modalTypeBadge}>
-                    <View
-                      style={[
-                        styles.meetingTypeBadgeLarge,
-                        {
-                          backgroundColor:
-                            meetingDetailModal.type === 'VIRTUAL'
-                              ? C.info + '20'
-                              : C.primary + '20',
-                        },
-                      ]}
-                    >
-                      {meetingDetailModal.type === 'VIRTUAL' ? (
-                        <Video size={wp('4%')} color={C.info} />
-                      ) : (
-                        <MapPin size={wp('4%')} color={C.primary} />
-                      )}
-                      <Text
-                        style={[
-                          styles.modalTypeText,
-                          {
-                            color:
-                              meetingDetailModal.type === 'VIRTUAL'
-                                ? C.info
-                                : C.primary,
-                          },
-                        ]}
-                      >
-                        {meetingDetailModal.type === 'VIRTUAL'
-                          ? 'Virtual Meeting'
-                          : 'In-Person Meeting'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.modalDetailSection}>
-                    <View style={styles.modalDetailRow}>
-                      <Calendar size={wp('4%')} color={C.primary} />
-                      <Text
-                        style={[
-                          styles.modalDetailText,
-                          { color: C.textPrimary },
-                        ]}
-                      >
-                        {formatDate(
-                          new Date(meetingDetailModal.date)
-                            .toISOString()
-                            .split('T')[0],
-                        )}
-                      </Text>
-                    </View>
-                    <View style={styles.modalDetailRow}>
-                      <Clock size={wp('4%')} color={C.primary} />
-                      <Text
-                        style={[
-                          styles.modalDetailText,
-                          { color: C.textPrimary },
-                        ]}
-                      >
-                        {formatTimeFromISO(meetingDetailModal.startTime)} -{' '}
-                        {formatTimeFromISO(meetingDetailModal.endTime)}
-                      </Text>
-                    </View>
-                    <View style={styles.modalDetailRow}>
-                      {meetingDetailModal.type === 'VIRTUAL' ? (
-                        <Video size={wp('4%')} color={C.primary} />
-                      ) : (
-                        <MapPin size={wp('4%')} color={C.primary} />
-                      )}
-                      <Text
-                        style={[
-                          styles.modalDetailText,
-                          { color: C.textPrimary },
-                        ]}
-                      >
-                        {meetingDetailModal.location}
-                      </Text>
-                      {meetingDetailModal.type === 'VIRTUAL' && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            copyToClipboard(meetingDetailModal.location)
-                          }
-                          style={styles.copyBtn}
-                        >
-                          {copiedLink ? (
-                            <Check size={wp('3%')} color={C.success} />
-                          ) : (
-                            <Copy size={wp('3%')} color={C.textSecondary} />
-                          )}
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  {meetingDetailModal.description && (
-                    <View style={styles.modalAgendaSection}>
-                      <Text
-                        style={[
-                          styles.modalSectionTitle,
-                          { color: C.textPrimary },
-                        ]}
-                      >
-                        Agenda
-                      </Text>
-                      <Text
-                        style={[
-                          styles.modalAgendaText,
-                          { color: C.textSecondary },
-                        ]}
-                      >
-                        {meetingDetailModal.description}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={styles.modalAttendeesSection}>
-                    <Text
-                      style={[
-                        styles.modalSectionTitle,
-                        { color: C.textPrimary },
-                      ]}
-                    >
-                      Attendees ({meetingDetailModal.attendees?.length || 0})
-                    </Text>
-                    <View style={styles.modalAttendeesList}>
-                      {(meetingDetailModal.attendees || []).map(
-                        (attendee, index) => (
-                          <View
-                            key={index}
-                            style={[
-                              styles.modalAttendeeItem,
-                              {
-                                backgroundColor: C.background,
-                                borderColor: C.border,
-                              },
-                            ]}
-                          >
-                            <Users size={wp('3%')} color={C.primary} />
-                            <View style={styles.modalAttendeeInfo}>
-                              <Text
-                                style={[
-                                  styles.modalAttendeeName,
-                                  { color: C.textPrimary },
-                                ]}
-                              >
-                                {attendee.fullName || attendee.employeeId?.fullName || 'Unknown'}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.modalAttendeeEmail,
-                                  { color: C.textSecondary },
-                                ]}
-                              >
-                                {attendee.email || attendee.employeeId?.email || ''}
-                              </Text>
-                              {/* {attendee.status && (
-                                <Text
-                                  style={[
-                                    styles.modalAttendeeStatus,
-                                    {
-                                      color:
-                                        attendee.status === 'ACCEPTED'
-                                          ? C.success
-                                          : attendee.status === 'DECLINED'
-                                          ? C.error
-                                          : C.warning,
-                                    },
-                                  ]}
-                                >
-                                  {attendee.status}
-                                </Text>
-                              )} */}
-                            </View>
-                          </View>
-                        ),
-                      )}
-                    </View>
-                  </View>
-
-                  <View style={styles.modalOrganizerSection}>
-                    <Mail size={wp('3.5%')} color={C.textSecondary} />
-                    <Text
-                      style={[
-                        styles.modalOrganizerText,
-                        { color: C.textSecondary },
-                      ]}
-                    >
-                      Organized by{' '}
-                      {meetingDetailModal.organizer?.fullName ||
-                        meetingDetailModal.organizer ||
-                        'Unknown'}
-                    </Text>
-                  </View>
-                </ScrollView>
+                <FlatList
+                  data={listData}
+                  renderItem={renderItem}
+                  keyExtractor={item => item.id}
+                  contentContainerStyle={styles.modalBody}
+                  showsVerticalScrollIndicator={false}
+                />
 
                 <View style={styles.modalActions}>
+                  {meetingDetailModal.type === 'VIRTUAL' && (
                   <TouchableOpacity
                     style={[
                       styles.modalJoinBtn,
@@ -1451,14 +1705,16 @@ export const MeetingsScreen = ({ navigation }) => {
                     {meetingDetailModal.type === 'VIRTUAL' ? (
                       <ExternalLink size={wp('4%')} color="#fff" />
                     ) : (
-                      <MapPin size={wp('4%')} color="#fff" />
+                      // <MapPin size={wp('4%')} color="#fff" />
+                      null
                     )}
                     <Text style={styles.modalJoinBtnText}>
                       {meetingDetailModal.type === 'VIRTUAL'
                         ? 'Join Meeting'
-                        : 'View Location'}
+                        : ''}
                     </Text>
                   </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={[
                       styles.modalCancelBtn,
@@ -1485,6 +1741,7 @@ export const MeetingsScreen = ({ navigation }) => {
   );
 };
 
+// ================= STYLES =================
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: hp('3%') },
@@ -1711,6 +1968,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   typeBtnText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
+
+  // ✅ NEW: URL Validation Styles
+  urlErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    padding: wp('2.5%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginTop: hp('0.5%'),
+  },
+  urlErrorText: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+  },
+  urlSuccessContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    padding: wp('2.5%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginTop: hp('0.5%'),
+  },
+  urlSuccessText: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+  },
+  urlHelpText: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.regular,
+    marginTop: hp('0.5%'),
+    fontStyle: 'italic',
+  },
+
   attendeesHeaderForm: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1718,6 +2012,13 @@ const styles = StyleSheet.create({
   },
   clearAllText: { fontSize: wp('2.4%'), fontFamily: Fonts.medium },
   selectedCount: { fontSize: wp('2.4%'), fontFamily: Fonts.medium },
+  noteText: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.regular,
+    marginTop: hp('0.5%'),
+    marginBottom: hp('0.5%'),
+    fontStyle: 'italic',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1802,6 +2103,37 @@ const styles = StyleSheet.create({
     fontSize: wp('3.5%'),
     fontFamily: Fonts.bold,
     marginBottom: hp('1.5%'),
+  },
+  allMeetingsFlatList: {
+    maxHeight: 400,
+  },
+  allMeetingsListContent: {
+    paddingBottom: hp('1%'),
+  },
+  allMeetingsToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: wp('2%'),
+  },
+  allMeetingsToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2.5%'),
+  },
+  allMeetingsToggleIcon: {
+    width: wp('8%'),
+    height: wp('8%'),
+    borderRadius: wp('2%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  allMeetingsToggleTitle: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.bold,
+  },
+  allMeetingsContent: {
+    overflow: 'hidden',
   },
   noMeetingsContainer: {
     alignItems: 'center',
@@ -1939,8 +2271,11 @@ const styles = StyleSheet.create({
   },
   modalAttendeeInfo: { flex: 1 },
   modalAttendeeName: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
-  modalAttendeeEmail: { fontSize: wp('2.2%'), fontFamily: Fonts.regular, marginTop: 2 },
-  modalAttendeeStatus: { fontSize: wp('2.2%'), fontFamily: Fonts.medium, marginTop: 2 },
+  modalAttendeeEmail: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.regular,
+    marginTop: 2,
+  },
   modalOrganizerSection: {
     flexDirection: 'row',
     alignItems: 'center',

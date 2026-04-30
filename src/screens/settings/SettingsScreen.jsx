@@ -187,7 +187,7 @@ const SettingsScreen = ({ route, navigation }) => {
         />
 
         {/* ── Preferences ── */}
-        <SectionHeader label={s.preferences ?? 'Preferences'} />
+        {/* <SectionHeader label={s.preferences ?? 'Preferences'} />
 
         <SettingRow
           icon={Globe}
@@ -201,7 +201,7 @@ const SettingsScreen = ({ route, navigation }) => {
               : 'EN'
           }
           onPress={() => setLangModalVisible(true)}
-        />
+        /> */}
 
         {/* ── Account ── */}
         {/* <SectionHeader label={s.account ?? 'Account'} />
@@ -389,7 +389,7 @@ const SettingsScreen = ({ route, navigation }) => {
         />
 
         {/* ── Preferences ── */}
-        <SectionHeader label={s.preferences ?? 'Preferences'} />
+        {/* <SectionHeader label={s.preferences ?? 'Preferences'} />
 
         <SettingRow
           icon={Globe}
@@ -403,7 +403,7 @@ const SettingsScreen = ({ route, navigation }) => {
               : 'EN'
           }
           onPress={() => setLangModalVisible(true)}
-        />
+        /> */}
 
         {/* ── Account ── */}
         <SectionHeader label={s.account ?? 'Account'} />

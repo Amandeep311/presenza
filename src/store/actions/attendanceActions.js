@@ -103,9 +103,7 @@ export const punchIn = () => async dispatch => {
     // Check and request location permission
     const hasLocationPermission = await checkAndRequestLocationPermission();
     if (!hasLocationPermission) {
-      dispatch(
-        setAlert('Location permission is required for attendance', 'error'),
-      );
+      showToast('Location permission is required for attendance', 'error');
       dispatch({
         type: types.PUNCH_IN_FAIL,
         payload: 'Location permission denied',
@@ -124,7 +122,7 @@ export const punchIn = () => async dispatch => {
 
     const hasCameraPermission = await requestCameraPermission();
     if (!hasCameraPermission) {
-      dispatch(setAlert('Camera permission is required', 'error'));
+      showToast('Camera permission is required', 'error');
       dispatch({
         type: types.PUNCH_IN_FAIL,
         payload: 'Camera permission denied',
@@ -146,7 +144,7 @@ export const punchIn = () => async dispatch => {
     }
 
     if (!cameraResult.assets || cameraResult.assets.length === 0) {
-      dispatch(setAlert('Failed to capture image', 'error'));
+      showToast('Failed to capture image', 'error');
       dispatch({ type: types.PUNCH_IN_FAIL, payload: 'No image captured' });
       return { success: false, error: 'NO_IMAGE' };
     }
@@ -185,7 +183,7 @@ export const punchIn = () => async dispatch => {
     console.log('📡 Response data:', JSON.stringify(response.data, null, 2));
 
     if (response.status === 409) {
-      dispatch(setAlert('Already punched in today!', 'info'));
+      showToast('Already punched in today!', 'info');
       return { success: false, error: 'ALREADY_PUNCHED_IN' };
     }
 
@@ -198,7 +196,7 @@ export const punchIn = () => async dispatch => {
       type: types.PUNCH_IN_SUCCESS,
       payload: response.data?.data || response.data,
     });
-    dispatch(setAlert('Attendance marked successfully!', 'success'));
+    showToast('Attendance marked successfully!', 'success');
     await dispatch(getAttendanceHistory());
 
     return { success: true, data: response.data?.data };
@@ -231,7 +229,7 @@ export const punchIn = () => async dispatch => {
     dispatch({ type: types.PUNCH_IN_FAIL, payload: errorMessage });
 
     if (errorType !== 'CAMERA_CANCELLED') {
-      dispatch(setAlert(errorMessage, 'error'));
+      showToast(errorMessage, 'error');
     }
 
     return { success: false, error: errorType, message: errorMessage };
@@ -249,9 +247,7 @@ export const punchOut = () => async dispatch => {
     // Check and request location permission
     const hasLocationPermission = await checkAndRequestLocationPermission();
     if (!hasLocationPermission) {
-      dispatch(
-        setAlert('Location permission is required for attendance', 'error'),
-      );
+      showToast('Location permission is required for attendance', 'error');
       dispatch({
         type: types.PUNCH_OUT_FAIL,
         payload: 'Location permission denied',
@@ -271,7 +267,7 @@ export const punchOut = () => async dispatch => {
 
     const hasCameraPermission = await requestCameraPermission();
     if (!hasCameraPermission) {
-      dispatch(setAlert('Camera permission is required', 'error'));
+      showToast('Camera permission is required', 'error');
       dispatch({
         type: types.PUNCH_OUT_FAIL,
         payload: 'Camera permission denied',
@@ -293,7 +289,7 @@ export const punchOut = () => async dispatch => {
     }
 
     if (!cameraResult.assets || cameraResult.assets.length === 0) {
-      dispatch(setAlert('Failed to capture image', 'error'));
+      showToast('Failed to capture image', 'error');
       dispatch({ type: types.PUNCH_OUT_FAIL, payload: 'No image captured' });
       return { success: false, error: 'NO_IMAGE' };
     }
@@ -326,7 +322,7 @@ export const punchOut = () => async dispatch => {
 
     if (response.status === 400) {
       const msg = response.data?.message || 'Not punched in yet';
-      dispatch(setAlert(msg, 'error'));
+      showToast(msg, 'error');
       return { success: false, error: 'NOT_PUNCHED_IN' };
     }
 
@@ -339,7 +335,7 @@ export const punchOut = () => async dispatch => {
       type: types.PUNCH_OUT_SUCCESS,
       payload: response.data?.data || response.data,
     });
-    dispatch(setAlert('Punch out successful!', 'success'));
+    showToast('Punch out successful!', 'success');
     await dispatch(getAttendanceHistory());
 
     return { success: true, data: response.data?.data };
@@ -364,7 +360,7 @@ export const punchOut = () => async dispatch => {
     dispatch({ type: types.PUNCH_OUT_FAIL, payload: errorMessage });
 
     if (error.message !== 'CAMERA_CANCELLED') {
-      dispatch(setAlert(errorMessage, 'error'));
+      showToast(errorMessage, 'error');
     }
 
     return { success: false, error: error.message, message: errorMessage };
@@ -410,6 +406,7 @@ export const getAttendanceHistory = (params = {}) => async dispatch => {
     if (error.message === 'SESSION_EXPIRED' || error.isSessionExpired) {
       console.log('🔐 Session expired, logging out...');
       await dispatch(logout());
+      showToast('Session expired. Please log in again.', 'error');
       return { success: false, error: 'SESSION_EXPIRED' };
     }
     
@@ -503,14 +500,14 @@ export const breakIn = (breakType, remarks) => async (dispatch, getState) => {
     if (response.status === 400) {
       const msg = response.data?.message || '';
       if (msg.toLowerCase().includes('already on a break')) {
-        dispatch(setAlert('You are already on a break!', 'error'));
+        showToast('You are already on a break!', 'error');
         return { success: false, error: 'ALREADY_ON_BREAK' };
       }
       if (msg.toLowerCase().includes('not punched in')) {
-        dispatch(setAlert('Please punch in first!', 'error'));
+        showToast('Please punch in first!', 'error');
         return { success: false, error: 'NOT_PUNCHED_IN' };
       }
-      dispatch(setAlert(msg || 'Break in failed', 'error'));
+      showToast(msg || 'Break in failed', 'error');
       return { success: false, error: 'BAD_REQUEST', message: msg };
     }
 
@@ -527,7 +524,7 @@ export const breakIn = (breakType, remarks) => async (dispatch, getState) => {
       type: 'BREAK_IN_SUCCESS',
       payload: response.data?.data || response.data,
     });
-    dispatch(setAlert('Break started!', 'success'));
+    showToast('Break started!', 'success');
     await dispatch(getAttendanceHistory());
 
     return { success: true, data: response.data?.data };
@@ -542,7 +539,7 @@ export const breakIn = (breakType, remarks) => async (dispatch, getState) => {
       !msg?.toLowerCase().includes('already on a break') &&
       !msg?.toLowerCase().includes('not punched in')
     ) {
-      dispatch(setAlert(msg || 'Failed to start break', 'error'));
+      showToast(msg || 'Failed to start break', 'error');
     }
 
     return { success: false, message: msg };
@@ -567,10 +564,10 @@ export const breakOut = (breakType, remarks) => async (dispatch, getState) => {
     if (response.status === 400) {
       const msg = response.data?.message || '';
       if (msg.toLowerCase().includes('not on a break')) {
-        dispatch(setAlert('You are not on a break!', 'error'));
+        showToast('You are not on a break!', 'error');
         return { success: false, error: 'NOT_ON_BREAK' };
       }
-      dispatch(setAlert(msg || 'Break out failed', 'error'));
+      showToast(msg || 'Break out failed', 'error');
       return { success: false, error: 'BAD_REQUEST', message: msg };
     }
 
@@ -587,7 +584,7 @@ export const breakOut = (breakType, remarks) => async (dispatch, getState) => {
       type: 'BREAK_OUT_SUCCESS',
       payload: response.data?.data || response.data,
     });
-    dispatch(setAlert('Break ended!', 'success'));
+    showToast('Break ended!', 'success');
     await dispatch(getAttendanceHistory());
 
     return { success: true, data: response.data?.data };
@@ -599,7 +596,7 @@ export const breakOut = (breakType, remarks) => async (dispatch, getState) => {
     dispatch({ type: 'BREAK_OUT_FAIL', payload: msg });
 
     if (!msg?.toLowerCase().includes('not on a break')) {
-      dispatch(setAlert(msg || 'Failed to end break', 'error'));
+      showToast(msg || 'Failed to end break', 'error');
     }
 
     return { success: false, message: msg };

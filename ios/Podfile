@@ -19,13 +19,6 @@ target 'Presenza' do
     :fabric_enabled => false  # 👈 ADD THIS LINE - Disable New Architecture
   )
 
-  # pod 'GoogleMaps'
-  # pod 'Google-Maps-iOS-Utils'
-
-  # rn_maps_path = '../node_modules/react-native-maps'
-  # pod 'react-native-maps', path: rn_maps_path
-  pod 'RNFS', :path => '../node_modules/react-native-fs'
-
   # Permissions setup
   setup_permissions([
     'LocationWhenInUse',

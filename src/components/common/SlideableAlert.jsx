@@ -1,3 +1,4 @@
+// src/components/common/SlideableAlert.js
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -9,11 +10,6 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import {
-  widthPercentageToDP as wp,
-  heightPercentageToDP as hp,
-} from 'react-native-responsive-screen';
-import { Colors, Fonts } from '../../utils/GlobalText';
 
 const { width } = Dimensions.get('window');
 
@@ -24,7 +20,6 @@ const SlideableAlert = ({
   duration = 3000,
   onDismiss 
 }) => {
-  // All hooks must be called in the same order every time
   const [localVisible, setLocalVisible] = useState(visible);
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-100)).current;
@@ -33,18 +28,16 @@ const SlideableAlert = ({
   const isMounted = useRef(true);
 
   const colors = {
-    success: { bg: Colors.success },
-    error: { bg: Colors.error },
-    info: { bg: Colors.info },
-    warning: { bg: Colors.warning },
+    success: { bg: '#4CAF50' },
+    error: { bg: '#F44336' },
+    info: { bg: '#2196F3' },
+    warning: { bg: '#FF9800' },
   };
 
-  // Update local state when prop changes
   useEffect(() => {
     setLocalVisible(visible);
   }, [visible]);
 
-  // Setup mounted ref
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -55,7 +48,6 @@ const SlideableAlert = ({
     };
   }, []);
 
-  // PanResponder - must be created before any conditional returns
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -64,8 +56,7 @@ const SlideableAlert = ({
         translateY.setValue(gesture.dy);
       },
       onPanResponderRelease: (_, gesture) => {
-        if (Math.abs(gesture.dy) > 50 || Math.abs(gesture.dx) > wp('20%')) {
-          // Swipe away
+        if (Math.abs(gesture.dy) > 50 || Math.abs(gesture.dx) > width * 0.2) {
           Animated.parallel([
             Animated.timing(translateY, {
               toValue: gesture.dy < 0 ? -200 : 200,
@@ -83,7 +74,6 @@ const SlideableAlert = ({
             }
           });
         } else {
-          // Reset position
           Animated.parallel([
             Animated.spring(translateX, {
               toValue: 0,
@@ -99,7 +89,6 @@ const SlideableAlert = ({
     })
   ).current;
 
-  // Animation effect
   useEffect(() => {
     if (!localVisible) return;
 
@@ -152,7 +141,6 @@ const SlideableAlert = ({
     };
   }, [localVisible, duration]);
 
-  // Return null if not visible (after all hooks)
   if (!localVisible) return null;
 
   return (
@@ -188,20 +176,20 @@ const SlideableAlert = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? hp('7%') : hp('6%'),
-    left: wp('5%'),
-    right: wp('5%'),
-    padding: hp('1%'),
-    borderRadius: wp('3%'),
+    top: Platform.OS === 'ios' ? 60 : 50,
+    left: 20,
+    right: 20,
+    padding: 12,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: hp('0.3%') },
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
-    shadowRadius: wp('1%'),
-    elevation: 9999,
-    zIndex: 9999,
+    shadowRadius: 5,
+    elevation: 999999,
+    zIndex: 999999,
   },
   content: {
     flexDirection: 'row',
@@ -209,19 +197,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   message: {
-    color: Colors.textPrimary,
-    fontSize: wp('3.2%'),
-    fontFamily: Fonts.medium,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
     flex: 1,
     textAlign: 'center',
   },
   closeButton: {
-    padding: wp('1%'),
-    marginLeft: wp('2%'),
+    padding: 4,
+    marginLeft: 8,
   },
   closeText: {
-    color: Colors.textPrimary,
-    fontSize: wp('5%'),
+    color: '#fff',
+    fontSize: 20,
     fontWeight: 'bold',
   },
 });

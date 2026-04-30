@@ -36,6 +36,7 @@ import {
 } from '../reducers/authReducer';
 
 import { UI_SET_ALERT, UI_HIDE_ALERT } from '../reducers/uiReducer';
+import { showToast } from '../../components/common/ToastProvider';
 
 const rnBiometrics = new ReactNativeBiometrics();
 
@@ -108,7 +109,7 @@ export const sendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to send OTP',
       });
-      dispatch(setAlert(data.message || 'Failed to send OTP', 'error'));
+      showToast(data.message || 'Failed to send OTP', 'error');
       return { success: false, message: data.message };
     }
 
@@ -117,7 +118,7 @@ export const sendOtp = emp => async dispatch => {
       payload: { employeeCode: emp.trim(), message: data.message },
     });
 
-    dispatch(setAlert('OTP sent successfully', 'success'));
+    showToast('OTP sent successfully', 'success');
     return {
       success: true,
       step: data.step,
@@ -129,7 +130,7 @@ export const sendOtp = emp => async dispatch => {
       type: SEND_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
-    dispatch(setAlert('Network error. Please try again.', 'error'));
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -160,6 +161,7 @@ export const resendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to resend OTP',
       });
+      showToast(data.message || 'Failed to resend OTP', 'error');
       return { success: false };
     }
 
@@ -175,6 +177,7 @@ export const resendOtp = emp => async dispatch => {
       type: SEND_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -197,7 +200,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
         type: VERIFY_OTP_FAIL,
         payload: data.message || 'OTP verification failed',
       });
-      dispatch(setAlert(data.message || 'OTP verification failed', 'error'));
+      showToast(data.message || 'OTP verification failed', 'error');
       return { success: false, message: data.message };
     }
 
@@ -216,7 +219,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
       },
     });
 
-    // dispatch(setAlert('Login successful', 'success'));
+    // showToast('Login successful', 'success');
     return { success: true, data: data.data };
   } catch (error) {
     console.log('Verify OTP error:', error);
@@ -224,7 +227,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
       type: VERIFY_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
-    dispatch(setAlert('Network error. Please try again.', 'error'));
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -287,6 +290,7 @@ export const biometricLogin = () => async dispatch => {
     return { success: false };
   } catch (error) {
     console.log('❌ Biometric login error:', error);
+    showToast(error.message || 'Biometric login failed', 'error');
     dispatch({
       type: BIOMETRIC_LOGIN_FAIL,
       payload: error.message,
@@ -366,7 +370,7 @@ export const logout = () => async dispatch => {
     dispatch({ type: 'EMPLOYEE_PROFILE_RESET' });
     dispatch({ type: 'LEAVE_RESET_STATE' });
     
-    dispatch(setAlert('Logged out successfully', 'success'));
+    showToast('Logged out successfully', 'success');
     console.log('✅ Logout complete');
   } catch (error) {
     console.log('❌ Logout error:', error);

@@ -35,6 +35,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { setAlert } from '../../../store/actions/authActions';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchKRA, updateKRAMetric } from '../../../store/actions/kraActions';
+import { showToast } from '../../../components/common/ToastProvider';
 
 // ============================================================================
 // CONSTANTS - Extracted for maintainability
@@ -219,10 +220,10 @@ export const KRA = ({ navigation }) => {
         }
         setExpandedKRAs(expandedState);
       } else {
-        dispatch(setAlert(result.error || 'Failed to load KRA data', 'error'));
+        showToast(result.error || 'Failed to load KRA data', 'error');
       }
     } catch (err) {
-      dispatch(setAlert('Error loading KRA data', 'error'));
+      showToast('Error loading KRA data', 'error');
       console.error('KRA Load Error:', err);
     }
   };
@@ -231,9 +232,9 @@ export const KRA = ({ navigation }) => {
     setRefreshing(true);
     try {
       await loadKRA();
-      dispatch(setAlert('KRA data refreshed', 'success'));
+      showToast('KRA data refreshed', 'success');
     } catch (err) {
-      dispatch(setAlert('Failed to refresh data', 'error'));
+      showToast('Failed to refresh data', 'error');
     } finally {
       setRefreshing(false);
     }
@@ -274,13 +275,13 @@ export const KRA = ({ navigation }) => {
     try {
       const result = await dispatch(updateKRAMetric(kraId, metricId, achievedValue));
       if (result.success) {
-        dispatch(setAlert('Metric updated successfully!', 'success'));
+        showToast('Metric updated successfully!', 'success');
         await loadKRA(); // Reload to get updated data
       } else {
-        dispatch(setAlert(result.error || 'Failed to update metric', 'error'));
+        showToast(result.error || 'Failed to update metric', 'error');
       }
     } catch (err) {
-      dispatch(setAlert('Error updating metric', 'error'));
+      showToast('Error updating metric', 'error');
       console.error('Metric Update Error:', err);
     } finally {
       setUpdatingMetrics(prev => {
@@ -505,14 +506,15 @@ export const KRA = ({ navigation }) => {
               Key Result Areas
             </Text>
           </View>
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={[
               styles.downloadBtn,
               { backgroundColor: C.surface, borderColor: C.border },
             ]}
           >
             <Download size={wp('4%')} color={C.textSecondary} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
+          <View style={styles.downloadBtn}/>
         </View>
 
         <View
@@ -585,7 +587,7 @@ export const KRA = ({ navigation }) => {
             { backgroundColor: C.surface, borderColor: C.border },
           ]}
           onPress={() =>
-            dispatch(setAlert('Export report feature coming soon', 'info'))
+            showToast('Export report feature coming soon', 'info')
           }
         >
           <Download size={wp('4%')} color={C.textSecondary} />
@@ -1153,8 +1155,8 @@ const styles = StyleSheet.create({
   downloadBtn: {
     width: wp('9%'),
     height: wp('9%'),
-    borderRadius: wp('2.5%'),
-    borderWidth: 1,
+    // borderRadius: wp('2.5%'),
+    // borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

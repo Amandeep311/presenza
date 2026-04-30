@@ -46,6 +46,8 @@ import {
   checkAndRequestLocationPermission,
   getCurrentLocation,
 } from '../../../utils/utils';
+import { quickCheckPermissions, showPermissionRequiredDialog } from '../../../utils/permissions';
+import { showToast } from '../../../components/common/ToastProvider';
 
 // Office configuration
 const OFFICE_CONFIG = {
@@ -408,7 +410,7 @@ const DailyPunch = ({ navigation }) => {
       return <CheckCircle size={wp('14%')} color={C.textDark} />;
     if (uiState === 'error')
       return <Frown size={wp('14%')} color={C.textDark} />;
-    return <Camera size={wp('14%')} color={C.textDark} />;
+    return <Camera size={wp('14%')} color={C.textPrimary} />;
   };
 
   const getCircleLabel = () => {
@@ -584,32 +586,47 @@ const DailyPunch = ({ navigation }) => {
       const result = await dispatch(punchIn());
       if (result?.success) {
         setUiState('success');
-        dispatch(setAlert(t.alerts.punchInSuccess, 'success'));
+        showToast(t.alerts.punchInSuccess, 'success');
         await dispatch(getAttendanceHistory());
         setTimeout(() => {
           navigation.replace('Home');
         }, 1500);
       } else {
         setUiState('error');
-        dispatch(setAlert(result?.error || t.alerts.punchInFailed, 'error'));
+        showToast(result?.error || t.alerts.punchInFailed, 'error');
       }
     } catch (err) {
       setUiState('error');
-      dispatch(setAlert(t.alerts.punchInFailed, 'error'));
+      showToast(t.alerts.punchInFailed, 'error');
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const checkPermissionsBeforePunch = async () => {
+  const permStatus = await quickCheckPermissions();
+  
+  if (!permStatus.camera || !permStatus.location) {
+    showPermissionRequiredDialog(
+      {
+        camera: !permStatus.camera,
+        location: !permStatus.location
+      },
+      () => Linking.openSettings()
+    );
+    return false;
+  }
+  
+  return true;
+};
+
+
   // ── Punch handler ──
   const handlePunch = async () => {
+     const hasPermissions = await checkPermissionsBeforePunch();
+    if (!hasPermissions) return;
     if (hasActiveSession) {
-      dispatch(
-        setAlert(
-          t.alerts.alreadyPunchedIn || 'You are already punched in',
-          'warning',
-        ),
-      );
+      showToast(t.alerts.alreadyPunchedIn || 'You are already punched in', 'warning');
       return;
     }
 
@@ -617,7 +634,7 @@ const DailyPunch = ({ navigation }) => {
 
     // Non-sales: block if outside geofence
     if (!isSalesTeam && outsideGeofence) {
-      dispatch(setAlert(t.alerts.outsideGeofence, 'error'));
+      showToast(t.alerts.outsideGeofence, 'error');
       return;
     }
 
@@ -849,20 +866,20 @@ const DailyPunch = ({ navigation }) => {
           </View>
 
           {/* Manual refresh button */}
-          {!hasActiveSession && !isCheckingLocation && !punchInLoading && (
-            <TouchableOpacity
-              style={[
-                styles.refreshLocationBtn,
-                { backgroundColor: C.surface, borderColor: C.border },
-              ]}
-              onPress={handleManualLocationRefresh}
-            >
-              <Loader size={wp('3%')} color={C.primary} />
-              <Text style={[styles.refreshLocationText, { color: C.primary }]}>
-                {t.attendance.refreshLocation || 'Refresh Location'}
-              </Text>
-            </TouchableOpacity>
-          )}
+          {/* {!hasActiveSession && !isCheckingLocation && !punchInLoading && ( */}
+          <TouchableOpacity
+            style={[
+              styles.refreshLocationBtn,
+              { backgroundColor: C.surface, borderColor: C.border },
+            ]}
+            onPress={handleManualLocationRefresh}
+          >
+            <Loader size={wp('3%')} color={C.primary} />
+            <Text style={[styles.refreshLocationText, { color: C.primary }]}>
+              {t.attendance.refreshLocation || 'Refresh Location'}
+            </Text>
+          </TouchableOpacity>
+          {/* )} */}
         </View>
 
         {/* Verification Steps */}
@@ -1089,18 +1106,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   punchSection: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: hp('3%'),
+    minHeight: hp('35%'), // Use minHeight instead of flex:1
+    marginVertical: hp('2%'),
   },
   waveRing: {
     position: 'absolute',
-    width: wp('52%'),
-    height: wp('52%'),
+    width: wp('45%'),
+    height: wp('45'),
     borderRadius: wp('26%'),
     borderWidth: 2,
-    marginTop: -hp('8.5%'),
+    marginTop: -hp('10%'),
   },
   punchCircle: {
     width: wp('46%'),

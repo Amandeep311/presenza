@@ -192,6 +192,7 @@ export const translations = {
       applyLeave: 'Apply for Leave',
       department: 'Department',
       reportingManager: 'Reporting Manager',
+      gettingLocation: 'Getting location'
     },
     breaks: {
       startBreak: 'Start Break',
@@ -309,7 +310,7 @@ export const translations = {
       leaveApplied: 'Leave Applied! 🎉',
       leaveSuccessMsg:
         'Your leave request has been submitted successfully and is pending approval.',
-      goToHome: 'Go to Home',
+      goToHome: 'OK',
       applyAnother: 'Apply another leave',
       itsHoliday: "It's a Holiday! 🎉",
       holidayFor: 'is a full day holiday for',
@@ -798,7 +799,7 @@ export const translations = {
       leaveApplied: 'अवकाश आवेदन किया गया! 🎉',
       leaveSuccessMsg:
         'आपका अवकाश अनुरोध सफलतापूर्वक प्रस्तुत किया गया है और स्वीकृति की प्रतीक्षा में है।',
-      goToHome: 'होम पर जाएं',
+      goToHome: 'OK',
       applyAnother: 'दूसरा अवकाश आवेदन करें',
       itsHoliday: 'यह छुट्टी है! 🎉',
       holidayFor: 'के लिए पूरे दिन की छुट्टी है',
@@ -1270,7 +1271,7 @@ export const translations = {
       leaveApplied: 'ਛੁੱਟੀ ਅਰਜ਼ੀ ਦਿੱਤੀ ਗਈ! 🎉',
       leaveSuccessMsg:
         'ਤੁਹਾਡੀ ਛੁੱਟੀ ਦੀ ਬੇਨਤੀ ਸਫਲਤਾਪੂਰਵਕ ਭੇਜੀ ਗਈ ਹੈ ਅਤੇ ਮਨਜ਼ੂਰੀ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹੈ।',
-      goToHome: 'ਹੋਮ ਤੇ ਜਾਓ',
+      goToHome: 'OK',
       applyAnother: 'ਹੋਰ ਛੁੱਟੀ ਲਈ ਅਰਜ਼ੀ ਦਿਓ',
       itsHoliday: 'ਇਹ ਛੁੱਟੀ ਹੈ! 🎉',
       holidayFor: 'ਲਈ ਪੂਰੇ ਦਿਨ ਦੀ ਛੁੱਟੀ ਹੈ',
@@ -1748,7 +1749,7 @@ export const translations = {
       leaveApplied: 'അവധി അപേക്ഷിച്ചു! 🎉',
       leaveSuccessMsg:
         'നിങ്ങളുടെ അവധി അപേക്ഷ വിജയകരമായി സമർപ്പിച്ചു, അംഗീകാരത്തിനായി കാത്തിരിക്കുന്നു.',
-      goToHome: 'ഹോമിലേക്ക് പോകുക',
+      goToHome: 'OK',
       applyAnother: 'മറ്റൊരു അവധിക്ക് അപേക്ഷിക്കുക',
       itsHoliday: 'ഇത് അവധി ദിവസമാണ്! 🎉',
       holidayFor: 'ന് മുഴുവൻ ദിവസത്തെ അവധിയാണ്',
@@ -2229,7 +2230,7 @@ export const translations = {
       leaveApplied: 'விடுப்பு விண்ணப்பிக்கப்பட்டது! 🎉',
       leaveSuccessMsg:
         'உங்கள் விடுப்பு கோரிக்கை வெற்றிகரமாக சமர்ப்பிக்கப்பட்டு ஒப்புதலுக்காக காத்திருக்கிறது.',
-      goToHome: 'முகப்புக்குச் செல்லவும்',
+      goToHome: 'OK',
       applyAnother: 'மற்றொரு விடுப்புக்கு விண்ணப்பிக்கவும்',
       itsHoliday: 'இது விடுமுறை நாள்! 🎉',
       holidayFor: 'க்கு முழு நாள் விடுமுறை',
@@ -2702,7 +2703,7 @@ export const translations = {
       leaveApplied: 'छुट्टी आवेदन भइल! 🎉',
       leaveSuccessMsg:
         'राउर छुट्टी अनुरोध सफल भइल बा आ मंजूरी के इंतजार में बा।',
-      goToHome: 'होम पर जाइं',
+      goToHome: 'OK',
       applyAnother: 'अउरी छुट्टी आवेदन करीं',
       itsHoliday: 'ई छुट्टी बा! 🎉',
       holidayFor: 'खातिर पूरा दिन छुट्टी बा',
