@@ -36,6 +36,7 @@ import {
 } from '../reducers/authReducer';
 
 import { UI_SET_ALERT, UI_HIDE_ALERT } from '../reducers/uiReducer';
+import { showToast } from '../../components/common/ToastProvider';
 
 const rnBiometrics = new ReactNativeBiometrics();
 
@@ -108,7 +109,7 @@ export const sendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to send OTP',
       });
-      dispatch(setAlert(data.message || 'Failed to send OTP', 'error'));
+      showToast(data.message || 'Failed to send OTP', 'error');
       return { success: false, message: data.message };
     }
 
@@ -117,7 +118,7 @@ export const sendOtp = emp => async dispatch => {
       payload: { employeeCode: emp.trim(), message: data.message },
     });
 
-    dispatch(setAlert('OTP sent successfully', 'success'));
+    showToast('OTP sent successfully', 'success');
     return {
       success: true,
       step: data.step,
@@ -129,7 +130,7 @@ export const sendOtp = emp => async dispatch => {
       type: SEND_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
-    dispatch(setAlert('Network error. Please try again.', 'error'));
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -160,6 +161,7 @@ export const resendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to resend OTP',
       });
+      showToast(data.message || 'Failed to resend OTP', 'error');
       return { success: false };
     }
 
@@ -175,6 +177,7 @@ export const resendOtp = emp => async dispatch => {
       type: SEND_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -197,7 +200,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
         type: VERIFY_OTP_FAIL,
         payload: data.message || 'OTP verification failed',
       });
-      dispatch(setAlert(data.message || 'OTP verification failed', 'error'));
+      showToast(data.message || 'OTP verification failed', 'error');
       return { success: false, message: data.message };
     }
 
@@ -216,7 +219,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
       },
     });
 
-    // dispatch(setAlert('Login successful', 'success'));
+    // showToast('Login successful', 'success');
     return { success: true, data: data.data };
   } catch (error) {
     console.log('Verify OTP error:', error);
@@ -224,7 +227,7 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
       type: VERIFY_OTP_FAIL,
       payload: 'Network error. Please try again.',
     });
-    dispatch(setAlert('Network error. Please try again.', 'error'));
+    showToast('Network error. Please try again.', 'error');
     return { success: false };
   }
 };
@@ -287,6 +290,7 @@ export const biometricLogin = () => async dispatch => {
     return { success: false };
   } catch (error) {
     console.log('❌ Biometric login error:', error);
+    showToast(error.message || 'Biometric login failed', 'error');
     dispatch({
       type: BIOMETRIC_LOGIN_FAIL,
       payload: error.message,
@@ -331,49 +335,68 @@ export const refreshToken = refreshToken => async dispatch => {
 };
 
 // ==================== SIMPLE LOGOUT ACTIONS ====================
+let isLoggingOut = false;
 
-export const logout = () => async dispatch => {
-  try {
-    console.log('🚪 Logout started...');
-
-    // Try to call logout API (don't wait for it)
-    const accessToken = await getAccessToken();
-    if (accessToken) {
-      try {
-        await fetch(`${BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }).catch(e => console.log('Logout API call failed:', e));
-      } catch (e) {
-        console.log('Logout API error:', e);
-      }
+export const logout =
+  (skipToast = false) =>
+  async dispatch => {
+    // Prevent multiple simultaneous logouts
+    if (isLoggingOut) {
+      console.log('🚪 Logout already in progress, skipping...');
+      return;
     }
 
-    // Clear ONLY our specific keys, NOT everything
-    await clearTokens(); // This should clear only our tokens
-    
-    // IMPORTANT: Don't use AsyncStorage.clear() as it will wipe everything
-    // Don't use EncryptedStorage.clear() as it will wipe everything
-    
-    // Dispatch logout action to clear Redux state
-    dispatch({ type: LOGOUT });
-    
-    // Reset all other states
-    dispatch({ type: 'ATTENDANCE_RESET_STATE' });
-    dispatch({ type: 'EMPLOYEE_PROFILE_RESET' });
-    dispatch({ type: 'LEAVE_RESET_STATE' });
-    
-    dispatch(setAlert('Logged out successfully', 'success'));
-    console.log('✅ Logout complete');
-  } catch (error) {
-    console.log('❌ Logout error:', error);
-    // Even if error, clear Redux state
-    dispatch({ type: LOGOUT });
-  }
-};
+    isLoggingOut = true;
+
+    try {
+      console.log('🚪 Logout started...');
+
+      // Try to call logout API (don't wait for it)
+      const accessToken = await getAccessToken();
+      const refreshToken = await getRefreshToken();
+      const user = await getUser();
+      const wasLoggedIn = !!(accessToken || refreshToken || user);
+
+      if (accessToken) {
+        try {
+          await fetch(`${BASE_URL}/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }).catch(e => console.log('Logout API call failed:', e));
+        } catch (e) {
+          console.log('Logout API error:', e);
+        }
+      }
+
+      // Clear ONLY our specific keys, NOT everything
+      await clearTokens();
+
+      // Dispatch logout action to clear Redux state
+      dispatch({ type: LOGOUT });
+
+      // Reset all other states
+      dispatch({ type: 'ATTENDANCE_RESET_STATE' });
+      dispatch({ type: 'EMPLOYEE_PROFILE_RESET' });
+      dispatch({ type: 'LEAVE_RESET_STATE' });
+      dispatch({ type: 'EXPENSE_RESET_STATE' });
+
+      // Only show toast if not skipping (i.e., not initial check)
+      if (!skipToast && wasLoggedIn) {
+        showToast('Logged out successfully', 'success');
+      }
+      console.log('✅ Logout complete');
+    } catch (error) {
+      console.log('❌ Logout error:', error);
+      dispatch({ type: LOGOUT });
+    } finally {
+      setTimeout(() => {
+        isLoggingOut = false;
+      }, 1000);
+    }
+  };
 
 export const resetAppState = () => ({
   type: RESET_APP_STATE,
@@ -457,7 +480,10 @@ export const checkAuthState = () => async dispatch => {
       });
     } else {
       console.log('❌ No user found, staying on login screen');
-      dispatch({ type: LOGOUT }); // ✅ THIS IS THE REAL FIX
+      // 🔥 FIX: Don't dispatch LOGOUT action here
+      // Just set loading to false and let user see login screen
+      dispatch({ type: AUTH_LOADING, payload: false });
+      // Remove this line: dispatch({ type: LOGOUT });
     }
 
     return { success: true };

@@ -44,6 +44,7 @@ import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { setAlert } from '../../../store/actions/authActions';
 import { ReusableCalendar } from '../../../components/common/ReusableCalendar';
+import { showToast } from '../../../components/common/ToastProvider';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const USER_BRANCH = 'CHD'; // Current user's branch
@@ -398,7 +399,7 @@ const calculateLeaveDays = (
   halfDayType = 'half1',
 ) => {
   const isSingleDay = startDateStr === endDateStr;
-  const shortLeaveCount = 0.5;
+  const shortLeaveCount = 0.25;
 
   let effectiveStart = startDateStr;
   let effectiveEnd = endDateStr;
@@ -521,7 +522,7 @@ const calculateLeaveDays = (
     } else {
       if (leaveType === 'short' && isSingleDay) {
         dayCount = shortLeaveCount;
-        label = 'Short Leave (0.5 day)';
+        label = 'Short Leave (0.25 day)';
       } else if (leaveType === 'half' && isSingleDay) {
         dayCount = 0.5;
         label = 'Half Day Leave';
@@ -562,7 +563,11 @@ const calculateLeaveDays = (
     }
   }
 
-  return { total: days, breakdown, sandwichWarning };
+  return {
+    total: parseFloat(days.toFixed(2)),
+    breakdown,
+    sandwichWarning,
+  };
 };
 
 const today = new Date();
@@ -583,7 +588,30 @@ const LeaveScreen = ({ navigation }) => {
   const now = new Date();
   const todayDateStr = new Date().toISOString().split('T')[0];
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [wordCount, setWordCount] = useState(0);
+  const MAX_WORDS = 30;
 
+  const countWords = text => {
+    if (!text.trim()) return 0;
+    return text.trim().split(/\s+/).length;
+  };
+  const handleTextChange = text => {
+    const words = countWords(text);
+    if (words <= MAX_WORDS) {
+      setReason(text);
+      setWordCount(words);
+      if (reasonError) setReasonError('');
+    } else {
+      // Show alert when trying to exceed limit
+      Alert.alert(
+        'Word Limit Exceeded',
+        `You can only enter up to ${MAX_WORDS} words. Current words: ${wordCount}`,
+        [{ text: 'OK' }],
+      );
+      // Don't update the text
+      return;
+    }
+  };
   // Inside the component, add the getDayInfo function:
   const getDayInfoForCalendar = (day, dateStr) => {
     const dayOfWeek = new Date(year, currentMonth, day).getDay();
@@ -801,13 +829,19 @@ const LeaveScreen = ({ navigation }) => {
     setLeavesExpanded(v => !v);
   };
 
-  const formatLeaveDate = dateStr => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
+  // Add this helper function at the top of the component (after const declarations)
+  const formatLeaveDays = days => {
+    if (!days && days !== 0) return '0';
+    // For 0.25, show 0.25 only
+    if (days === 0.25) return '0.25';
+    // For other decimals, check if it's a whole number
+    if (Number.isInteger(days)) return days.toString();
+    // For 0.5, show 0.5 (not 0.50)
+    if (days === 0.5) return '0.5';
+    // For any other decimal, show with 2 decimals only if needed
+    const fixed = days.toFixed(2);
+    // Remove trailing .00
+    return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed;
   };
 
   const getLeaveTypeDisplay = type => {
@@ -933,7 +967,7 @@ const LeaveScreen = ({ navigation }) => {
       leaveType !== 'short'
     ) {
       // Optionally show a message
-      dispatch(setAlert('Please select a different date for end date', 'info'));
+      showToast('Please select a different date for end date', 'info');
       return;
     }
 
@@ -1125,13 +1159,8 @@ const LeaveScreen = ({ navigation }) => {
       //   t?.leave?.blockedAfter630 ||
       //     'Leave cannot be applied for today after 6:30 PM',
       // );
-      dispatch(
-        setAlert(
-          t?.leave?.blockedAfter630 ||
-            'Leave cannot be applied for today after 6:30 PM',
-          'warning',
-        ),
-      );
+      showToast('Leave cannot be applied for today after 6:30 PM', 'warning');
+
       return false;
     }
 
@@ -1140,13 +1169,12 @@ const LeaveScreen = ({ navigation }) => {
         // Alert.alert(
         //   'Short Leave Not Allowed',
         //   'First Half short leave can only be applied before 11:30 AM.',
-        // );
-        dispatch(
-          setAlert(
-            'First Half short leave can only be applied before 11:30 AM',
-            'warning',
-          ),
+        // );First Half short leave can only be applied before 11:30 AM
+        showToast(
+          'First Half short leave can only be applied before 11:30 AM',
+          'warning',
         );
+
         return false;
       }
     }
@@ -1157,12 +1185,11 @@ const LeaveScreen = ({ navigation }) => {
         //   'Half Day Leave Not Allowed',
         //   'First Half half-day leave must be applied before 12:00 PM.',
         // );
-        dispatch(
-          setAlert(
-            'First Half half-day leave must be applied before 12:00 PM.',
-            'warning',
-          ),
+        showToast(
+          'First Half half-day leave must be applied before 12:00 PM.',
+          'warning',
         );
+
         return false;
       }
     }
@@ -1218,6 +1245,26 @@ const LeaveScreen = ({ navigation }) => {
     }, 300);
   };
 
+  // const handleConfirm = () => {
+  //   if (!remarks.trim()) {
+  //     // remarks not defined in LeaveScreen
+  //     alert(t.breaks.reasonRequired || 'Please enter a reason for break');
+  //     return;
+  //   }
+  //   if (wordCount > MAX_WORDS) {
+  //     alert(`Please limit your reason to ${MAX_WORDS} words or less`);
+  //     return;
+  //   }
+  //   onConfirm(breakType, remarks); // onConfirm not defined
+  //   resetForm();
+  // };
+
+  // const resetForm = () => {
+  //   setRemarks(''); // setRemarks not defined
+  //   setBreakType('LUNCH'); // setBreakType not defined
+  //   setWordCount(0);
+  // };
+
   const handleApplyLeave = async () => {
     if (!startDate || !leaveCalc) return;
     if (!validateLeaveTime()) return;
@@ -1230,6 +1277,29 @@ const LeaveScreen = ({ navigation }) => {
       return;
     }
 
+    if (wordCount > MAX_WORDS) {
+      setReasonError(`Please limit your reason to ${MAX_WORDS} words or less`);
+      setTimeout(() => {
+        scrollToSection(reasonRef);
+      }, 100);
+      return;
+    }
+
+    // ✅ DYNAMIC BALANCE CHECK - Total leave balance
+    const hasInsufficientBalance = leaveCalc.total > totalRemaining;
+
+    // ✅ DYNAMIC BALANCE CHECK - Short leave balance (only if leave type is short)
+    const hasInsufficientShortLeave =
+      leaveType === 'short' && leaveCalc.total > shortRemaining;
+
+    // ✅ Store the actual deficit values for display
+    const totalDeficit = hasInsufficientBalance
+      ? (leaveCalc.total - totalRemaining).toFixed(1)
+      : 0;
+    const shortDeficit = hasInsufficientShortLeave
+      ? (leaveCalc.total - shortRemaining).toFixed(1)
+      : 0;
+
     const payload = {
       leaveType: getLeaveTypePayload(),
       startDate: startDate,
@@ -1240,7 +1310,6 @@ const LeaveScreen = ({ navigation }) => {
 
     try {
       setIsSubmitting(true);
-
       const result = await dispatch(applyLeave(payload));
 
       if (result?.success) {
@@ -1254,21 +1323,23 @@ const LeaveScreen = ({ navigation }) => {
           friction: 7,
         }).start();
         setReason('');
-        // Refresh leaves after applying
         await fetchLeave();
       } else {
-        // Alert.alert(
-        //   'Leave Application Failed',
-        //   result?.error || 'Something went wrong',
-        // );
-        dispatch(setAlert(result?.error || 'Something went wrong', 'warning'));
+        showToast(result?.error || 'Something went wrong', 'warning');
       }
     } catch (err) {
-      // Alert.alert('Error', 'Unable to submit leave');
-      dispatch(setAlert('Unable to submit leave', 'warning'));
+      showToast('Unable to submit leave', 'warning');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const scrollToTop = () => {
+    setTimeout(() => {
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      }
+    }, 100);
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -1316,6 +1387,7 @@ const LeaveScreen = ({ navigation }) => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
+        ref={scrollViewRef}
       >
         {/* ── Month Navigator ── */}
         <View style={styles.monthNav}>
@@ -1878,7 +1950,10 @@ const LeaveScreen = ({ navigation }) => {
                   borderWidth: selectionMode === 'start' ? 1.5 : 1,
                 },
               ]}
-              onPress={() => setSelectionMode('start')}
+              onPress={() => {
+                setSelectionMode('start');
+                scrollToTop();
+              }}
             >
               <View style={styles.datePickerTop}>
                 <Calendar
@@ -1926,7 +2001,12 @@ const LeaveScreen = ({ navigation }) => {
                   opacity: !startDate ? 0.5 : 1,
                 },
               ]}
-              onPress={() => startDate && setSelectionMode('end')}
+              onPress={() => {
+                if (startDate) {
+                  setSelectionMode('end');
+                  scrollToTop();
+                }
+              }}
             >
               <View style={styles.datePickerTop}>
                 <Calendar
@@ -2108,11 +2188,9 @@ const LeaveScreen = ({ navigation }) => {
                       //   'Not Allowed',
                       //   'First Half leave must be applied before 12:00 PM.',
                       // );
-                      dispatch(
-                        setAlert(
-                          'First Half leave must be applied before 12:00 PM.',
-                          'warning',
-                        ),
+                      showToast(
+                        'First Half leave must be applied before 12:00 PM.',
+                        'warning',
                       );
 
                       return;
@@ -2323,11 +2401,9 @@ const LeaveScreen = ({ navigation }) => {
                       //   'Not Allowed',
                       //   'First Half short leave must be applied before 11:30 AM.',
                       // );
-                      dispatch(
-                        setAlert(
-                          'First Half short leave must be applied before 11:30 AM.',
-                          'warning',
-                        ),
+                      showToast(
+                        'First Half short leave must be applied before 11:30 AM.',
+                        'warning',
                       );
 
                       return;
@@ -2509,7 +2585,7 @@ const LeaveScreen = ({ navigation }) => {
                 <Info size={wp('3%')} color={C.info} />
                 <Text style={[styles.shortLeaveNoteText, { color: C.info }]}>
                   {t?.leave?.shortLeaveNote ||
-                    'Short leave counts as 0.5 day deduction. Only valid for single-day selection.'}
+                    'Short leave counts as 0.25 day deduction. Only valid for single-day selection.'}
                 </Text>
               </View>
             </View>
@@ -2529,9 +2605,7 @@ const LeaveScreen = ({ navigation }) => {
               <View style={styles.leaveResultMain}>
                 <View style={styles.leaveResultCountWrap}>
                   <Text style={[styles.leaveResultCount, { color: C.primary }]}>
-                    {leaveCalc.total % 1 === 0
-                      ? leaveCalc.total
-                      : leaveCalc.total.toFixed(1)}
+                    {formatLeaveDays(leaveCalc.total)}
                   </Text>
                   <Text
                     style={[styles.leaveResultUnit, { color: C.textSecondary }]}
@@ -2616,7 +2690,7 @@ const LeaveScreen = ({ navigation }) => {
               </View>
 
               {/* Sandwich Warning */}
-              {leaveCalc.sandwichWarning && (
+              {/* {leaveCalc.sandwichWarning && (
                 <View
                   style={[
                     styles.sandwichWarningRow,
@@ -2633,10 +2707,10 @@ const LeaveScreen = ({ navigation }) => {
                     {leaveCalc.sandwichWarning.message}
                   </Text>
                 </View>
-              )}
+              )} */}
 
               {/* Sandwich counted days */}
-              {leaveCalc.breakdown.some(b => b.isSandwich) && (
+              {/* {leaveCalc.breakdown.some(b => b.isSandwich) && (
                 <View
                   style={[
                     styles.freeNoteRow,
@@ -2654,6 +2728,7 @@ const LeaveScreen = ({ navigation }) => {
                   </Text>
                 </View>
               )}
+               */}
 
               {/* Free days note */}
               {leaveCalc.breakdown.some(b => b.count === 0) && (
@@ -2702,13 +2777,23 @@ const LeaveScreen = ({ navigation }) => {
               }
               placeholderTextColor={C.disabled}
               value={reason}
-              onChangeText={text => {
-                setReason(text);
-                if (reasonError) setReasonError('');
-              }}
+              onChangeText={handleTextChange} // instead of onChangeText={setRemarks}
               multiline
               numberOfLines={3}
             />
+            <Text
+              style={[
+                styles.wordCounter,
+                {
+                  color: wordCount >= MAX_WORDS ? C.error : C.textSecondary,
+                  alignSelf: 'flex-end',
+                  marginTop: 5,
+                  fontSize: wp('2.5%'),
+                },
+              ]}
+            >
+              {wordCount}/{MAX_WORDS} words {wordCount >= MAX_WORDS ? '⚠️' : ''}
+            </Text>
 
             {reasonError ? (
               <Text style={[styles.reasonError, { color: C.error }]}>
@@ -2742,14 +2827,30 @@ const LeaveScreen = ({ navigation }) => {
               styles.applyBtn,
               {
                 backgroundColor:
-                  !startDate || isSubmitting || isAllLeaveBlocked
+                  !startDate ||
+                  isSubmitting ||
+                  isAllLeaveBlocked ||
+                  !reason.trim() ||
+                  wordCount > MAX_WORDS
                     ? C.border
                     : C.primary,
-                opacity: !startDate || isAllLeaveBlocked ? 0.5 : 1,
+                opacity:
+                  !startDate ||
+                  isAllLeaveBlocked ||
+                  !reason.trim() ||
+                  wordCount > MAX_WORDS
+                    ? 0.5
+                    : 1,
               },
             ]}
             onPress={handleApplyLeave}
-            disabled={!startDate || isSubmitting || isAllLeaveBlocked}
+            disabled={
+              !startDate ||
+              isSubmitting ||
+              isAllLeaveBlocked ||
+              !reason.trim() ||
+              wordCount > MAX_WORDS
+            }
             activeOpacity={0.8}
           >
             {isSubmitting ? (
@@ -2783,13 +2884,9 @@ const LeaveScreen = ({ navigation }) => {
                   ]}
                 >
                   {`${t?.leave?.applyBtn || 'Apply Leave'}${
-                    leaveCalc
-                      ? ` · ${
-                          leaveCalc.total % 1 === 0
-                            ? leaveCalc.total
-                            : leaveCalc.total.toFixed(1)
-                        } ${
-                          leaveCalc.total > 1
+                    leaveCalc && leaveCalc.total !== undefined
+                      ? ` · ${formatLeaveDays(leaveCalc.total)} ${
+                          parseFloat(leaveCalc.total) > 1
                             ? t?.leave?.daysLabel || 'Days'
                             : t?.leave?.dayLabel || 'Day'
                         }`
@@ -2879,95 +2976,111 @@ const LeaveScreen = ({ navigation }) => {
                 </Text>
               </View>
             ) : (
-              myLeaves.map((leave, index) => {
-                const leaveTypeInfo = getLeaveTypeDisplay(leave.leaveType);
-                const startDateFormatted = formatLeaveDate(leave.startDate);
-                const endDateFormatted = formatLeaveDate(leave.endDate);
-                const isMultiDay = startDateFormatted !== endDateFormatted;
+              <ScrollView
+                style={styles.leavesScrollView}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                // ref={scrollViewRef}
+              >
+                {myLeaves
+                  .slice()
+                  .reverse()
+                  .map((leave, index) => {
+                    const leaveTypeInfo = getLeaveTypeDisplay(leave.leaveType);
+                    const startDateFormatted = formatLeaveDate(leave.startDate);
+                    const endDateFormatted = formatLeaveDate(leave.endDate);
+                    const isMultiDay = startDateFormatted !== endDateFormatted;
 
-                return (
-                  <View
-                    key={leave._id || index}
-                    style={[
-                      styles.leaveItem,
-                      {
-                        borderBottomColor: C.border,
-                        backgroundColor:
-                          index % 2 === 0 ? C.background : 'transparent',
-                      },
-                    ]}
-                  >
-                    <View style={styles.leaveItemHeader}>
-                      <View style={styles.leaveDates}>
-                        <Calendar size={wp('3%')} color={C.primary} />
-                        <Text
-                          style={[
-                            styles.leaveDateText,
-                            { color: C.textPrimary },
-                          ]}
-                        >
-                          {startDateFormatted}
-                          {isMultiDay && ` → ${endDateFormatted}`}
-                        </Text>
-                      </View>
+                    return (
                       <View
+                        key={leave._id || index}
                         style={[
-                          styles.statusBadge,
+                          styles.leaveItem,
                           {
+                            borderBottomColor: C.border,
                             backgroundColor:
-                              getStatusColor(leave.status) + '20',
+                              index % 2 === 0 ? C.background : 'transparent',
                           },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            { color: getStatusColor(leave.status) },
-                          ]}
-                        >
-                          {leave.status || 'PENDING'}
-                        </Text>
-                      </View>
-                    </View>
+                        <View style={styles.leaveItemHeader}>
+                          <View style={styles.leaveDates}>
+                            <Calendar size={wp('3%')} color={C.primary} />
+                            <Text
+                              style={[
+                                styles.leaveDateText,
+                                { color: C.textPrimary },
+                              ]}
+                            >
+                              {startDateFormatted}
+                              {isMultiDay && ` → ${endDateFormatted}`}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              {
+                                backgroundColor:
+                                  getStatusColor(leave.status) + '20',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.statusText,
+                                { color: getStatusColor(leave.status) },
+                              ]}
+                            >
+                              {leave.status || 'PENDING'}
+                            </Text>
+                          </View>
+                        </View>
 
-                    <View style={styles.leaveItemDetails}>
-                      <View
-                        style={[
-                          styles.leaveTypeBadge,
-                          { backgroundColor: leaveTypeInfo.color + '15' },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.leaveTypeBadgeText,
-                            { color: leaveTypeInfo.color },
-                          ]}
-                        >
-                          {leaveTypeInfo.text}
-                        </Text>
-                      </View>
-                      <Text
-                        style={[styles.leaveReason, { color: C.textSecondary }]}
-                        numberOfLines={2}
-                      >
-                        {leave.reason}
-                      </Text>
-                    </View>
+                        <View style={styles.leaveItemDetails}>
+                          <View
+                            style={[
+                              styles.leaveTypeBadge,
+                              { backgroundColor: leaveTypeInfo.color + '15' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.leaveTypeBadgeText,
+                                { color: leaveTypeInfo.color },
+                              ]}
+                            >
+                              {leaveTypeInfo.text}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.leaveReason,
+                              { color: C.textSecondary },
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {leave.reason}
+                          </Text>
+                        </View>
 
-                    {leave.totalDays && (
-                      <View style={styles.leaveDaysBadge}>
-                        <Clock size={wp('2.5%')} color={C.success} />
-                        <Text
-                          style={[styles.leaveDaysText, { color: C.success }]}
-                        >
-                          {leave.totalDays}{' '}
-                          {leave.totalDays > 1 ? 'days' : 'day'}
-                        </Text>
+                        {leave.totalDays && (
+                          <View style={styles.leaveDaysBadge}>
+                            <Clock size={wp('2.5%')} color={C.success} />
+                            <Text
+                              style={[
+                                styles.leaveDaysText,
+                                { color: C.success },
+                              ]}
+                            >
+                              {leave.totalDays}{' '}
+                              {leave.totalDays > 1 ? 'days' : 'day'}
+                            </Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                );
-              })
+                    );
+                  })}
+              </ScrollView>
             )}
           </Animated.View>
         </View>
@@ -3683,7 +3796,27 @@ const LeaveScreen = ({ navigation }) => {
                 'Your leave request has been submitted successfully and is pending approval.'}
             </Text>
 
+            {/* {((leaveType === 'short' && leaveCalc?.total > shortRemaining) ||
+              (leaveType !== 'short' && leaveCalc?.total > totalRemaining)) && (
+              <View
+                style={[
+                  styles.lopWarningInsideModal,
+                  {
+                    backgroundColor: C.warning + '15',
+                    borderColor: C.warning + '40',
+                    marginTop: hp('1%'),
+                  },
+                ]}
+              >
+                <AlertTriangle size={wp('4%')} color={C.warning} />
+                {leaveType === 'short'
+                  ? `${formatLeaveDays(leaveCalc.total - shortRemaining)} short leave day(s)`
+                  : `${formatLeaveDays(leaveCalc.total - totalRemaining)} day(s)`}
+              </View>
+            )} */}
+
             {/* Summary pill row */}
+            {/* Summary pill row - FIXED */}
             <View style={styles.successSummaryRow}>
               <View
                 style={[
@@ -3696,12 +3829,14 @@ const LeaveScreen = ({ navigation }) => {
               >
                 <CalendarDays size={wp('3.5%')} color={C.primary} />
                 <Text style={[styles.successSummaryText, { color: C.primary }]}>
-                  {formatDate(startDate)}
+                  {startDate ? formatDate(startDate) : ''}
                   {endDate && endDate !== startDate
                     ? `  →  ${formatDate(endDate)}`
                     : ''}
                 </Text>
               </View>
+
+              {/* 🔥 FIX: Add null check for leaveCalc */}
               {leaveCalc && (
                 <View
                   style={[
@@ -3716,10 +3851,8 @@ const LeaveScreen = ({ navigation }) => {
                   <Text
                     style={[styles.successSummaryText, { color: C.success }]}
                   >
-                    {leaveCalc.total % 1 === 0
-                      ? leaveCalc.total
-                      : leaveCalc.total.toFixed(1)}{' '}
-                    {leaveCalc.total > 1
+                    {formatLeaveDays(leaveCalc.total)}{' '}
+                    {parseFloat(leaveCalc.total) > 1
                       ? t?.leave?.daysLabel || 'Days'
                       : t?.leave?.dayLabel || 'Day'}{' '}
                     ·{' '}
@@ -3732,6 +3865,45 @@ const LeaveScreen = ({ navigation }) => {
                 </View>
               )}
             </View>
+
+            {/* Leave Status from API */}
+            {/* {leaveResponse?.status && (
+              <View
+                style={[
+                  styles.leaveStatusBadge,
+                  {
+                    backgroundColor:
+                      leaveResponse.status === 'PENDING'
+                        ? C.warning + '20'
+                        : C.success + '20',
+                    borderColor:
+                      leaveResponse.status === 'PENDING'
+                        ? C.warning
+                        : C.success,
+                  },
+                ]}
+              >
+                <Clock
+                  size={wp('3.5%')}
+                  color={
+                    leaveResponse.status === 'PENDING' ? C.warning : C.success
+                  }
+                />
+                <Text
+                  style={[
+                    styles.leaveStatusText,
+                    {
+                      color:
+                        leaveResponse.status === 'PENDING'
+                          ? C.warning
+                          : C.success,
+                    },
+                  ]}
+                >
+                  {leaveResponse.status}
+                </Text>
+              </View>
+            )} */}
 
             {/* Leave Status from API */}
             {leaveResponse?.status && (
@@ -3777,25 +3949,12 @@ const LeaveScreen = ({ navigation }) => {
               onPress={() => {
                 setSuccessModalVisible(false);
                 clearSelection();
-                try {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.navigate('Home');
-                  }
-                } catch (error) {
-                  console.log('Navigation error:', error);
-                  // Fallback: reset navigation stack
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Home' }],
-                  });
-                }
+                // navigation.navigate('Home');
               }}
               activeOpacity={0.85}
             >
               <Text style={[styles.successBtnText, { color: '#fff' }]}>
-                {t?.leave?.goToHome || 'Go to Home'}
+                {t?.leave?.goToHome || 'OK'}
               </Text>
             </TouchableOpacity>
 
@@ -3824,7 +3983,9 @@ const LeaveScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingBottom: hp('3%') },
-
+  wordCounter: {
+    // No specific styles needed as inline styles are used
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3980,6 +4141,23 @@ const styles = StyleSheet.create({
     borderRadius: wp('2%'),
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  lopWarningInsideModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    padding: wp('3%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginHorizontal: wp('5%'),
+    marginBottom: hp('1%'),
+  },
+  lopWarningText: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+    flex: 1,
+    textAlign: 'left',
+    lineHeight: 15,
   },
   leavePanelTitle: { fontSize: wp('4%'), fontFamily: Fonts.bold, flex: 1 },
   clearBtn: {
@@ -4463,10 +4641,10 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   balanceCard: {
-    width: wp('22%'),
+    // width: wp('30%'),
     borderRadius: wp('3%'),
     borderWidth: 1,
-    padding: wp('2.5%'),
+    padding: wp('3%'),
     gap: hp('0.4%'),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

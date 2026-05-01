@@ -6,6 +6,7 @@ import store from './src/store/store';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
+import { ToastProvider } from './src/components/common/ToastProvider';
 
 const App = () => {
   // Disable logs in production
@@ -15,13 +16,15 @@ const App = () => {
     console.info = () => {};
     console.debug = () => {};
   }
-  
+
   return (
     <Provider store={store}>
       <ThemeProvider>
         <LanguageProvider>
           <NavigationContainer>
-            <AppNavigator />
+            <ToastProvider>
+              <AppNavigator />
+            </ToastProvider>
           </NavigationContainer>
         </LanguageProvider>
       </ThemeProvider>

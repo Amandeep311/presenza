@@ -1,6 +1,7 @@
 // src/components/common/BottomNavigator.jsx
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
@@ -12,6 +13,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Fonts } from '../../utils/GlobalText';
 import { setAlert } from '../../store/actions/authActions';
+import { showToast } from './ToastProvider';
 
 const BottomNavigator = () => {
   const navigation = useNavigation();
@@ -20,6 +22,7 @@ const BottomNavigator = () => {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const C = theme.colors;
+  const insets = useSafeAreaInsets();
   
   // Get today's attendance status from Redux
   const { history } = useSelector(state => state.attendance);
@@ -64,7 +67,8 @@ const BottomNavigator = () => {
     if (tab.route === 'DailyPuch') {
       // Check if already punched in
       if (isUserCheckedIn) {
-        dispatch(setAlert(t.alerts.alreadyPunchedIn, 'error'));
+        // dispatch(setAlert(t.alerts.alreadyPunchedIn, 'error'));
+        showToast(t.alerts.alreadyPunchedIn, 'error', 4000);
         return;
       }
     }
@@ -72,7 +76,15 @@ const BottomNavigator = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: C.bottomNavBg }]}>
+    <View 
+      style={[
+        styles.container, 
+        { 
+          backgroundColor: C.bottomNavBg,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : insets.bottom + 8,
+        }
+      ]}
+    >
       {tabs.map((tab, index) => {
         const Icon = tab.icon;
         const active = isActive(tab.route);
@@ -107,9 +119,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 25 : 12,
-    // borderTopLeftRadius: 25,
-    // borderTopRightRadius: 25,
+    // Remove fixed paddingBottom - will be handled by insets
   },
   tabItem: {
     flex: 1,

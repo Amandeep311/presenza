@@ -79,7 +79,7 @@ const TimePickerModal = ({
       <TouchableOpacity
         style={[styles.overlay, { backgroundColor: C.overlayBg }]}
         activeOpacity={1}
-        onPress={onClose}
+        // onPress={onClose}
       >
         <View
           style={[

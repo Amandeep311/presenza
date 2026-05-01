@@ -21,7 +21,7 @@ export const SET_BIOMETRIC_AVAILABLE = 'SET_BIOMETRIC_AVAILABLE';
 export const AUTH_LOADING = 'AUTH_LOADING';
 
 const initialState = {
-  loading: true,
+  loading: false,
   isAuthenticated: false,
   accessToken: null,
   refreshToken: null,

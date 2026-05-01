@@ -68,7 +68,7 @@ const QuickActionCard = ({
 
 const styles = StyleSheet.create({
   actionCard: {
-    width: (wp('100%') - wp('8%')) / 5, // 5 items per row with spacing
+    width: (wp('100%') - wp('8%')) / 4, // 4 items per row with spacing
     aspectRatio: 1, // Makes it square
     borderRadius: wp('3%'),
     paddingVertical: hp('2%'),

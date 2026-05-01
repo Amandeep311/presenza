@@ -59,15 +59,29 @@ const ActiveTimeDisplay = ({
   };
 
   const getBreakLabel = type => {
-    const labels = {
-      LUNCH: t.breaks?.lunch || 'Lunch',
-      TEA: t.breaks?.tea || 'Tea',
-      COFFEE: t.breaks?.coffee || 'Coffee',
-      PERSONAL: t.breaks?.personal || 'Personal',
-      OTHER: t.breaks?.other || 'Other',
-    };
-    return labels[type] || t.breaks?.breakType || 'Break';
-  };
+  switch (type) {
+    case 'LUNCH':
+      return t.breaks?.lunch || 'Lunch';
+    case 'TEA':
+      return t.breaks?.tea || 'Tea';
+    case 'COFFEE':
+      return t.breaks?.coffee || 'Coffee';
+    case 'PERSONAL':
+      return t.breaks?.personal || 'Personal';
+    case 'SALES_MEETING':
+      return 'Sales Meeting';
+    case 'FOLLOW_UP':
+      return 'Follow Up';
+    case 'DEMO':
+      return 'Demo';
+    case 'COLLECTIONS':
+      return 'Collections';
+    case 'OTHER':
+      return t.breaks?.other || 'Other';
+    default:
+      return type || (t.breaks?.breakType || 'Break');
+  }
+};
 
   // Initial load delay for break (same logic as original BreakStatusBar)
   useEffect(() => {

@@ -43,7 +43,7 @@ export const translations = {
       salarySlip: 'Salary Slip',
       reimbursement: 'Reimbursement',
       meetings: 'Meetings',
-      kra:'KRA',
+      kra: 'KRA',
       welcomeMessage: 'Welcome back, {name}!',
       todaysAttendance: "Today's Attendance",
       attendanceStatus: 'Attendance Status',
@@ -192,6 +192,7 @@ export const translations = {
       applyLeave: 'Apply for Leave',
       department: 'Department',
       reportingManager: 'Reporting Manager',
+      gettingLocation: 'Getting location',
     },
     breaks: {
       startBreak: 'Start Break',
@@ -216,6 +217,7 @@ export const translations = {
       present: 'Present',
       absent: 'Absent',
       halfDay: 'Half Day',
+      shortLeave: 'Short Leave',
       leave: 'Leave',
       totalWorked: 'Total Worked',
       totalBreak: 'Total Break',
@@ -295,7 +297,7 @@ export const translations = {
       shortWorkTime1: 'Working: 11:30 AM – 6:30 PM',
       shortWorkTime2: 'Working: 9:30 AM – 4:30 PM',
       shortLeaveNote:
-        'Short leave counts as 0.5 day deduction. Only valid for single-day selection.',
+        'Short leave counts as 0.25 day deduction. Only valid for single-day selection.',
       dayLabel: 'Day',
       daysLabel: 'Days',
       sandwichCounted: 'sandwich day(s) counted — holiday between leave days',
@@ -309,7 +311,7 @@ export const translations = {
       leaveApplied: 'Leave Applied! 🎉',
       leaveSuccessMsg:
         'Your leave request has been submitted successfully and is pending approval.',
-      goToHome: 'Go to Home',
+      goToHome: 'OK',
       applyAnother: 'Apply another leave',
       itsHoliday: "It's a Holiday! 🎉",
       holidayFor: 'is a full day holiday for',
@@ -327,20 +329,18 @@ export const translations = {
     },
     salarySlip: {
       title: 'Salary Slips',
-
     },
     reimbursement: {
       title: 'Reimbursement',
     },
 
-    meetings:{
+    meetings: {
       title: 'Meetings',
     },
 
     kra: {
       title: 'KRA',
     },
-
 
     settings: {
       title: 'Settings',
@@ -534,7 +534,7 @@ export const translations = {
       idleTracking: 'ब्रेक',
       leaveManagement: 'अवकाश',
       reports: 'रिपोर्ट',
-      salarySlip:'वेतन पर्ची',
+      salarySlip: 'वेतन पर्ची',
       reimbursement: 'अदायगी',
       welcomeMessage: 'वापस स्वागत है, {name}!',
       todaysAttendance: 'आज की उपस्थिति',
@@ -783,7 +783,7 @@ export const translations = {
       shortEarlyExit: '🚫 जल्दी प्रस्थान: ~4:30 से',
       shortWorkTime1: 'कार्य: 11:30 – 6:30',
       shortWorkTime2: 'कार्य: 9:30 – 4:30',
-      shortLeaveNote: 'शॉर्ट लीव में 0.5 दिन कटौती। केवल एक दिन के लिए मान्य।',
+      shortLeaveNote: 'शॉर्ट लीव में 0.25 दिन कटौती। केवल एक दिन के लिए मान्य।',
       dayLabel: 'दिन',
       daysLabel: 'दिन',
       sandwichCounted: 'सैंडविच दिन गिने गए — छुट्टियों के बीच छुट्टी',
@@ -798,7 +798,7 @@ export const translations = {
       leaveApplied: 'अवकाश आवेदन किया गया! 🎉',
       leaveSuccessMsg:
         'आपका अवकाश अनुरोध सफलतापूर्वक प्रस्तुत किया गया है और स्वीकृति की प्रतीक्षा में है।',
-      goToHome: 'होम पर जाएं',
+      goToHome: 'OK',
       applyAnother: 'दूसरा अवकाश आवेदन करें',
       itsHoliday: 'यह छुट्टी है! 🎉',
       holidayFor: 'के लिए पूरे दिन की छुट्टी है',
@@ -1005,7 +1005,7 @@ export const translations = {
       idleTracking: 'ਬਰੇਕ',
       leaveManagement: 'ਛੁੱਟੀ',
       reports: 'ਰਿਪੋਰਟਾਂ',
-      salarySlip:'ਤਨਖਾਹ ਸਲਿੱਪ',
+      salarySlip: 'ਤਨਖਾਹ ਸਲਿੱਪ',
       reimbursement: 'ਅਦਾਇਗੀ',
       welcomeMessage: 'ਵਾਪਸ ਆਉਣ ਤੇ ਸੁਆਗਤ ਹੈ, {name}!',
       todaysAttendance: 'ਅੱਜ ਦੀ ਹਾਜ਼ਰੀ',
@@ -1270,7 +1270,7 @@ export const translations = {
       leaveApplied: 'ਛੁੱਟੀ ਅਰਜ਼ੀ ਦਿੱਤੀ ਗਈ! 🎉',
       leaveSuccessMsg:
         'ਤੁਹਾਡੀ ਛੁੱਟੀ ਦੀ ਬੇਨਤੀ ਸਫਲਤਾਪੂਰਵਕ ਭੇਜੀ ਗਈ ਹੈ ਅਤੇ ਮਨਜ਼ੂਰੀ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹੈ।',
-      goToHome: 'ਹੋਮ ਤੇ ਜਾਓ',
+      goToHome: 'OK',
       applyAnother: 'ਹੋਰ ਛੁੱਟੀ ਲਈ ਅਰਜ਼ੀ ਦਿਓ',
       itsHoliday: 'ਇਹ ਛੁੱਟੀ ਹੈ! 🎉',
       holidayFor: 'ਲਈ ਪੂਰੇ ਦਿਨ ਦੀ ਛੁੱਟੀ ਹੈ',
@@ -1477,8 +1477,8 @@ export const translations = {
       idleTracking: 'ഇടവേള',
       leaveManagement: 'അവധി',
       reports: 'റിപ്പോർട്ടുകൾ',
-      salarySlip:'സാലറി സ്ലിപ്പ്',
-      reimbursement:'തിരിച്ചടവ്',
+      salarySlip: 'സാലറി സ്ലിപ്പ്',
+      reimbursement: 'തിരിച്ചടവ്',
       welcomeMessage: 'തിരികെ സ്വാഗതം, {name}!',
       todaysAttendance: 'ഇന്നത്തെ ഹാജർ',
       attendanceStatus: 'ഹാജർ നില',
@@ -1748,7 +1748,7 @@ export const translations = {
       leaveApplied: 'അവധി അപേക്ഷിച്ചു! 🎉',
       leaveSuccessMsg:
         'നിങ്ങളുടെ അവധി അപേക്ഷ വിജയകരമായി സമർപ്പിച്ചു, അംഗീകാരത്തിനായി കാത്തിരിക്കുന്നു.',
-      goToHome: 'ഹോമിലേക്ക് പോകുക',
+      goToHome: 'OK',
       applyAnother: 'മറ്റൊരു അവധിക്ക് അപേക്ഷിക്കുക',
       itsHoliday: 'ഇത് അവധി ദിവസമാണ്! 🎉',
       holidayFor: 'ന് മുഴുവൻ ദിവസത്തെ അവധിയാണ്',
@@ -1958,8 +1958,8 @@ export const translations = {
       idleTracking: 'இடைவேளை',
       leaveManagement: 'விடுப்பு',
       reports: 'அறிக்கைகள்',
-      salarySlip:'சம்பள சீட்டு',
-      reimbursement:'திருப்பிச் செலுத்துதல்',
+      salarySlip: 'சம்பள சீட்டு',
+      reimbursement: 'திருப்பிச் செலுத்துதல்',
       welcomeMessage: 'மீண்டும் வரவேற்கிறோம், {name}!',
       todaysAttendance: 'இன்றைய வருகை',
       attendanceStatus: 'வருகை நிலை',
@@ -2229,7 +2229,7 @@ export const translations = {
       leaveApplied: 'விடுப்பு விண்ணப்பிக்கப்பட்டது! 🎉',
       leaveSuccessMsg:
         'உங்கள் விடுப்பு கோரிக்கை வெற்றிகரமாக சமர்ப்பிக்கப்பட்டு ஒப்புதலுக்காக காத்திருக்கிறது.',
-      goToHome: 'முகப்புக்குச் செல்லவும்',
+      goToHome: 'OK',
       applyAnother: 'மற்றொரு விடுப்புக்கு விண்ணப்பிக்கவும்',
       itsHoliday: 'இது விடுமுறை நாள்! 🎉',
       holidayFor: 'க்கு முழு நாள் விடுமுறை',
@@ -2439,8 +2439,8 @@ export const translations = {
       idleTracking: 'ब्रेक',
       leaveManagement: 'छुट्टी',
       reports: 'रिपोर्ट',
-      salarySlip:'वेतन के पर्ची',
-      reimbursement:'प्रतिपूर्ति के बा',
+      salarySlip: 'वेतन के पर्ची',
+      reimbursement: 'प्रतिपूर्ति के बा',
       welcomeMessage: 'वापसी प स्वागत बा, {name}!',
       todaysAttendance: 'आज के हाजिरी',
       attendanceStatus: 'हाजिरी स्थिति',
@@ -2702,7 +2702,7 @@ export const translations = {
       leaveApplied: 'छुट्टी आवेदन भइल! 🎉',
       leaveSuccessMsg:
         'राउर छुट्टी अनुरोध सफल भइल बा आ मंजूरी के इंतजार में बा।',
-      goToHome: 'होम पर जाइं',
+      goToHome: 'OK',
       applyAnother: 'अउरी छुट्टी आवेदन करीं',
       itsHoliday: 'ई छुट्टी बा! 🎉',
       holidayFor: 'खातिर पूरा दिन छुट्टी बा',

@@ -34,6 +34,7 @@ import {
   resendOtp,
   checkAuthState,
 } from '../../store/actions/authActions';
+import { showToast } from '../../components/common/ToastProvider';
 
 const VerifyOTP = ({ route, navigation }) => {
   const { employeeId } = route.params; 
@@ -86,12 +87,13 @@ const VerifyOTP = ({ route, navigation }) => {
 
     const otpString = otp.join('');
     if (otpString.length !== 6) {
-      dispatch(
-        setAlert(
-          t.alerts.otpError || 'Please enter complete 6-digit OTP',
-          'error',
-        ),
-      );
+      // dispatch(
+      //   setAlert(
+      //     t.alerts.otpError || 'Please enter complete 6-digit OTP',
+      //     'error',
+      //   ),
+      // );
+      showToast(t.alerts.otpError || 'Please enter complete 6-digit OTP', 'error');
       return;
     }
 
@@ -118,9 +120,10 @@ const VerifyOTP = ({ route, navigation }) => {
       setDisabledd(false);
       setCanResend(false);
       setOtp(['', '', '', '', '', '']);
-      dispatch(
-        setAlert(t.alerts.otpSent || 'OTP resent successfully', 'success'),
-      );
+      // dispatch(
+      //   setAlert(t.alerts.otpSent || 'OTP resent successfully', 'success'),
+      // );
+      showToast(t.alerts.otpSent || 'OTP resent successfully', 'success');
     }
   };
 

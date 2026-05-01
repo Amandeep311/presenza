@@ -78,40 +78,62 @@ const RecordCard = ({ record }) => {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const C = theme.colors;
-  
+
   const sessions = record.sessions || [];
-  
-  const getStatusConfig = (status) => {
+
+  const getStatusConfig = status => {
     switch (status) {
       case 'PRESENT':
-        return { label: t.reports.present, color: C.success, icon: CheckCircle2 };
+        return {
+          label: t.reports.present,
+          color: C.success,
+          icon: CheckCircle2,
+        };
       case 'ABSENT':
         return { label: t.reports.absent, color: C.error, icon: XCircle };
       case 'HALF_DAY':
-        return { label: t.reports.halfDay, color: C.warning, icon: AlertCircle };
-      case 'LEAVE':
-        return { label: t.reports.leave, color: C.info, icon: CalendarDays };
+        return {
+          label: t.reports.halfDay,
+          color: C.warning,
+          icon: AlertCircle,
+        };
+      // case 'LEAVE':
+      //   return { label: t.reports.leave, color: C.info, icon: CalendarDays };
       default:
-        return { label: status || t.reports.unknown || 'Unknown', color: C.textSecondary, icon: AlertCircle };
+        return {
+          label: status || t.reports.unknown || 'Unknown',
+          color: C.textSecondary,
+          icon: AlertCircle,
+        };
     }
   };
 
-  const statusCfg = getStatusConfig(record.status);
+  const statusCfg = getStatusConfig(record.attendanceStatus);
   const StatusIcon = statusCfg.icon;
 
-  const totalMinutes = sessions.reduce((t, s) => t + (s.durationMinutes || 0), 0);
+  const totalMinutes = sessions.reduce(
+    (t, s) => t + (s.durationMinutes || 0),
+    0,
+  );
   const totalBreakMinutes = sessions.reduce(
-    (t, s) => t + (s.breaks || []).reduce((bt, b) => bt + (b.durationMinutes || 0), 0), 0,
+    (t, s) =>
+      t + (s.breaks || []).reduce((bt, b) => bt + (b.durationMinutes || 0), 0),
+    0,
   );
 
   const firstPunchIn = sessions[0]?.punchIn;
   const lastPunchOut = sessions[sessions.length - 1]?.punchOut;
 
   return (
-    <View style={[cardStyles.wrapper, { 
-      backgroundColor: C.surface,
-      borderColor: C.border,
-    }]}>
+    <View
+      style={[
+        cardStyles.wrapper,
+        {
+          backgroundColor: C.surface,
+          borderColor: C.border,
+        },
+      ]}
+    >
       {/* Row Header */}
       <TouchableOpacity
         style={cardStyles.cardHeader}
@@ -120,12 +142,19 @@ const RecordCard = ({ record }) => {
       >
         {/* Date + Status */}
         <View style={cardStyles.dateBlock}>
-          <View style={[cardStyles.statusDot, { backgroundColor: statusCfg.color }]} />
+          <View
+            style={[cardStyles.statusDot, { backgroundColor: statusCfg.color }]}
+          />
           <View>
             <Text style={[cardStyles.dateText, { color: C.textPrimary }]}>
               {formatFullDate(record.date)}
             </Text>
-            <View style={[cardStyles.statusBadge, { backgroundColor: statusCfg.color + '22' }]}>
+            <View
+              style={[
+                cardStyles.statusBadge,
+                { backgroundColor: statusCfg.color + '22' },
+              ]}
+            >
               <StatusIcon size={wp('2.8%')} color={statusCfg.color} />
               <Text style={[cardStyles.statusText, { color: statusCfg.color }]}>
                 {statusCfg.label}
@@ -140,31 +169,57 @@ const RecordCard = ({ record }) => {
             <Text style={[cardStyles.timeIn, { color: C.success }]}>
               {formatTime(firstPunchIn)}
             </Text>
-            <Text style={[cardStyles.timeSep, { color: C.textSecondary }]}>→</Text>
-            <Text style={[cardStyles.timeOut, { color: lastPunchOut ? C.error : C.textSecondary }]}>
+            <Text style={[cardStyles.timeSep, { color: C.textSecondary }]}>
+              →
+            </Text>
+            <Text
+              style={[
+                cardStyles.timeOut,
+                { color: lastPunchOut ? C.error : C.textSecondary },
+              ]}
+            >
               {lastPunchOut ? formatTime(lastPunchOut) : '---'}
             </Text>
           </View>
           <Text style={[cardStyles.durText, { color: C.textSecondary }]}>
             {fmtDur(totalMinutes)}
           </Text>
-          {expanded
-            ? <ChevronUp size={wp('4%')} color={C.textSecondary} style={{ marginTop: 4 }} />
-            : <ChevronDown size={wp('4%')} color={C.textSecondary} style={{ marginTop: 4 }} />
-          }
+          {expanded ? (
+            <ChevronUp
+              size={wp('4%')}
+              color={C.textSecondary}
+              style={{ marginTop: 4 }}
+            />
+          ) : (
+            <ChevronDown
+              size={wp('4%')}
+              color={C.textSecondary}
+              style={{ marginTop: 4 }}
+            />
+          )}
         </View>
       </TouchableOpacity>
 
       {/* Expanded Detail */}
       {expanded && (
-        <View style={[cardStyles.detail, { 
-          borderTopColor: C.border,
-          backgroundColor: C.background,
-        }]}>
+        <View
+          style={[
+            cardStyles.detail,
+            {
+              borderTopColor: C.border,
+              backgroundColor: C.background,
+            },
+          ]}
+        >
           {/* Stats strip */}
-          <View style={[cardStyles.statsStrip, { 
-            borderBottomColor: C.border,
-          }]}>
+          <View
+            style={[
+              cardStyles.statsStrip,
+              {
+                borderBottomColor: C.border,
+              },
+            ]}
+          >
             <View style={cardStyles.stripItem}>
               <TrendingUp size={wp('3.5%')} color={C.primary} />
               <Text style={[cardStyles.stripLabel, { color: C.textSecondary }]}>
@@ -174,7 +229,9 @@ const RecordCard = ({ record }) => {
                 {fmtDur(totalMinutes)}
               </Text>
             </View>
-            <View style={[cardStyles.stripDivider, { backgroundColor: C.border }]} />
+            <View
+              style={[cardStyles.stripDivider, { backgroundColor: C.border }]}
+            />
             <View style={cardStyles.stripItem}>
               <Coffee size={wp('3.5%')} color={C.warning} />
               <Text style={[cardStyles.stripLabel, { color: C.textSecondary }]}>
@@ -184,7 +241,9 @@ const RecordCard = ({ record }) => {
                 {fmtDur(totalBreakMinutes)}
               </Text>
             </View>
-            <View style={[cardStyles.stripDivider, { backgroundColor: C.border }]} />
+            <View
+              style={[cardStyles.stripDivider, { backgroundColor: C.border }]}
+            />
             <View style={cardStyles.stripItem}>
               <Clock size={wp('3.5%')} color={C.info} />
               <Text style={[cardStyles.stripLabel, { color: C.textSecondary }]}>
@@ -198,10 +257,16 @@ const RecordCard = ({ record }) => {
 
           {/* Sessions */}
           {sessions.map((session, si) => (
-            <View key={si} style={[cardStyles.sessionBlock, { 
-              backgroundColor: C.surface,
-              borderColor: C.border,
-            }]}>
+            <View
+              key={si}
+              style={[
+                cardStyles.sessionBlock,
+                {
+                  backgroundColor: C.surface,
+                  borderColor: C.border,
+                },
+              ]}
+            >
               <Text style={[cardStyles.sessionTitle, { color: C.primary }]}>
                 {t.reports.session || 'Session'} {si + 1}
               </Text>
@@ -209,23 +274,41 @@ const RecordCard = ({ record }) => {
               {/* Punch times */}
               <View style={cardStyles.punchRow}>
                 <View style={cardStyles.punchItem}>
-                  <Text style={[cardStyles.punchLabel, { color: C.textSecondary }]}>
+                  <Text
+                    style={[cardStyles.punchLabel, { color: C.textSecondary }]}
+                  >
                     {t.reports.in}
                   </Text>
                   <Text style={[cardStyles.punchTime, { color: C.success }]}>
                     {formatTime(session.punchIn)}
                   </Text>
                 </View>
-                <View style={[cardStyles.punchDash, { backgroundColor: C.border }]} />
+                <View
+                  style={[cardStyles.punchDash, { backgroundColor: C.border }]}
+                />
                 <View style={cardStyles.punchItem}>
-                  <Text style={[cardStyles.punchLabel, { color: C.textSecondary }]}>
+                  <Text
+                    style={[cardStyles.punchLabel, { color: C.textSecondary }]}
+                  >
                     {t.reports.out}
                   </Text>
-                  <Text style={[cardStyles.punchTime, { color: session.punchOut ? C.error : C.textSecondary }]}>
-                    {session.punchOut ? formatTime(session.punchOut) : t.reports.ongoing}
+                  <Text
+                    style={[
+                      cardStyles.punchTime,
+                      { color: session.punchOut ? C.error : C.textSecondary },
+                    ]}
+                  >
+                    {session.punchOut
+                      ? formatTime(session.punchOut)
+                      : t.reports.ongoing}
                   </Text>
                 </View>
-                <View style={[cardStyles.durBadge, { backgroundColor: C.primary + '20' }]}>
+                <View
+                  style={[
+                    cardStyles.durBadge,
+                    { backgroundColor: C.primary + '20' },
+                  ]}
+                >
                   <Text style={[cardStyles.durBadgeText, { color: C.primary }]}>
                     {fmtDur(session.durationMinutes)}
                   </Text>
@@ -236,17 +319,45 @@ const RecordCard = ({ record }) => {
               {session.breaks?.length > 0 && (
                 <View style={cardStyles.breaksBlock}>
                   {session.breaks.map((b, bi) => (
-                    <View key={bi} style={[cardStyles.breakItem, { borderTopColor: C.border }]}>
+                    <View
+                      key={bi}
+                      style={[
+                        cardStyles.breakItem,
+                        { borderTopColor: C.border },
+                      ]}
+                    >
                       <Coffee size={wp('3%')} color={C.warning} />
-                      <Text style={[cardStyles.breakTypeText, { color: C.warning }]}>
+                      <Text
+                        style={[cardStyles.breakTypeText, { color: C.warning }]}
+                      >
                         {b.breakType}
                       </Text>
-                      <Text style={[cardStyles.breakTimes, { color: C.textSecondary }]}>
+                      <Text
+                        style={[
+                          cardStyles.breakTimes,
+                          { color: C.textSecondary },
+                        ]}
+                      >
                         {formatTime(b.breakIn)}
-                        {b.breakOut ? ` → ${formatTime(b.breakOut)}` : ` → ${t.reports.ongoing}`}
+                        {b.breakOut
+                          ? ` → ${formatTime(b.breakOut)}`
+                          : ` → ${t.reports.ongoing}`}
                       </Text>
-                      <View style={[cardStyles.durBadge, { backgroundColor: C.warning + '20', marginLeft: 'auto' }]}>
-                        <Text style={[cardStyles.durBadgeText, { color: C.warning }]}>
+                      <View
+                        style={[
+                          cardStyles.durBadge,
+                          {
+                            backgroundColor: C.warning + '20',
+                            marginLeft: 'auto',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            cardStyles.durBadgeText,
+                            { color: C.warning },
+                          ]}
+                        >
                           {b.durationMinutes ? fmtDur(b.durationMinutes) : '●'}
                         </Text>
                       </View>
@@ -257,9 +368,17 @@ const RecordCard = ({ record }) => {
 
               {/* Location */}
               {session.punchInLocation?.address && (
-                <View style={[cardStyles.locationRow, { borderTopColor: C.border }]}>
+                <View
+                  style={[cardStyles.locationRow, { borderTopColor: C.border }]}
+                >
                   <MapPin size={wp('3%')} color={C.textSecondary} />
-                  <Text style={[cardStyles.locationText, { color: C.textSecondary }]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      cardStyles.locationText,
+                      { color: C.textSecondary },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {session.punchInLocation.address}
                   </Text>
                 </View>
@@ -449,13 +568,13 @@ const ReportsScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const C = theme.colors;
-  
+
   const { history, historyLoading } = useSelector(state => state.attendance);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('ALL');
 
   useEffect(() => {
-    console.log('📊 ReportsScreen mounted');
+    console.log('ReportsScreen mounted');
     dispatch(getAttendanceHistory());
     return () => console.log('📊 ReportsScreen unmounted');
   }, []);
@@ -472,22 +591,53 @@ const ReportsScreen = ({ navigation }) => {
   );
 
   // Filter
-  const filters = ['ALL', 'PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'];
-  const filtered = activeFilter === 'ALL'
-    ? sortedHistory
-    : sortedHistory.filter(r => r.status === activeFilter);
+  const filters = [
+    'ALL',
+    'PRESENT',
+    'ABSENT',
+    'HALF_DAY',
+    'SHORT_LEAVE',
+    // 'LEAVE',
+  ];
+  const filtered =
+    activeFilter === 'ALL'
+      ? sortedHistory
+      : sortedHistory.filter(r => {
+          if (activeFilter === 'SHORT_LEAVE') {
+            return r.attendanceStatus === 'SHORT_LEAVE';
+          }
+          if (activeFilter === 'HALF_DAY') {
+            return r.attendanceStatus === 'HALF_DAY';
+          }
+          if (activeFilter === 'ABSENT') {
+            return r.attendanceStatus === 'ABSENT';
+          }
+          if (activeFilter === 'PRESENT') {
+            return r.attendanceStatus === 'PRESENT';
+          }
+          // if (activeFilter === 'LEAVE') {
+          //   return r.attendanceStatus === 'LEAVE';
+          // }
+          return r.status === activeFilter;
+        });
 
   // Summary stats from full history
   const stats = {
-    present: sortedHistory.filter(r => r.status === 'PRESENT').length,
-    absent: sortedHistory.filter(r => r.status === 'ABSENT').length,
-    halfDay: sortedHistory.filter(r => r.status === 'HALF_DAY').length,
-    leave: sortedHistory.filter(r => r.status === 'LEAVE').length,
-    totalWorked: sortedHistory.reduce((t, r) =>
-      t + (r.sessions || []).reduce((st, s) => st + (s.durationMinutes || 0), 0), 0),
-    totalBreak: sortedHistory.reduce((t, r) =>
-      t + (r.sessions || []).reduce((st, s) =>
-        st + (s.breaks || []).reduce((bt, b) => bt + (b.durationMinutes || 0), 0), 0), 0),
+    present: sortedHistory.filter(r => r.attendanceStatus === 'PRESENT').length,
+    absent: sortedHistory.filter(r => r.attendanceStatus === 'ABSENT').length,
+    halfDay: sortedHistory.filter(r => r.attendanceStatus === 'HALF_DAY')
+      .length,
+    shortLeave: sortedHistory.filter(r => r.attendanceStatus === 'SHORT_LEAVE')
+      .length,
+    // leave: sortedHistory.filter(r => r.attendanceStatus === 'LEAVE').length,
+    totalWorked: sortedHistory.reduce(
+      (t, r) => t + (r.totalWorkingMinutes || 0),
+      0,
+    ),
+    totalBreak: sortedHistory.reduce(
+      (t, r) => t + (r.totalBreakMinutes || 0),
+      0,
+    ),
   };
 
   const filterLabels = {
@@ -496,6 +646,7 @@ const ReportsScreen = ({ navigation }) => {
     ABSENT: t.reports.absent,
     HALF_DAY: t.reports.halfDay,
     LEAVE: t.reports.leave,
+    SHORT_LEAVE: t.reports.shortLeave,
   };
 
   return (
@@ -503,20 +654,28 @@ const ReportsScreen = ({ navigation }) => {
       <StatusBar barStyle={C.statusBar} backgroundColor={C.background} />
 
       {/* Header */}
-      <View style={[styles.header, { 
-        backgroundColor: C.background,
-        borderBottomColor: C.border,
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: C.background,
+            borderBottomColor: C.border,
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={[styles.backBtn, { 
-            backgroundColor: C.surface,
-            borderColor: C.border,
-          }]}
+          style={[
+            styles.backBtn,
+            {
+              backgroundColor: C.surface,
+              borderColor: C.border,
+            },
+          ]}
         >
           <ChevronLeft size={wp('5%')} color={C.textPrimary} />
         </TouchableOpacity>
-        
+
         {/* Page Title */}
         <View style={styles.pageHeader}>
           <Text style={[styles.pageTitle, { color: C.textPrimary }]}>
@@ -542,58 +701,124 @@ const ReportsScreen = ({ navigation }) => {
       >
         {/* ── Summary Cards ── */}
         <View style={styles.summaryGrid}>
-          <View style={[styles.summaryCard, { 
-            backgroundColor: C.surface,
-            borderColor: C.success + '50',
-          }]}>
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: C.surface,
+                borderColor: C.success + '50',
+              },
+            ]}
+          >
             <CheckCircle2 size={wp('5%')} color={C.success} />
-            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>{stats.present}</Text>
-            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>{t.reports.present}</Text>
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.present}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              {t.reports.present}
+            </Text>
           </View>
-          <View style={[styles.summaryCard, { 
-            backgroundColor: C.surface,
-            borderColor: C.error + '50',
-          }]}>
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: C.surface,
+                borderColor: C.error + '50',
+              },
+            ]}
+          >
             <XCircle size={wp('5%')} color={C.error} />
-            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>{stats.absent}</Text>
-            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>{t.reports.absent}</Text>
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.absent}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              {t.reports.absent}
+            </Text>
           </View>
-          <View style={[styles.summaryCard, { 
-            backgroundColor: C.surface,
-            borderColor: C.warning + '50',
-          }]}>
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: C.surface,
+                borderColor: C.warning + '50',
+              },
+            ]}
+          >
             <AlertCircle size={wp('5%')} color={C.warning} />
-            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>{stats.halfDay}</Text>
-            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>{t.reports.halfDay}</Text>
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.halfDay}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              {t.reports.halfDay}
+            </Text>
           </View>
-          <View style={[styles.summaryCard, { 
-            backgroundColor: C.surface,
-            borderColor: C.info + '50',
-          }]}>
+          <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: C.surface,
+                borderColor: C.warning + '50',
+              },
+            ]}
+          >
+            <Clock size={wp('5%')} color={C.warning} />
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.shortLeave}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              {t.reports.shortLeave}
+            </Text>
+          </View>
+          {/* <View
+            style={[
+              styles.summaryCard,
+              {
+                backgroundColor: C.surface,
+                borderColor: C.info + '50',
+              },
+            ]}
+          >
             <CalendarDays size={wp('5%')} color={C.info} />
-            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>{stats.leave}</Text>
-            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>{t.reports.leave}</Text>
-          </View>
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.leave}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              {t.reports.leave}
+            </Text>
+          </View> */}
         </View>
 
         {/* ── Work Summary Strip ── */}
-        <View style={[styles.workStrip, { 
-          backgroundColor: C.surface,
-          borderColor: C.border,
-        }]}>
+        <View
+          style={[
+            styles.workStrip,
+            {
+              backgroundColor: C.surface,
+              borderColor: C.border,
+            },
+          ]}
+        >
           <View style={styles.workItem}>
             <TrendingUp size={wp('4%')} color={C.primary} />
             <View>
-              <Text style={[styles.workValue, { color: C.primary }]}>{fmtDur(stats.totalWorked)}</Text>
-              <Text style={[styles.workLbl, { color: C.textSecondary }]}>{t.reports.totalWorked}</Text>
+              <Text style={[styles.workValue, { color: C.primary }]}>
+                {fmtDur(stats.totalWorked)}
+              </Text>
+              <Text style={[styles.workLbl, { color: C.textSecondary }]}>
+                {t.reports.totalWorked}
+              </Text>
             </View>
           </View>
           <View style={[styles.stripDivider, { backgroundColor: C.border }]} />
           <View style={styles.workItem}>
             <Coffee size={wp('4%')} color={C.warning} />
             <View>
-              <Text style={[styles.workValue, { color: C.warning }]}>{fmtDur(stats.totalBreak)}</Text>
-              <Text style={[styles.workLbl, { color: C.textSecondary }]}>{t.reports.totalBreak}</Text>
+              <Text style={[styles.workValue, { color: C.warning }]}>
+                {fmtDur(stats.totalBreak)}
+              </Text>
+              <Text style={[styles.workLbl, { color: C.textSecondary }]}>
+                {t.reports.totalBreak}
+              </Text>
             </View>
           </View>
         </View>
@@ -609,18 +834,20 @@ const ReportsScreen = ({ navigation }) => {
               key={f}
               style={[
                 styles.filterPill,
-                { 
+                {
                   backgroundColor: activeFilter === f ? C.primary : C.surface,
                   borderColor: activeFilter === f ? C.primary : C.border,
                 },
               ]}
               onPress={() => setActiveFilter(f)}
             >
-              <Text style={[
-                styles.filterPillText,
-                { color: activeFilter === f ? C.textDark : C.textSecondary },
-                activeFilter === f && { fontFamily: Fonts.medium },
-              ]}>
+              <Text
+                style={[
+                  styles.filterPillText,
+                  { color: activeFilter === f ? C.textDark : C.textSecondary },
+                  activeFilter === f && { fontFamily: Fonts.medium },
+                ]}
+              >
                 {filterLabels[f]}
               </Text>
             </TouchableOpacity>
@@ -642,13 +869,18 @@ const ReportsScreen = ({ navigation }) => {
               {t.reports.noRecords}
             </Text>
             <Text style={[styles.emptySubtitle, { color: C.textSecondary }]}>
-              {activeFilter === 'ALL' ? t.reports.pullToRefresh : `${t.reports.no} ${filterLabels[activeFilter]} ${t.reports.records}`}
+              {activeFilter === 'ALL'
+                ? t.reports.pullToRefresh
+                : `${t.reports.no} ${filterLabels[activeFilter]} ${t.reports.records}`}
             </Text>
           </View>
         ) : (
           <View style={styles.list}>
             {filtered.map((record, i) => (
-              <RecordCard key={record._id || record.date || i} record={record} />
+              <RecordCard
+                key={record._id || record.date || i}
+                record={record}
+              />
             ))}
           </View>
         )}
@@ -662,7 +894,7 @@ const ReportsScreen = ({ navigation }) => {
 // ── Screen Styles ─────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { 
+  scroll: {
     paddingBottom: hp('2%'),
   },
   header: {

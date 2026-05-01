@@ -5,7 +5,6 @@ import { Fonts } from '../../utils/GlobalText';
 
 const ProfileModal = ({ visible, onClose, profile, theme, t }) => {
   const C = theme.colors;
-
   return (
     <Modal
       visible={visible}

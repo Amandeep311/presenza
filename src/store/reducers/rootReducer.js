@@ -7,6 +7,7 @@ import { employeeProfileReducer } from './employeeReducer';
 import kraReducer from './kraReducer';
 import employeeReducer from './employeeDataReducer';
 import meetingReducer from './meetingReducer';
+import expenseReducer from './expenseReducer';
 
 const appReducer = combineReducers({
   auth: authReducer,
@@ -17,6 +18,7 @@ const appReducer = combineReducers({
   kra: kraReducer,
   employees: employeeReducer,
   meetings: meetingReducer,
+  expense: expenseReducer,
 });
 
 const rootReducer = (state, action) => {

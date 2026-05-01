@@ -80,11 +80,25 @@ const attendanceReducer = (state = initialState, action) => {
         punchError: null,
       };
 
+    case types.PUNCH_IN_CANCEL:
+      return {
+        ...state,
+        punchInLoading: false,
+        punchError: null,
+      };
+
     case types.PUNCH_OUT_FAIL:
       return {
         ...state,
         punchOutLoading: false,
         punchError: action.payload,
+      };
+
+    case types.PUNCH_OUT_CANCEL:
+      return {
+        ...state,
+        punchOutLoading: false,
+        punchError: null,
       };
 
     // Attendance History
@@ -102,13 +116,14 @@ const attendanceReducer = (state = initialState, action) => {
         const recordDate = record.date.split('T')[0];
         return recordDate === today;
       });
-      
+
       // Check for ongoing break in today's sessions
       let activeBreak = state.activeBreak;
       if (todayRecord?.sessions?.length > 0) {
-        const lastSession = todayRecord.sessions[todayRecord.sessions.length - 1];
+        const lastSession =
+          todayRecord.sessions[todayRecord.sessions.length - 1];
         const ongoingBreak = lastSession?.breaks?.find(b => !b.breakOut);
-        
+
         if (ongoingBreak) {
           activeBreak = {
             breakIn: ongoingBreak.breakIn,
@@ -174,7 +189,8 @@ const attendanceReducer = (state = initialState, action) => {
       // Extract break info from response
       let breakInfo = null;
       if (action.payload?.sessions?.length > 0) {
-        const lastSession = action.payload.sessions[action.payload.sessions.length - 1];
+        const lastSession =
+          action.payload.sessions[action.payload.sessions.length - 1];
         const newBreak = lastSession?.breaks?.[lastSession.breaks.length - 1];
         if (newBreak) {
           breakInfo = {

@@ -125,7 +125,7 @@ export const calculateLeaveDays = (
   userBranch,
 ) => {
   const isSingleDay = startDateStr === endDateStr;
-  const shortLeaveCount = 0.5;
+  const shortLeaveCount = 0.25;
 
   const breakdown = [];
   let days = 0;
@@ -236,7 +236,7 @@ export const calculateLeaveDays = (
     } else {
       if (leaveType === 'short' && isSingleDay) {
         dayCount = shortLeaveCount;
-        label = 'Short Leave (0.5 day)';
+        label = 'Short Leave (0.25 day)';
       } else if (leaveType === 'half' && isSingleDay) {
         dayCount = 0.5;
         label = 'Half Day Leave';
