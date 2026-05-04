@@ -455,8 +455,8 @@ const HomeScreen = ({ navigation }) => {
     }
 
     if (label === t.home.reimbursement) {
-      navigation.navigate('Reimbursement');
-      return;
+      // navigation.navigate('Reimbursement');
+      // return;
     }
 
     if (label === t.home.salarySlip) {
@@ -551,13 +551,13 @@ const HomeScreen = ({ navigation }) => {
             // Refresh data after successful punch out
             if (result?.success) {
               await loadAttendanceHistory();
-              showToast('Punch out successful!', 'success');
+              // showToast('Punch out successful!', 'success');
             } else {
-              showToast(result?.error || 'Punch out failed', 'error');
+              // showToast(result?.error || 'Punch out failed', 'error');
             }
           } catch (error) {
             console.log('Punch out error:', error);
-            showToast('Punch out failed', 'error');
+            // showToast('Punch out failed', 'error');
           } finally {
             setIsProcessing(false);
           }
@@ -830,9 +830,10 @@ const HomeScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { backgroundColor: C.background },
+            { backgroundColor: C.background, flexGrow:1 },
           ]}
-          scrollEnabled={!isProcessing}
+          scrollEnabled={true}
+          alwaysBounceVertical={true}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -872,7 +873,7 @@ const HomeScreen = ({ navigation }) => {
               styles.sectionRow,
               {
                 backgroundColor: C.background,
-                marginTop: hp('5%'),
+                marginTop: hp('2%'),
                 marginBottom: hp('0%'),
               },
             ]}

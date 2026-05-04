@@ -45,13 +45,13 @@ const MainLayout = ({
       />
 
       {/* Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
+      <View
+        style={styles.contentContainer}
+        // contentContainerStyle={styles.contentContainer}
+        // showsVerticalScrollIndicator={false}
       >
         {children}
-      </ScrollView>
+      </View>
 
       {/* Bottom Navigation */}
       {!hideBottomNav && <BottomNavigator />}

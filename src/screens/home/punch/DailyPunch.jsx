@@ -603,14 +603,14 @@ const DailyPunch = ({ navigation }) => {
           navigation.replace('Home');
         }, 1500);
       } else {
-        setUiState('error');
+        // setUiState('error');
         // Only show toast if it's not a cancellation
-        if (!result?.cancelled) {
-          showToast(result?.error || t.alerts.punchInFailed, 'error');
-        }
+        // if (!result?.cancelled) {
+        //   showToast(result?.error || t.alerts.punchInFailed, 'error');
+        // }
       }
     } catch (err) {
-      setUiState('error');
+      // setUiState('error');
       showToast(t.alerts.punchInFailed, 'error');
     } finally {
       setIsProcessing(false);
@@ -899,7 +899,7 @@ const DailyPunch = ({ navigation }) => {
         </View>
 
         {/* Verification Steps */}
-        <View
+        {/* <View
           style={[
             styles.stepsCard,
             { backgroundColor: C.surface, borderColor: C.border },
@@ -936,7 +936,7 @@ const DailyPunch = ({ navigation }) => {
               </React.Fragment>
             ))}
           </View>
-        </View>
+        </View> */}
 
         {/* Distance Info for non-sales */}
         {!isSalesTeam &&
@@ -1125,7 +1125,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: hp('35%'), // Use minHeight instead of flex:1
-    marginVertical: hp('2%'),
+    marginVertical: hp('5%'),
   },
   waveRing: {
     position: 'absolute',

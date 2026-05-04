@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "presenza Docs": {
+      "type": "sse",
+      "url": "https://gitmcp.io/kuberjha25/presenza"
+    }
+  }
+}

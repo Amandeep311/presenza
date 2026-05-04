@@ -197,7 +197,7 @@ export const punchIn = () => async dispatch => {
     console.log('❌ Punch in error:', error.message);
 
     let errorMessage = 'Something went wrong';
-    let errorType = 'UNKNOWN_ERROR';
+    // let errorType = 'UNKNOWN_ERROR';
 
     // 🔥 FIX: Don't show toast for camera cancel
     if (error.message === 'CAMERA_CANCELLED') {
@@ -207,19 +207,19 @@ export const punchIn = () => async dispatch => {
 
     if (error.response?.status === 409) {
       errorMessage = 'Already punched in today!';
-      errorType = 'ALREADY_PUNCHED_IN';
+      // errorType = 'ALREADY_PUNCHED_IN';
       showToast(errorMessage, 'info');
     } else if (error.message === 'NO_INTERNET') {
       errorMessage = 'No internet connection';
-      errorType = 'NO_INTERNET';
+      // errorType = 'NO_INTERNET';
       showToast(errorMessage, 'error');
     } else if (error.message === 'LOCATION_TIMEOUT') {
       errorMessage = 'Location timeout. Please enable GPS.';
-      errorType = 'LOCATION_TIMEOUT';
+      // errorType = 'LOCATION_TIMEOUT';
       showToast(errorMessage, 'error');
     } else if (error.message === 'CAMERA_TIMEOUT') {
       errorMessage = 'Camera not responding. Please restart app.';
-      errorType = 'CAMERA_TIMEOUT';
+      // errorType = 'CAMERA_TIMEOUT';
       showToast(errorMessage, 'error');
     } else if (!error.response) {
       errorMessage = 'Network error, please try again';
@@ -234,7 +234,7 @@ export const punchIn = () => async dispatch => {
       payload: errorMessage,
     });
 
-    return { success: false, error: errorType, message: errorMessage };
+    return { success: false, message: errorMessage };
   }
 };
 

@@ -21,7 +21,7 @@ export const translations = {
     },
     otp: {
       title: 'Verify Your Account',
-      subtitle: 'Enter the OTP sent to your employee ID',
+      subtitle: 'Enter the OTP sent to your Email ID',
       otpLabel: 'Enter OTP',
       otpPlaceholder: 'Enter 6-digit OTP',
       verifyButton: 'Verify OTP',

@@ -23,7 +23,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { Fonts } from '../../utils/GlobalText';
 import LogoHeader from '../../components/Login/LogoHeader';
 import PrimaryButton from '../../components/common/PrimaryButton';
-import SlideableAlert from '../../components/common/SlideableAlert';
+// import SlideableAlert from '../../components/common/SlideableAlert';
 import OTPInput from '../../components/common/OTPInput';
 import { Settings } from 'lucide-react-native';
 
@@ -144,13 +144,13 @@ const VerifyOTP = ({ route, navigation }) => {
       <View
         style={[styles.bottomShadow, { backgroundColor: C.bottomShadow }]}
       />
-
+{/* 
       <SlideableAlert
         visible={alert.visible}
         message={alert.message}
         type={alert.type}
         onDismiss={() => dispatch(hideAlert())}
-      />
+      /> */}
 
       <KeyboardAvoidingView
         style={styles.kavContainer}

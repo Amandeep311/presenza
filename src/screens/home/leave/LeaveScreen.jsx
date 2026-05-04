@@ -12,6 +12,7 @@ import {
   Alert,
   TextInput,
   LayoutAnimation,
+  RefreshControl,
 } from 'react-native';
 import {} from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -45,6 +46,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { setAlert } from '../../../store/actions/authActions';
 import { ReusableCalendar } from '../../../components/common/ReusableCalendar';
 import { showToast } from '../../../components/common/ToastProvider';
+import { getEmployeeProfile } from '../../../store/actions/employeeActions';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const USER_BRANCH = 'CHD'; // Current user's branch
@@ -590,7 +592,20 @@ const LeaveScreen = ({ navigation }) => {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const [wordCount, setWordCount] = useState(0);
   const MAX_WORDS = 30;
+  const [refreshing, setRefreshing] = useState(false);
 
+ const onRefresh = useCallback(async () => {
+  setRefreshing(true);
+
+  try {
+    await Promise.all([
+      dispatch(fetchLeaves()),
+      dispatch(getEmployeeProfile()),
+    ]);
+  } finally {
+    setRefreshing(false);
+  }
+}, [dispatch]);
   const countWords = text => {
     if (!text.trim()) return 0;
     return text.trim().split(/\s+/).length;
@@ -859,6 +874,48 @@ const LeaveScreen = ({ navigation }) => {
       default:
         return { text: type || 'Full Day', color: C.textSecondary };
     }
+  };
+
+  const formatLeaveDate = (dateStr, isEndDate = false) => {
+    if (!dateStr) return '';
+
+    const date = new Date(dateStr);
+    if (isNaN(date)) return '';
+
+    // 🔥 IMPORTANT FIX
+    if (isEndDate) {
+      date.setDate(date.getDate() - 1);
+    }
+
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const calculateLeaveDaysSimple = leave => {
+    const { startDate, endDate, leaveType } = leave;
+
+    if (leaveType?.includes('SHORT')) return 0.25;
+    if (leaveType?.includes('HALF')) return 0.5;
+
+    let s = new Date(startDate);
+    let e = new Date(endDate);
+
+    if (isNaN(s) || isNaN(e)) return 0;
+
+    // 🧠 FIX: if endDate is exactly next day 00:00 → reduce 1 day
+    const isMidnight =
+      e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0;
+
+    if (isMidnight) {
+      e.setDate(e.getDate() - 1);
+    }
+
+    const diff = (e - s) / (1000 * 60 * 60 * 24);
+
+    return diff;
   };
 
   const getStatusColor = status => {
@@ -1386,8 +1443,17 @@ const LeaveScreen = ({ navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { flexGrow: 1 }]}
         ref={scrollViewRef}
+        alwaysBounceVertical={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.primary}
+            colors={[C.primary]}
+          />
+        }
       >
         {/* ── Month Navigator ── */}
         <View style={styles.monthNav}>
@@ -2988,8 +3054,22 @@ const LeaveScreen = ({ navigation }) => {
                   .map((leave, index) => {
                     const leaveTypeInfo = getLeaveTypeDisplay(leave.leaveType);
                     const startDateFormatted = formatLeaveDate(leave.startDate);
-                    const endDateFormatted = formatLeaveDate(leave.endDate);
-                    const isMultiDay = startDateFormatted !== endDateFormatted;
+                    const endDateFormatted = formatLeaveDate(
+                      leave.endDate,
+                      true,
+                    ); // 👈 yahan true
+                    const isShortOrHalf =
+                      leave.leaveType.includes('SHORT') ||
+                      leave.leaveType.includes('HALF');
+
+                    const isMultiDay =
+                      !isShortOrHalf && startDateFormatted !== endDateFormatted;
+
+                    const isSingleDayLeave =
+                      leave.leaveType?.includes('SHORT') ||
+                      leave.leaveType?.includes('HALF');
+
+                    const totalDays = calculateLeaveDaysSimple(leave);
 
                     return (
                       <View
@@ -3063,7 +3143,7 @@ const LeaveScreen = ({ navigation }) => {
                           </Text>
                         </View>
 
-                        {leave.totalDays && (
+                        {totalDays > 1 && (
                           <View style={styles.leaveDaysBadge}>
                             <Clock size={wp('2.5%')} color={C.success} />
                             <Text
@@ -3072,8 +3152,8 @@ const LeaveScreen = ({ navigation }) => {
                                 { color: C.success },
                               ]}
                             >
-                              {leave.totalDays}{' '}
-                              {leave.totalDays > 1 ? 'days' : 'day'}
+                              {parseFloat(totalDays).toFixed(1)}{' '}
+                              {totalDays > 1 ? 'days' : 'day'}
                             </Text>
                           </View>
                         )}
