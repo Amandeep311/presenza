@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Linking,
   Clipboard,
+  RefreshControl,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -129,6 +130,7 @@ export const MeetingsScreen = ({ navigation }) => {
   const [legendExpanded, setLegendExpanded] = useState(false);
   const legendAnim = useRef(new Animated.Value(0)).current;
   const [myMeetings, setMyMeetings] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   // All Meetings Dropdown State
   const [allMeetingsExpanded, setAllMeetingsExpanded] = useState(true);
@@ -180,6 +182,24 @@ export const MeetingsScreen = ({ navigation }) => {
         employee.department?.toLowerCase().includes(query),
     );
   }, [employeeSearchQuery, employeesList, user]);
+
+   // ✅ Pull-to-refresh handler - Called when user pulls down
+    const onRefresh = useCallback(async () => {
+      setRefreshing(true);
+      console.log('🔄 User pulled to refresh');
+      try {
+        await Promise.all([
+          dispatch(fetchEmployees()),
+          dispatch(fetchMeetings()),
+        ]);
+        console.log('✅ Refresh completed');
+      } catch (e) {
+        console.log('❌ Error during refresh:', e);
+      } finally {
+        setRefreshing(false);
+      }
+    }, [dispatch]);
+  
 
   // Initialize
   useEffect(() => {
@@ -296,10 +316,7 @@ export const MeetingsScreen = ({ navigation }) => {
 
     // ✅ NEW: Validate virtual meeting link
     if (meetingType === 'VIRTUAL' && !meetingLocation.trim()) {
-      showToast(
-        'Please provide a meeting link for virtual meeting',
-        'warning'
-      );
+      showToast('Please provide a meeting link for virtual meeting', 'warning');
       return;
     }
 
@@ -307,7 +324,7 @@ export const MeetingsScreen = ({ navigation }) => {
     if (meetingType === 'VIRTUAL' && !isValidURL(meetingLocation)) {
       showToast(
         'Please enter a valid meeting URL (e.g., https://zoom.us/j/123456789)',
-        'warning'
+        'warning',
       );
       return;
     }
@@ -320,7 +337,7 @@ export const MeetingsScreen = ({ navigation }) => {
     if (filteredAttendees.length === 0) {
       showToast(
         'Please select at least one attendee other than yourself',
-        'warning'
+        'warning',
       );
       return;
     }
@@ -348,10 +365,7 @@ export const MeetingsScreen = ({ navigation }) => {
     const result = await dispatch(createMeeting(meetingData));
 
     if (result.success) {
-      showToast(
-        result.message || 'Meeting scheduled successfully!',
-        'success'
-      );
+      showToast(result.message || 'Meeting scheduled successfully!', 'success');
 
       // Reset form
       resetForm();
@@ -865,9 +879,15 @@ export const MeetingsScreen = ({ navigation }) => {
         ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[C.primary]}
+            tintColor={C.primary}
+          />
+        }
       >
-       
-
         {/* Calendar */}
         <View style={styles.calendarWrapper}>
           <ReusableCalendar
@@ -907,7 +927,7 @@ export const MeetingsScreen = ({ navigation }) => {
           )}
         </View>
 
-         {/* Stats Cards */}
+        {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View
             style={[
@@ -975,18 +995,18 @@ export const MeetingsScreen = ({ navigation }) => {
             </View>
             {selectedDateMeetings.length > 0 ? (
               <Animated.View
-            style={[
-              styles.allMeetingsContent,
-              {
-                maxHeight: allMeetingsAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 500],
-                }),
-                opacity: allMeetingsAnim,
-                overflow: 'hidden',
-              },
-            ]}
-          >
+                style={[
+                  styles.allMeetingsContent,
+                  {
+                    maxHeight: allMeetingsAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 500],
+                    }),
+                    opacity: allMeetingsAnim,
+                    overflow: 'hidden',
+                  },
+                ]}
+              >
                 <FlatList
                   data={selectedDateMeetings}
                   renderItem={renderMeetingItem}
@@ -1443,9 +1463,7 @@ export const MeetingsScreen = ({ navigation }) => {
                   },
                 ]}
                 onPress={handleScheduleMeeting}
-                
-                        disabled={creatingMeeting || isUrlInvalid}
-
+                disabled={creatingMeeting || isUrlInvalid}
               >
                 {creatingMeeting ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -1695,25 +1713,23 @@ export const MeetingsScreen = ({ navigation }) => {
 
                 <View style={styles.modalActions}>
                   {meetingDetailModal.type === 'VIRTUAL' && (
-                  <TouchableOpacity
-                    style={[
-                      styles.modalJoinBtn,
-                      { backgroundColor: C.primary },
-                    ]}
-                    onPress={() => joinMeeting(meetingDetailModal)}
-                  >
-                    {meetingDetailModal.type === 'VIRTUAL' ? (
-                      <ExternalLink size={wp('4%')} color="#fff" />
-                    ) : (
-                      // <MapPin size={wp('4%')} color="#fff" />
-                      null
-                    )}
-                    <Text style={styles.modalJoinBtnText}>
-                      {meetingDetailModal.type === 'VIRTUAL'
-                        ? 'Join Meeting'
-                        : ''}
-                    </Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.modalJoinBtn,
+                        { backgroundColor: C.primary },
+                      ]}
+                      onPress={() => joinMeeting(meetingDetailModal)}
+                    >
+                      {meetingDetailModal.type === 'VIRTUAL' ? (
+                        <ExternalLink size={wp('4%')} color="#fff" />
+                      ) : // <MapPin size={wp('4%')} color="#fff" />
+                      null}
+                      <Text style={styles.modalJoinBtnText}>
+                        {meetingDetailModal.type === 'VIRTUAL'
+                          ? 'Join Meeting'
+                          : ''}
+                      </Text>
+                    </TouchableOpacity>
                   )}
                   <TouchableOpacity
                     style={[

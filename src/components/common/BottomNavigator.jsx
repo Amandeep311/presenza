@@ -119,6 +119,9 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingTop: 12,
+    position: 'absolute',
+   
+    bottom: 0,
     // Remove fixed paddingBottom - will be handled by insets
   },
   tabItem: {

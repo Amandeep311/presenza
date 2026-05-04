@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: wp('5%'),
     paddingTop: hp('2%'),
-    paddingBottom: hp('2%'),
+    paddingBottom: hp('20%'),
   },
 });
 

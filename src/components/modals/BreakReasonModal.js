@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -54,7 +56,7 @@ const BreakReasonModal = ({ visible, onClose, onConfirm, loading }) => {
   ];
 
   // Final break types based on department
-  const breakTypes = isSalesTeam 
+  const breakTypes = isSalesTeam
     ? [...baseBreakTypes, ...salesBreakTypes]
     : baseBreakTypes;
 
@@ -115,153 +117,158 @@ const BreakReasonModal = ({ visible, onClose, onConfirm, loading }) => {
       animationType="slide"
       onRequestClose={handleClose}
     >
-      <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
-        <View
-          style={[
-            styles.modalContent,
-            {
-              backgroundColor: C.surfaceSolid,
-              borderColor: C.border,
-            },
-          ]}
-        >
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
-              {t.breaks.startBreak}
-            </Text>
-            <TouchableOpacity onPress={handleClose} disabled={loading}>
-              <X size={wp('6%')} color={C.textSecondary} />
-            </TouchableOpacity>
-          </View>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: C.surfaceSolid,
+                borderColor: C.border,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
+                {t.breaks.startBreak}
+              </Text>
+              <TouchableOpacity onPress={handleClose} disabled={loading}>
+                <X size={wp('6%')} color={C.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-          <Text style={[styles.label, { color: C.textSecondary }]}>
-            {t.breaks.breakType}
-          </Text>
-          <View style={styles.breakTypeContainer}>
-            {breakTypes.map(type => (
-              <TouchableOpacity
-                key={type.value}
+            <Text style={[styles.label, { color: C.textSecondary }]}>
+              {t.breaks.breakType}
+            </Text>
+            <View style={styles.breakTypeContainer}>
+              {breakTypes.map(type => (
+                <TouchableOpacity
+                  key={type.value}
+                  style={[
+                    styles.breakTypeButton,
+                    {
+                      borderColor:
+                        breakType === type.value ? C.primary : C.border,
+                      backgroundColor:
+                        breakType === type.value
+                          ? C.primary + '20'
+                          : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setBreakType(type.value)}
+                  disabled={loading}
+                >
+                  <Text
+                    style={[
+                      styles.breakTypeText,
+                      {
+                        color:
+                          breakType === type.value ? C.primary : C.textPrimary,
+                      },
+                    ]}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: C.textSecondary }]}>
+              {t.breaks.reason}
+            </Text>
+
+            <View style={styles.wordCountContainer}>
+              <Text
                 style={[
-                  styles.breakTypeButton,
+                  styles.wordCountText,
                   {
-                    borderColor:
-                      breakType === type.value ? C.primary : C.border,
-                    backgroundColor:
-                      breakType === type.value
-                        ? C.primary + '20'
-                        : 'transparent',
+                    color:
+                      remainingWords <= 0
+                        ? C.error
+                        : remainingWords <= 10
+                        ? C.warning
+                        : C.textSecondary,
                   },
                 ]}
-                onPress={() => setBreakType(type.value)}
+              >
+                {wordCount} / {MAX_WORDS} words
+              </Text>
+              {remainingWords > 0 && remainingWords <= 10 && (
+                <Text style={[styles.wordCountWarning, { color: C.warning }]}>
+                  {remainingWords} word{remainingWords !== 1 ? 's' : ''}{' '}
+                  remaining
+                </Text>
+              )}
+              {remainingWords <= 0 && (
+                <Text style={[styles.wordCountError, { color: C.error }]}>
+                  Word limit exceeded!
+                </Text>
+              )}
+            </View>
+
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: C.inputBg,
+                  borderColor: remainingWords < 0 ? C.error : C.inputBorder,
+                  color: C.textPrimary,
+                },
+                remainingWords < 0 && { borderWidth: 2 },
+              ]}
+              placeholder={t.breaks.reasonPlaceholder}
+              placeholderTextColor={C.textSecondary}
+              value={remarks}
+              onChangeText={handleTextChange}
+              multiline
+              numberOfLines={4}
+              editable={!loading}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.cancelButton,
+                  {
+                    borderColor: C.border,
+                  },
+                ]}
+                onPress={handleClose}
                 disabled={loading}
               >
                 <Text
-                  style={[
-                    styles.breakTypeText,
-                    {
-                      color:
-                        breakType === type.value ? C.primary : C.textPrimary,
-                    },
-                  ]}
+                  style={[styles.cancelButtonText, { color: C.textSecondary }]}
                 >
-                  {type.label}
+                  {t.breaks.cancel}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={[styles.label, { color: C.textSecondary }]}>
-            {t.breaks.reason}
-          </Text>
-
-          <View style={styles.wordCountContainer}>
-            <Text
-              style={[
-                styles.wordCountText,
-                {
-                  color:
-                    remainingWords <= 0
-                      ? C.error
-                      : remainingWords <= 10
-                      ? C.warning
-                      : C.textSecondary,
-                },
-              ]}
-            >
-              {wordCount} / {MAX_WORDS} words
-            </Text>
-            {remainingWords > 0 && remainingWords <= 10 && (
-              <Text style={[styles.wordCountWarning, { color: C.warning }]}>
-                {remainingWords} word{remainingWords !== 1 ? 's' : ''} remaining
-              </Text>
-            )}
-            {remainingWords <= 0 && (
-              <Text style={[styles.wordCountError, { color: C.error }]}>
-                Word limit exceeded!
-              </Text>
-            )}
-          </View>
-
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: C.inputBg,
-                borderColor: remainingWords < 0 ? C.error : C.inputBorder,
-                color: C.textPrimary,
-              },
-              remainingWords < 0 && { borderWidth: 2 },
-            ]}
-            placeholder={t.breaks.reasonPlaceholder}
-            placeholderTextColor={C.textSecondary}
-            value={remarks}
-            onChangeText={handleTextChange}
-            multiline
-            numberOfLines={4}
-            editable={!loading}
-          />
-
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[
-                styles.cancelButton,
-                {
-                  borderColor: C.border,
-                },
-              ]}
-              onPress={handleClose}
-              disabled={loading}
-            >
-              <Text
-                style={[styles.cancelButtonText, { color: C.textSecondary }]}
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  {
+                    backgroundColor: C.primary,
+                  },
+                  (loading || !remarks.trim() || wordCount > MAX_WORDS) && {
+                    opacity: 0.5,
+                  },
+                ]}
+                onPress={handleConfirm}
+                disabled={loading || !remarks.trim() || wordCount > MAX_WORDS}
               >
-                {t.breaks.cancel}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.confirmButton,
-                {
-                  backgroundColor: C.primary,
-                },
-                (loading || !remarks.trim() || wordCount > MAX_WORDS) && {
-                  opacity: 0.5,
-                },
-              ]}
-              onPress={handleConfirm}
-              disabled={loading || !remarks.trim() || wordCount > MAX_WORDS}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={C.textDark} />
-              ) : (
-                <Text style={[styles.confirmButtonText, { color: C.textDark }]}>
-                  {t.breaks.confirm}
-                </Text>
-              )}
-            </TouchableOpacity>
+                {loading ? (
+                  <ActivityIndicator size="small" color={C.textDark} />
+                ) : (
+                  <Text
+                    style={[styles.confirmButtonText, { color: C.textDark }]}
+                  >
+                    {t.breaks.confirm}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };

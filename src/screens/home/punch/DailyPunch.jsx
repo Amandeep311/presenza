@@ -776,7 +776,7 @@ const DailyPunch = ({ navigation }) => {
                 {location?.name || t.attendance.defaultLocation}
               </Text>
             </View>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[styles.mapBadge, { backgroundColor: C.primary }]}
               onPress={() => setMapVisible(true)}
               activeOpacity={0.8}
@@ -786,7 +786,7 @@ const DailyPunch = ({ navigation }) => {
               <Text style={[styles.mapBadgeText, { color: C.textDark }]}>
                 {t.attendance.map || 'MAP'}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
 
           {/* Geofence strip */}
