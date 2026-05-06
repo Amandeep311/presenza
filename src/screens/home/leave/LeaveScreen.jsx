@@ -594,18 +594,18 @@ const LeaveScreen = ({ navigation }) => {
   const MAX_WORDS = 30;
   const [refreshing, setRefreshing] = useState(false);
 
- const onRefresh = useCallback(async () => {
-  setRefreshing(true);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
 
-  try {
-    await Promise.all([
-      dispatch(fetchLeaves()),
-      dispatch(getEmployeeProfile()),
-    ]);
-  } finally {
-    setRefreshing(false);
-  }
-}, [dispatch]);
+    try {
+      await Promise.all([
+        dispatch(fetchLeaves()),
+        dispatch(getEmployeeProfile()),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [dispatch]);
   const countWords = text => {
     if (!text.trim()) return 0;
     return text.trim().split(/\s+/).length;
@@ -756,21 +756,44 @@ const LeaveScreen = ({ navigation }) => {
 
   const { profile } = useSelector(state => state.employeeProfile);
   const userProfile = profile?.[0] || {};
+  console.log('User profile from Redux:', userProfile);
 
   // ── Leave Balance ─────────────────────────────────────────────────────────
   const LEAVE_BALANCE = {
     total: {
-      total: userProfile.totalLeaveRemaining || 0,
+      total: userProfile.totalLeave || 28.5,
       used: userProfile.totalLeaveUsed || 0,
+      remaining: userProfile.totalLeaveRemaining || 28.5,
     },
     short: {
-      totalPerMonth: 2, // Keep this as is - seems to be a monthly limit
-      usedThisMonth: userProfile.totalShortLeaveUsed || 0,
+      totalPerMonth: 2,
+      usedThisMonth: userProfile.currentMonthShortLeaveUsed || 0,
+      remainingThisMonth:
+        userProfile.currentMonthShortLeaveRemaining !== undefined
+          ? userProfile.currentMonthShortLeaveRemaining
+          : 2,
     },
   };
-  const totalRemaining = LEAVE_BALANCE.total.total;
-  const shortRemaining =
-    LEAVE_BALANCE.short.totalPerMonth - LEAVE_BALANCE.short.usedThisMonth;
+  const totalRemaining = LEAVE_BALANCE.total.remaining;
+  const totalLeaveBalance = LEAVE_BALANCE.total.total;
+  const shortRemaining = LEAVE_BALANCE.short.remainingThisMonth;
+
+  // Get current month from API if available, otherwise calculate
+  const currentMonthLeaveRemaining =
+    userProfile.currentMonthLeaveRemaining !== undefined
+      ? userProfile.currentMonthLeaveRemaining
+      : 2.5;
+  const currentMonthLeaveUsed = userProfile.currentMonthLeaveUsed || 0;
+
+  // Determine monthly leave allocation based on month
+  const getMonthlyLeaveAllocation = () => {
+    const currentMonth = new Date().getMonth(); // 0-based: 2=March, 7=August
+    // March (2) and August (7) get 3.5, others get 2.5
+    if (currentMonth === 2 || currentMonth === 7) return 3.5;
+    return 2.5;
+  };
+
+  const monthlyLeaveAllocation = getMonthlyLeaveAllocation();
 
   // Leave selection state
   const [startDate, setStartDate] = useState(null);
@@ -1693,7 +1716,7 @@ const LeaveScreen = ({ navigation }) => {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.balanceStrip}
             >
-              {/* Total Leave */}
+              {/* Total Leave — Yearly */}
               <View
                 style={[
                   styles.balanceCard,
@@ -1720,14 +1743,27 @@ const LeaveScreen = ({ navigation }) => {
                       { color: C.primary + '80' },
                     ]}
                   >
-                    / {LEAVE_BALANCE.total.total}
+                    / {totalLeaveBalance}
                   </Text>
                 </View>
-                <Text
-                  style={[styles.balanceCardLabel, { color: C.textSecondary }]}
-                >
-                  {t?.leave?.total || 'Total'}
-                </Text>
+                <View style={styles.balanceCardLabelRow}>
+                  <Text
+                    style={[
+                      styles.balanceCardLabel,
+                      { color: C.textSecondary },
+                    ]}
+                  >
+                    {t?.leave?.total || 'Total Leave'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceCardSubLabel,
+                      { color: C.textSecondary + '80' },
+                    ]}
+                  >
+                    Yearly
+                  </Text>
+                </View>
                 <View
                   style={[styles.balanceBar, { backgroundColor: C.border }]}
                 >
@@ -1736,83 +1772,39 @@ const LeaveScreen = ({ navigation }) => {
                       styles.balanceBarFill,
                       {
                         width: `${
-                          (totalRemaining / LEAVE_BALANCE.total.total) * 100
+                          totalLeaveBalance > 0
+                            ? (totalRemaining / totalLeaveBalance) * 100
+                            : 0
                         }%`,
                         backgroundColor:
-                          totalRemaining <= 2
+                          totalRemaining <= 3
                             ? C.error
-                            : totalRemaining <= 5
+                            : totalRemaining <= 7
                             ? C.warning
                             : C.primary,
                       },
                     ]}
                   />
                 </View>
-                <Text
-                  style={[styles.balanceUsedText, { color: C.textSecondary }]}
-                >
-                  {LEAVE_BALANCE.total.used} {t?.leave?.usedLabel || 'used'}
-                </Text>
+                <View style={styles.balanceInfoRow}>
+                  <Text
+                    style={[styles.balanceUsedText, { color: C.textSecondary }]}
+                  >
+                    {LEAVE_BALANCE.total.used} {t?.leave?.usedLabel || 'used'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceAllocationText,
+                      { color: C.primary + '80' },
+                    ]}
+                  >
+                    +{monthlyLeaveAllocation}/mo
+                  </Text>
+                </View>
               </View>
 
-              {/* Sick Leave */}
-              {/* <View
-                style={[
-                  styles.balanceCard,
-                  { backgroundColor: C.background, borderColor: C.info + '50' },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.balanceCardTop,
-                    { backgroundColor: C.info + '18' },
-                  ]}
-                >
-                  <Text
-                    style={[styles.balanceCardRemaining, { color: C.info }]}
-                  >
-                    {sickRemaining}
-                  </Text>
-                  <Text
-                    style={[styles.balanceCardTotal, { color: C.info + '90' }]}
-                  >
-                    / {LEAVE_BALANCE.sick.total}
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.balanceCardLabel, { color: C.textSecondary }]}
-                >
-                  {t?.leave?.sick || 'Sick'}
-                </Text>
-                <View
-                  style={[styles.balanceBar, { backgroundColor: C.border }]}
-                >
-                  <View
-                    style={[
-                      styles.balanceBarFill,
-                      {
-                        width: `${
-                          (sickRemaining / LEAVE_BALANCE.sick.total) * 100
-                        }%`,
-                        backgroundColor:
-                          sickRemaining <= 2
-                            ? C.error
-                            : sickRemaining <= 5
-                            ? C.warning
-                            : C.info,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[styles.balanceUsedText, { color: C.textSecondary }]}
-                >
-                  {LEAVE_BALANCE.sick.used} {t?.leave?.usedLabel || 'used'}
-                </Text>
-              </View> */}
-
-              {/* Earned Leave */}
-              {/* <View
+              {/* Monthly Leave Allocation */}
+              <View
                 style={[
                   styles.balanceCard,
                   {
@@ -1830,7 +1822,7 @@ const LeaveScreen = ({ navigation }) => {
                   <Text
                     style={[styles.balanceCardRemaining, { color: C.success }]}
                   >
-                    {earnedRemaining}
+                    {currentMonthLeaveRemaining}
                   </Text>
                   <Text
                     style={[
@@ -1838,14 +1830,27 @@ const LeaveScreen = ({ navigation }) => {
                       { color: C.success + '80' },
                     ]}
                   >
-                    / {LEAVE_BALANCE.earned.total}
+                    / {monthlyLeaveAllocation}
                   </Text>
                 </View>
-                <Text
-                  style={[styles.balanceCardLabel, { color: C.textSecondary }]}
-                >
-                  {t?.leave?.earned || 'Earned'}
-                </Text>
+                <View style={styles.balanceCardLabelRow}>
+                  <Text
+                    style={[
+                      styles.balanceCardLabel,
+                      { color: C.textSecondary },
+                    ]}
+                  >
+                    Monthly Leave
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceCardSubLabel,
+                      { color: C.textSecondary + '80' },
+                    ]}
+                  >
+                    {MONTHS[new Date().getMonth()]}
+                  </Text>
+                </View>
                 <View
                   style={[styles.balanceBar, { backgroundColor: C.border }]}
                 >
@@ -1854,30 +1859,45 @@ const LeaveScreen = ({ navigation }) => {
                       styles.balanceBarFill,
                       {
                         width: `${
-                          (earnedRemaining / LEAVE_BALANCE.earned.total) * 100
+                          monthlyLeaveAllocation > 0
+                            ? (currentMonthLeaveRemaining /
+                                monthlyLeaveAllocation) *
+                              100
+                            : 0
                         }%`,
                         backgroundColor:
-                          earnedRemaining <= 2
+                          currentMonthLeaveRemaining <= 0.5
                             ? C.error
-                            : earnedRemaining <= 5
+                            : currentMonthLeaveRemaining <= 1
                             ? C.warning
                             : C.success,
                       },
                     ]}
                   />
                 </View>
-                <Text
-                  style={[styles.balanceUsedText, { color: C.textSecondary }]}
-                >
-                  {LEAVE_BALANCE.earned.used} {t?.leave?.usedLabel || 'used'}
-                </Text>
-              </View> */}
+                <View style={styles.balanceInfoRow}>
+                  <Text
+                    style={[styles.balanceUsedText, { color: C.textSecondary }]}
+                  >
+                    {currentMonthLeaveUsed} used this month
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceAllocationText,
+                      { color: C.success + '80' },
+                    ]}
+                  >
+                    {new Date().getMonth() === 2 || new Date().getMonth() === 7
+                      ? '3.5/mo'
+                      : '2.5/mo'}
+                  </Text>
+                </View>
+              </View>
 
-              {/* Short Leave — monthly */}
+              {/* Short Leave — Monthly */}
               <View
                 style={[
                   styles.balanceCard,
-                  // styles.balanceCardShort,
                   {
                     backgroundColor: C.background,
                     borderColor: C.warning + '40',
@@ -1904,11 +1924,24 @@ const LeaveScreen = ({ navigation }) => {
                     / {LEAVE_BALANCE.short.totalPerMonth}
                   </Text>
                 </View>
-                <Text
-                  style={[styles.balanceCardLabel, { color: C.textSecondary }]}
-                >
-                  {t?.leave?.shortLeaveLabel || 'Short'}
-                </Text>
+                <View style={styles.balanceCardLabelRow}>
+                  <Text
+                    style={[
+                      styles.balanceCardLabel,
+                      { color: C.textSecondary },
+                    ]}
+                  >
+                    Short Leave
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceCardSubLabel,
+                      { color: C.textSecondary + '80' },
+                    ]}
+                  >
+                    Monthly 🔄
+                  </Text>
+                </View>
                 <View
                   style={[styles.balanceBar, { backgroundColor: C.border }]}
                 >
@@ -1917,8 +1950,11 @@ const LeaveScreen = ({ navigation }) => {
                       styles.balanceBarFill,
                       {
                         width: `${
-                          (shortRemaining / LEAVE_BALANCE.short.totalPerMonth) *
-                          100
+                          LEAVE_BALANCE.short.totalPerMonth > 0
+                            ? (shortRemaining /
+                                LEAVE_BALANCE.short.totalPerMonth) *
+                              100
+                            : 0
                         }%`,
                         backgroundColor:
                           shortRemaining === 0 ? C.error : C.warning,
@@ -1926,11 +1962,21 @@ const LeaveScreen = ({ navigation }) => {
                     ]}
                   />
                 </View>
-                <Text
-                  style={[styles.balanceUsedText, { color: C.textSecondary }]}
-                >
-                  {t?.leave?.thisMonthLabel || 'This month'}
-                </Text>
+                <View style={styles.balanceInfoRow}>
+                  <Text
+                    style={[styles.balanceUsedText, { color: C.textSecondary }]}
+                  >
+                    {LEAVE_BALANCE.short.usedThisMonth} used
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceAllocationText,
+                      { color: C.warning + '80' },
+                    ]}
+                  >
+                    Resets monthly
+                  </Text>
+                </View>
               </View>
             </ScrollView>
           </View>
@@ -4262,7 +4308,27 @@ const styles = StyleSheet.create({
   },
   instructionDot: { width: 7, height: 7, borderRadius: 4 },
   instructionText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium, flex: 1 },
-
+  balanceCardLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  balanceCardSubLabel: {
+    fontSize: wp('2%'),
+    fontFamily: Fonts.regular,
+    fontStyle: 'italic',
+  },
+  balanceInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  balanceAllocationText: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.medium,
+  },
   datePickerRow: { flexDirection: 'row', alignItems: 'center', gap: wp('2%') },
   datePickerBox: {
     flex: 1,

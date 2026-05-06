@@ -1,7 +1,7 @@
-// Action Types
 export const SEND_OTP_REQUEST = 'SEND_OTP_REQUEST';
 export const SEND_OTP_SUCCESS = 'SEND_OTP_SUCCESS';
 export const SEND_OTP_FAIL = 'SEND_OTP_FAIL';
+export const RESET_SEND_OTP = 'RESET_SEND_OTP'; // ✅ NEW
 
 export const VERIFY_OTP_REQUEST = 'VERIFY_OTP_REQUEST';
 export const VERIFY_OTP_SUCCESS = 'VERIFY_OTP_SUCCESS';
@@ -43,14 +43,9 @@ const initialState = {
 
 const authReducer = (state = initialState, action) => {
   switch (action.type) {
-    // Loading case
     case AUTH_LOADING:
-      return {
-        ...state,
-        loading: action.payload,
-      };
+      return { ...state, loading: action.payload };
 
-    // Send OTP cases
     case SEND_OTP_REQUEST:
       return {
         ...state,
@@ -58,7 +53,7 @@ const authReducer = (state = initialState, action) => {
         sendOtpSuccess: false,
         sendOtpError: null,
       };
-      
+
     case SEND_OTP_SUCCESS:
       return {
         ...state,
@@ -67,7 +62,7 @@ const authReducer = (state = initialState, action) => {
         sendOtpError: null,
         sentEmail: action.payload.email,
       };
-      
+
     case SEND_OTP_FAIL:
       return {
         ...state,
@@ -75,8 +70,11 @@ const authReducer = (state = initialState, action) => {
         sendOtpSuccess: false,
         sendOtpError: action.payload,
       };
-      
-    // Verify OTP cases
+
+    // ✅ NEW: Reset karo jab OTP screen se wapas aao
+    case RESET_SEND_OTP:
+      return { ...state, sendOtpSuccess: false, sendOtpError: null };
+
     case VERIFY_OTP_REQUEST:
       return {
         ...state,
@@ -84,11 +82,11 @@ const authReducer = (state = initialState, action) => {
         verifyOtpSuccess: false,
         verifyOtpError: null,
       };
-      
+
     case VERIFY_OTP_SUCCESS:
       return {
         ...state,
-        loading: false, // ✅ IMPORTANT: Stop loading on success
+        loading: false,
         verifyOtpLoading: false,
         verifyOtpSuccess: true,
         verifyOtpError: null,
@@ -97,18 +95,17 @@ const authReducer = (state = initialState, action) => {
         user: action.payload.user,
         isAuthenticated: true,
       };
-      
+
     case VERIFY_OTP_FAIL:
       return {
         ...state,
-        loading: false, // ✅ IMPORTANT: Stop loading on fail
+        loading: false,
         verifyOtpLoading: false,
         verifyOtpSuccess: false,
         verifyOtpError: action.payload,
         isAuthenticated: false,
       };
-      
-    // Biometric login cases
+
     case BIOMETRIC_LOGIN_REQUEST:
       return {
         ...state,
@@ -116,11 +113,11 @@ const authReducer = (state = initialState, action) => {
         biometricSuccess: false,
         biometricError: null,
       };
-      
+
     case BIOMETRIC_LOGIN_SUCCESS:
       return {
         ...state,
-        loading: false, // ✅ IMPORTANT: Stop loading on success
+        loading: false,
         biometricLoading: false,
         biometricSuccess: true,
         biometricError: null,
@@ -129,48 +126,35 @@ const authReducer = (state = initialState, action) => {
         user: action.payload.user,
         isAuthenticated: true,
       };
-      
+
     case BIOMETRIC_LOGIN_FAIL:
       return {
         ...state,
-        loading: false, // ✅ IMPORTANT: Stop loading on fail
+        loading: false,
         biometricLoading: false,
         biometricSuccess: false,
         biometricError: action.payload,
         isAuthenticated: false,
       };
-      
-    // Token refresh cases
+
     case REFRESH_TOKEN_SUCCESS:
-      return {
-        ...state,
-        accessToken: action.payload,
-      };
-      
+      return { ...state, accessToken: action.payload };
+
     case REFRESH_TOKEN_FAIL:
-      return {
-        ...state,
-        isAuthenticated: false,
-        loading: false,
-      };
-      
-    // Biometric availability
+      return { ...state, isAuthenticated: false, loading: false };
+
     case SET_BIOMETRIC_AVAILABLE:
-      return {
-        ...state,
-        biometricAvailable: action.payload,
-      };
-      
-    // Logout cases
+      return { ...state, biometricAvailable: action.payload };
+
     case LOGOUT:
     case RESET_APP_STATE:
       return {
         ...initialState,
-        loading: false, // ✅ IMPORTANT: Stop loading on logout
+        loading: false,
         isAuthenticated: false,
         biometricAvailable: state.biometricAvailable,
       };
-      
+
     default:
       return state;
   }

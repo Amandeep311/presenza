@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   KeyboardAvoidingView,
@@ -15,6 +15,7 @@ import {
   heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
 import { useDispatch, useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Colors, Fonts } from '../../utils/GlobalText';
@@ -22,7 +23,6 @@ import LogoHeader from '../../components/Login/LogoHeader';
 import WelcomeText from '../../components/Login/WelcomeText';
 import FloatingLabelInput from '../../components/common/FloatingLabelInput';
 import PrimaryButton from '../../components/common/PrimaryButton';
-// import SlideableAlert from '../../components/common/SlideableAlert';
 import { sendOtp, hideAlert } from '../../store/actions/authActions';
 import { Settings } from 'lucide-react-native';
 
@@ -43,23 +43,28 @@ const LoginScreen = ({ navigation }) => {
     return () => console.log('🔐 LoginScreen unmounted');
   }, []);
 
+  // ✅ FIX 1: Jab bhi screen focus mein aaye, form reset karo
+  useFocusEffect(
+    useCallback(() => {
+      setEmployeeId('');
+      setEmployeeIdError('');
+    }, [])
+  );
+
   useEffect(() => {
     if (sendOtpSuccess && employeeId) {
       console.log('📧 OTP sent successfully, navigating to verification');
       navigation.navigate('Verify_Otp', {
-        employeeId: employeeId.trim().toUpperCase(), // Send uppercase to verification screen
+        employeeId: employeeId.trim().toUpperCase(),
       });
     }
   }, [sendOtpSuccess, employeeId, navigation]);
 
-  // Filter function to only allow alphanumeric characters
   const filterAlphanumeric = (text) => {
-    // Remove any character that is not a letter (A-Z, a-z) or number (0-9)
     return text.replace(/[^a-zA-Z0-9]/g, '');
   };
 
   const validateEmployeeId = (id) => {
-    // Allow alphanumeric, at least 1 character
     return id && id.trim().length > 0;
   };
 
@@ -73,7 +78,6 @@ const LoginScreen = ({ navigation }) => {
     }
 
     console.log('📤 Sending OTP for employee ID:', employeeId);
-    // Convert to uppercase for API payload
     const payloadEmployeeId = employeeId.trim().toUpperCase();
     await dispatch(sendOtp(payloadEmployeeId));
   };
@@ -82,18 +86,8 @@ const LoginScreen = ({ navigation }) => {
     <View style={[styles.rootContainer, { backgroundColor: C.background }]}>
       <StatusBar barStyle={C.statusBar} backgroundColor={C.background} />
 
-      {/* Background decorative blobs */}
       <View style={[styles.topShadow, { backgroundColor: C.topShadow }]} />
-      <View
-        style={[styles.bottomShadow, { backgroundColor: C.bottomShadow }]}
-      />
-
-      {/* <SlideableAlert
-        visible={alert.visible}
-        message={alert.message}
-        type={alert.type}
-        onDismiss={() => dispatch(hideAlert())}
-      /> */}
+      <View style={[styles.bottomShadow, { backgroundColor: C.bottomShadow }]} />
 
       <KeyboardAvoidingView
         style={styles.kavContainer}
@@ -114,15 +108,11 @@ const LoginScreen = ({ navigation }) => {
               label="Employee ID"
               value={employeeId}
               onChangeText={text => {
-                // Filter out special characters first, then convert to uppercase
                 const filteredText = filterAlphanumeric(text);
-                setEmployeeId(filteredText
-                  // .toUpperCase()
-                );
+                setEmployeeId(filteredText);
                 setEmployeeIdError('');
               }}
               keyboardType="default"
-              // autoCapitalize="characters"
               maxLength={20}
               placeholder="Enter your Employee ID"
               placeholderTextColor={C.textSecondary}

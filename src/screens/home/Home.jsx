@@ -83,83 +83,89 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ============ ATTENDANCE CALCULATION RULES (Frontend) ============
-// All times in minutes from midnight
-const ATTENDANCE_RULES = {
-  OFFICE_START: 9 * 60, // 9:00 AM
-  LATE_THRESHOLD: 9 * 60 + 40, // 9:40 AM
-  HALF_DAY_THRESHOLD: 11 * 60 + 30, // 11:30 AM
-  ABSENT_THRESHOLD: 14 * 60, // 2:00 PM
-};
-
-const getAttendanceStatusFromPunchIn = punchInTime => {
-  if (!punchInTime) {
+// ============ ATTENDANCE STATUS HELPER ============
+// Use API-provided status instead of recalculating
+const getAttendanceStatusConfig = (todayRecord, C, t) => {
+  // If no record at all
+  if (!todayRecord) {
     return {
       status: 'NOT_MARKED',
-      label: 'Not Marked',
+      label: t.attendance?.notMarked || 'Not Marked',
       type: 'notMarked',
-      color: 'text',
+      color: C.textSecondary,
+      icon: AlertCircle,
       lateMinutes: 0,
-      icon: 'AlertCircle',
     };
   }
 
-  const punchInDate = new Date(punchInTime);
-  const punchInTotalMinutes =
-    punchInDate.getHours() * 60 + punchInDate.getMinutes();
+  const apiStatus =
+    todayRecord.attendanceStatus || todayRecord.status || 'NOT_MARKED';
+  const lateMinutes = todayRecord.lateMinutes || 0;
+  const isLate = todayRecord.isLate || false;
+  const isHalfDay = todayRecord.isHalfDay || false;
 
-  // Rule 1: Before 9:40 AM → Present
-  if (punchInTotalMinutes <= ATTENDANCE_RULES.LATE_THRESHOLD) {
-    return {
-      status: 'PRESENT',
-      label: 'Present',
-      type: 'present',
-      color: 'success',
-      lateMinutes: 0,
-      icon: 'CheckCircle2',
-    };
-  }
-  // Rule 2: 9:40 AM to 11:30 AM → Late Login
-  else if (
-    punchInTotalMinutes > ATTENDANCE_RULES.LATE_THRESHOLD &&
-    punchInTotalMinutes <= ATTENDANCE_RULES.HALF_DAY_THRESHOLD
-  ) {
-    const lateMins = punchInTotalMinutes - ATTENDANCE_RULES.OFFICE_START;
-    return {
-      status: 'LATE',
-      label: `Late Login (${Math.floor(lateMins / 60)}h ${
-        lateMins % 60
-      }m late)`,
-      type: 'late',
-      color: 'warning',
-      lateMinutes: lateMins,
-      icon: 'CheckCircle2',
-    };
-  }
-  // Rule 3: 11:30 AM to 2:00 PM → Half Day
-  else if (
-    punchInTotalMinutes > ATTENDANCE_RULES.HALF_DAY_THRESHOLD &&
-    punchInTotalMinutes <= ATTENDANCE_RULES.ABSENT_THRESHOLD
-  ) {
-    return {
-      status: 'HALF_DAY',
-      label: 'Half Day',
-      type: 'halfDay',
-      color: 'warning',
-      lateMinutes: 0,
-      icon: 'AlertCircle',
-    };
-  }
-  // Rule 4: After 2:00 PM → Absent
-  else {
-    return {
-      status: 'ABSENT',
-      label: 'Absent',
-      type: 'absent',
-      color: 'error',
-      lateMinutes: 0,
-      icon: 'XCircle',
-    };
+  switch (apiStatus) {
+    case 'PRESENT':
+      if (isLate) {
+        return {
+          status: 'LATE',
+          label: `Late Login (${Math.floor(lateMinutes / 60)}h ${
+            lateMinutes % 60
+          }m late)`,
+          type: 'late',
+          color: C.warning,
+          icon: CheckCircle2,
+          lateMinutes: lateMinutes,
+        };
+      }
+      return {
+        status: 'PRESENT',
+        label: t.attendance?.present || 'Present',
+        type: 'present',
+        color: C.success,
+        icon: CheckCircle2,
+        lateMinutes: 0,
+      };
+
+    case 'HALF_DAY':
+      return {
+        status: 'HALF_DAY',
+        label: t.attendance?.halfDay || 'Half Day',
+        type: 'halfDay',
+        color: C.warning,
+        icon: AlertCircle,
+        lateMinutes: 0,
+      };
+
+    case 'ABSENT':
+      return {
+        status: 'ABSENT',
+        label: t.attendance?.absent || 'Absent',
+        type: 'absent',
+        color: C.error,
+        icon: XCircle,
+        lateMinutes: 0,
+      };
+
+    case 'SHORT_LEAVE':
+      return {
+        status: 'SHORT_LEAVE',
+        label: t.attendance?.shortLeave || 'Short Leave',
+        type: 'shortLeave',
+        color: C.warning,
+        icon: AlertCircle,
+        lateMinutes: 0,
+      };
+
+    default:
+      return {
+        status: 'NOT_MARKED',
+        label: t.attendance?.notMarked || 'Not Marked',
+        type: 'notMarked',
+        color: C.textSecondary,
+        icon: AlertCircle,
+        lateMinutes: 0,
+      };
   }
 };
 
@@ -224,20 +230,17 @@ const HomeScreen = ({ navigation }) => {
   // Get first punch in time for today
   const firstPunchIn = todayRecord?.firstPunchIn || sessions[0]?.punchIn;
 
-  // 🔥 Calculate attendance status based on punch in time (Frontend logic)
-  const calculatedAttendance = getAttendanceStatusFromPunchIn(firstPunchIn);
+  // 🔥 USE API STATUS instead of recalculating
+  const calculatedAttendance = getAttendanceStatusConfig(todayRecord, C, t);
 
-  const rawAttendanceStatus =
-    todayRecord?.attendanceStatus || todayRecord?.status || 'ABSENT';
   const isPunchedIn = todayRecord?.isPunchedIn === true;
   const hasAnySessionToday = sessions.length > 0;
 
-  // 🔥 Use calculated values instead of backend values
-  const isAbsent =
-    calculatedAttendance.type === 'absent' ||
-    (rawAttendanceStatus === 'ABSENT' && !isPunchedIn && !firstPunchIn);
+  // 🔥 Use API-provided values
+  const isAbsent = calculatedAttendance.type === 'absent';
   const isUserLate = calculatedAttendance.type === 'late';
   const isHalfDay = calculatedAttendance.type === 'halfDay';
+  const isShortLeave = calculatedAttendance.type === 'shortLeave';
   const lateMinutes =
     calculatedAttendance.lateMinutes || todayRecord?.lateMinutes || 0;
   const earlyLeaveMinutes = todayRecord?.earlyLeaveMinutes || 0;
@@ -367,13 +370,6 @@ const HomeScreen = ({ navigation }) => {
     if (isProcessing || breakLoading) return;
 
     if (label === t.home.dailyPunch) {
-      // if (isPunchedIn) {
-      //   showToast(
-      //     t.alerts.alreadyPunchedIn || 'You are already punched in',
-      //     'error',
-      //   );
-      //   return;
-      // }
       // 🔥 If already punched in, ask to punch out
       if (isPunchedIn) {
         Alert.alert(
@@ -520,7 +516,6 @@ const HomeScreen = ({ navigation }) => {
     ]);
   };
 
-
   const handlePunchOut = async () => {
     if (isProcessing || punchOutLoading) return;
 
@@ -551,13 +546,9 @@ const HomeScreen = ({ navigation }) => {
             // Refresh data after successful punch out
             if (result?.success) {
               await loadAttendanceHistory();
-              // showToast('Punch out successful!', 'success');
-            } else {
-              // showToast(result?.error || 'Punch out failed', 'error');
             }
           } catch (error) {
             console.log('Punch out error:', error);
-            // showToast('Punch out failed', 'error');
           } finally {
             setIsProcessing(false);
           }
@@ -629,64 +620,28 @@ const HomeScreen = ({ navigation }) => {
     return t.greeting.evening;
   };
 
-  // 🔥 Updated getStatusConfig using calculated attendance
+  // 🔥 Use API status for display
   const getStatusConfig = () => {
-    // If no punch in and not punched in
-    if (!hasAnySessionToday && !isPunchedIn) {
+    // If on break, show break status
+    if (isOnBreak && isPunchedIn) {
       return {
-        label: t.attendance.notMarked || 'Not Marked',
-        color: C.textSecondary,
-        icon: AlertCircle,
+        label: t.breaks?.onBreak || 'On Break',
+        color: C.warning,
+        icon: Coffee,
       };
     }
 
-    // If on break
+    // If punched in but on break
     if (isOnBreak) {
-      return { label: t.breaks.onBreak, color: C.warning, icon: Coffee };
+      return {
+        label: t.breaks?.onBreak || 'On Break',
+        color: C.warning,
+        icon: Coffee,
+      };
     }
 
-    // If punched in or has sessions, use calculated status
-    if (isPunchedIn || hasAnySessionToday) {
-      // Present
-      if (calculatedAttendance.type === 'present') {
-        return {
-          label: t.attendance.present || 'Present',
-          color: C.success,
-          icon: CheckCircle2,
-        };
-      }
-      // Late Login
-      if (calculatedAttendance.type === 'late') {
-        return {
-          label: calculatedAttendance.label,
-          color: C.warning,
-          icon: CheckCircle2,
-        };
-      }
-      // Half Day
-      if (calculatedAttendance.type === 'halfDay') {
-        return {
-          label: t.attendance.halfDay || 'Half Day',
-          color: C.warning,
-          icon: AlertCircle,
-        };
-      }
-      // Absent
-      if (calculatedAttendance.type === 'absent') {
-        return {
-          label: t.attendance.absent || 'Absent',
-          color: C.error,
-          icon: XCircle,
-        };
-      }
-    }
-
-    // Default present
-    return {
-      label: t.attendance.present || 'PRESENT',
-      color: C.success,
-      icon: CheckCircle2,
-    };
+    // Return the API-calculated status
+    return calculatedAttendance;
   };
 
   const statusConfig = getStatusConfig();
@@ -705,7 +660,6 @@ const HomeScreen = ({ navigation }) => {
     { label: t.home.reimbursement, icon: Paperclip, color: C.purple },
     { label: t.home.meetings, icon: CalendarClock, color: C.pink },
     { label: t.home.kra, icon: Key, color: C.rose },
-    // { label: t.home.salarySlip, icon: ReceiptText, color: C.secondary },
   ];
 
   const formatOptions = [
@@ -754,7 +708,7 @@ const HomeScreen = ({ navigation }) => {
 
   const cardBorderColor = isAbsent
     ? C.error + '30'
-    : isHalfDay || isUserLate
+    : isHalfDay || isUserLate || isShortLeave
     ? C.warning + '30'
     : C.border;
 
@@ -830,7 +784,7 @@ const HomeScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { backgroundColor: C.background, flexGrow:1 },
+            { backgroundColor: C.background, flexGrow: 1 },
           ]}
           scrollEnabled={true}
           alwaysBounceVertical={true}
@@ -1133,8 +1087,8 @@ const HomeScreen = ({ navigation }) => {
               {/* Short Leave */}
               {renderShortLeaveInfo()}
 
-              {/* Late / Early Leave / Half Day - Show based on calculated values */}
-              {(isUserLate || isEarlyLeave || isHalfDay) && (
+              {/* Late / Short Leave / Early Leave / Half Day - Show based on API values */}
+              {(isUserLate || isEarlyLeave || isHalfDay || isShortLeave) && (
                 <View
                   style={[
                     styles.alertInfo,
@@ -1148,6 +1102,15 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={[styles.alertText, { color: C.warning }]}>
                       ⚠️ {t.attendance.lateBy || 'Late by'}{' '}
                       {formatMinutes(lateMinutes)}
+                    </Text>
+                  )}
+                  {isShortLeave && (
+                    <Text style={[styles.alertText, { color: C.warning }]}>
+                      ⚠️{' '}
+                      {t.attendance.morningShortLeave || 'Morning Short Leave'}{' '}
+                      {morningShortLeaveMinutes > 0
+                        ? formatMinutes(morningShortLeaveMinutes)
+                        : ''}
                     </Text>
                   )}
                   {isHalfDay && (
