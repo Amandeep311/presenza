@@ -15,6 +15,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import VersionCheck from 'react-native-version-check';
 import DeviceInfo from 'react-native-device-info';
 import { ToastProvider, showToast } from '../components/common/ToastProvider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import LoginScreen from '../screens/auth/Login';
 import HomeScreen from '../screens/home/Home';
@@ -32,7 +33,6 @@ import KRA from '../screens/home/kra/KRA';
 
 // ============================================================
 // 🚨 SECURITY GUARD - COMMENTED FOR EMULATOR TESTING
-// To enable security: Uncomment the import and all related code below
 // ============================================================
 import {
   startSecurityGuard,
@@ -47,6 +47,8 @@ import {
   checkAllPermissionsAtStart,
   quickCheckPermissions,
   setPermissionCallbacks,
+  requestCameraPermission,
+  requestLocationPermission,
 } from '../utils/permissions';
 
 const Stack = createNativeStackNavigator();
@@ -80,9 +82,8 @@ const AppStack = () => (
 const AppNavigator = () => {
   const dispatch = useDispatch();
   const { isAuthenticated, loading } = useSelector(state => state.auth);
-  const toastRef = useRef(null);
   const appStateRef = useRef('active');
-
+  
   const [forceUpdate, setForceUpdate] = useState(false);
   const [storeUrl, setStoreUrl] = useState('');
   const [storeVersion, setStoreVersion] = useState('');
@@ -94,41 +95,116 @@ const AppNavigator = () => {
     location: false,
   });
 
-  // ================= 🔒 PERMISSION CHECK AT START =================
+  // CRITICAL: Use a ref to prevent duplicate toasts in the same session
+  const isShowingToast = useRef(false);
+  const toastTimeoutRef = useRef(null);
+
+  // Function to show toast only once
+  const showToastOnce = (message, type, duration) => {
+    // Clear any pending toast
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    
+    // If we're already showing a toast, don't show another
+    if (isShowingToast.current) {
+      console.log('⏭️ Toast already showing, skipping duplicate');
+      return;
+    }
+    
+    console.log('🔔 Showing toast');
+    isShowingToast.current = true;
+    showToast(message, type, duration);
+    
+    // Reset the flag after the toast duration
+    toastTimeoutRef.current = setTimeout(() => {
+      isShowingToast.current = false;
+      console.log('✅ Toast flag reset');
+    }, duration);
+  };
+
+  // Function to request permissions and show popup
+  const requestPermissions = async () => {
+    console.log('📱 Requesting permissions...');
+    
+    const cameraResult = await requestCameraPermission(true);
+    const locationResult = await requestLocationPermission(true);
+    
+    const cameraGranted = cameraResult.granted;
+    const locationGranted = locationResult.granted;
+    
+    console.log(`Camera: ${cameraGranted}, Location: ${locationGranted}`);
+    
+    setPermissionsStatus({
+      camera: cameraGranted,
+      location: locationGranted,
+    });
+    
+    return { cameraGranted, locationGranted };
+  };
+
+  // Function to check and show toast based on permissions
+  const checkAndShowToast = async (cameraGranted, locationGranted) => {
+    const hasAllPermissions = cameraGranted && locationGranted;
+    
+    console.log(`Checking permissions - Camera: ${cameraGranted}, Location: ${locationGranted}, All: ${hasAllPermissions}`);
+    
+    if (hasAllPermissions) {
+      // All permissions are granted - clear the flag
+      await AsyncStorage.removeItem('toast_shown_for_missing_permissions');
+      console.log('✅ All permissions granted, cleared toast flag');
+      return;
+    }
+    
+    // Some permissions are missing
+    const missingPermissions = [];
+    if (!cameraGranted) missingPermissions.push('Camera');
+    if (!locationGranted) missingPermissions.push('Location');
+    
+    console.log(`Missing permissions: ${missingPermissions.join(', ')}`);
+    
+    // Check if we've shown toast before for missing permissions
+    const toastShown = await AsyncStorage.getItem('toast_shown_for_missing_permissions');
+    console.log('Toast shown flag from storage:', toastShown);
+    
+    if (!toastShown) {
+      // Show toast and save flag
+      const message = missingPermissions.length === 2 
+        ? '⚠️ Camera & Location permissions are missing. Please enable in settings.'
+        : `⚠️ ${missingPermissions[0]} permission is missing. Please enable in settings.`;
+      
+      // Use the single toast function
+      showToastOnce(message, 'warning', 4000);
+      await AsyncStorage.setItem('toast_shown_for_missing_permissions', 'true');
+    } else {
+      console.log('⏭️ Toast already shown before for missing permissions, skipping');
+    }
+  };
+
+  // ================= INITIALIZE PERMISSIONS =================
   const initializePermissions = async () => {
-    console.log('🔐 [HIGHEST PRIORITY] Checking permissions at app start...');
+    console.log('🔐 Initializing permissions...');
 
     try {
-      const result = await checkAllPermissionsAtStart();
+      // Request permissions (this will show the popup)
+      const { cameraGranted, locationGranted } = await requestPermissions();
+      
+      console.log(`Permissions result - Camera: ${cameraGranted}, Location: ${locationGranted}`);
 
-      setPermissionsStatus({
-        camera: result.camera.granted,
-        location: result.location.granted,
-      });
-
-      if (!result.allGranted) {
-        console.log('⚠️ Permissions missing, showing warning');
-        // showToast(
-        //   '⚠️ Camera & Location permissions required for attendance',
-        //   'warning',
-        //   5000,
-        // );
-      } else {
-        console.log('✅ All permissions granted at start');
-      }
+      // Check and show toast if needed
+      await checkAndShowToast(cameraGranted, locationGranted);
 
       setPermissionsInitialized(true);
-      return result;
+      return { cameraGranted, locationGranted };
     } catch (error) {
       console.log('❌ Permission initialization error:', error);
       setPermissionsInitialized(true);
-      return { allGranted: false };
+      return { cameraGranted: false, locationGranted: false };
     }
   };
 
   // ============================================================
   // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
-  // To enable: Uncomment the function below
   // ============================================================
   const initializeSecurity = async () => {
     console.log('🔒 Initializing Security Guard...');
@@ -147,19 +223,14 @@ const AppNavigator = () => {
 
     setSecurityInitialized(true);
   };
-  // ============================================================
 
   // ================= INITIALIZE EVERYTHING ON APP START =================
   useEffect(() => {
-    console.log('🚀 App initializing - Phase 1: Permissions');
+    console.log('🚀 App initializing');
 
     initializePermissions().then(() => {
-      // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
-      // To enable: Uncomment the line below
       initializeSecurity();
-      console.log(
-        '🚀 App initializing - Phase 2: Security (DISABLED FOR TESTING)',
-      );
+      console.log('🚀 App initialization complete');
     });
 
     dispatch(checkAuthState());
@@ -167,15 +238,66 @@ const AppNavigator = () => {
     debugStorage();
 
     return () => {
-      // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
-      // To enable: Uncomment the line below
-      console.log('🔒 Stopping Security Guard on unmount');
+      console.log('🔒 Cleaning up');
       stopSecurityGuard();
-      console.log('🔒 Security Guard disabled for testing');
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
     };
   }, [dispatch]);
 
-  // ================= APP STATE MONITORING (IMPROVED) =================
+  // ================= CHECK PERMISSIONS ON FOREGROUND =================
+  const checkPermissionsOnForeground = async () => {
+    console.log('🔄 Checking permissions on foreground...');
+    
+    try {
+      const quickCheck = await quickCheckPermissions();
+      console.log('Quick check result:', quickCheck);
+      
+      const cameraGranted = quickCheck.camera;
+      const locationGranted = quickCheck.location;
+      
+      setPermissionsStatus({
+        camera: cameraGranted,
+        location: locationGranted,
+      });
+      
+      const hasAllPermissions = cameraGranted && locationGranted;
+      
+      if (hasAllPermissions) {
+        // All permissions are granted - clear the flag
+        await AsyncStorage.removeItem('toast_shown_for_missing_permissions');
+        console.log('✅ All permissions granted on foreground, cleared toast flag');
+      } else {
+        // Some permissions are still missing
+        const toastShown = await AsyncStorage.getItem('toast_shown_for_missing_permissions');
+        
+        // Only show toast if we haven't shown it before AND permissions are not all granted
+        if (!toastShown) {
+          const missingPermissions = [];
+          if (!cameraGranted) missingPermissions.push('Camera');
+          if (!locationGranted) missingPermissions.push('Location');
+          
+          const message = missingPermissions.length === 2 
+            ? '⚠️ Camera & Location permissions are missing. Please enable in settings.'
+            : `⚠️ ${missingPermissions[0]} permission is missing. Please enable in settings.`;
+          
+          console.log(`🔔 Showing toast for missing permissions on foreground: ${missingPermissions.join(', ')}`);
+          
+          // Use the single toast function
+          showToastOnce(message, 'warning', 4000);
+          await AsyncStorage.setItem('toast_shown_for_missing_permissions', 'true');
+        } else {
+          console.log('⏭️ Toast already shown before, skipping on foreground');
+        }
+      }
+      
+    } catch (error) {
+      console.log('Error checking permissions:', error);
+    }
+  };
+
+  // ================= APP STATE MONITORING =================
   useEffect(() => {
     console.log('📱 Setting up AppState listener...');
 
@@ -190,63 +312,31 @@ const AppNavigator = () => {
     };
   }, []);
 
-  // 🔥 IMPROVED: Immediate checks on app state change
   const handleAppStateChange = async nextAppState => {
-    console.log(
-      `📱 App state changed: ${appStateRef.current} → ${nextAppState}`,
-    );
+    console.log(`📱 App state changed: ${appStateRef.current} → ${nextAppState}`);
 
     // ========== APP COMING TO FOREGROUND ==========
     if (
       appStateRef.current.match(/inactive|background/) &&
       nextAppState === 'active'
     ) {
-      console.log('🔄 ⭐ APP FOREGROUND - Running immediate security checks');
+      console.log('🔄 APP FOREGROUND - Checking permissions');
+      
+      // Wait for app to be fully active
+      setTimeout(async () => {
+        await checkPermissionsOnForeground();
+      }, 1000);
 
-      // � SECURITY - COMMENTED FOR EMULATOR TESTING
-      // To enable: Uncomment the code below
+      // Security checks
       try {
         await onAppStateChange(nextAppState);
+        await resetSecurityGuard();
+        if (isDeviceCompromised()) {
+          console.log('⚠️ Device marked as compromised');
+          setBlocked(true);
+        }
       } catch (error) {
-        console.log('❌ Error in immediate security check:', error);
-      }
-
-      // Permissions quick check
-      const quickCheck = await quickCheckPermissions();
-      setPermissionsStatus({
-        camera: quickCheck.camera,
-        location: quickCheck.location,
-      });
-
-      if (!quickCheck.allGranted) {
-        showToast(
-          '⚠️ Permissions missing. Please enable in settings.',
-          'warning',
-          4000,
-        );
-      }
-
-      // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
-      // To enable: Uncomment the code below
-      // // Reset security guard (re-initialize after background)
-      await resetSecurityGuard();
-
-      // // Check if device was compromised while in background
-      if (isDeviceCompromised()) {
-        console.log('⚠️ Device marked as compromised');
-        setBlocked(true);
-      }
-    }
-
-    // ========== APP GOING TO BACKGROUND ==========
-    if (nextAppState.match(/inactive|background/)) {
-      console.log('⏸️ APP BACKGROUND - Pausing some checks');
-      // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
-      // To enable: Uncomment the code below
-      try {
-        await onAppStateChange(nextAppState);
-      } catch (error) {
-        console.log('❌ Error handling background state:', error);
+        console.log('❌ Error in security checks:', error);
       }
     }
 
@@ -279,7 +369,11 @@ const AppNavigator = () => {
     setPermissionCallbacks({
       getStatus: async () => {
         const quickCheck = await quickCheckPermissions();
-        setPermissionsStatus(quickCheck);
+        console.log('📱 getStatus called, result:', quickCheck);
+        setPermissionsStatus({
+          camera: quickCheck.camera,
+          location: quickCheck.location,
+        });
         return quickCheck;
       },
       status: permissionsStatus,
@@ -287,14 +381,8 @@ const AppNavigator = () => {
   }, [permissionsStatus]);
 
   // ================= LOADING STATES =================
-  // 🚨 SECURITY DISABLED FOR EMULATOR TESTING
-  // securityInitialized is always true when security is commented out
   if (loading || !permissionsInitialized) {
-    return (
-      // <View style={styles.initContainer}>
-      <AppLoader />
-      // </View>
-    );
+    return <AppLoader />;
   }
 
   return (
@@ -316,78 +404,6 @@ const AppNavigator = () => {
             />
           </View>
         </View>
-      )}
-
-      {/* ⚠️ PERMISSION WARNING BANNER */}
-      {/* {!blocked &&
-          !permissionsStatus.camera &&
-          !permissionsStatus.location && (
-            <View style={styles.permissionBanner}>
-              <Text style={styles.permissionBannerText}>
-                ⚠️ Camera & Location permissions required for attendance
-              </Text>
-              <TouchableOpacity onPress={() => Linking.openSettings()}>
-                <Text style={styles.permissionBannerLink}>Enable</Text>
-              </TouchableOpacity>
-            </View>
-          )} */}
-
-      {/* {!blocked &&
-          !permissionsStatus.camera &&
-          permissionsStatus.location && (
-            <View
-              style={[styles.permissionBanner, { backgroundColor: '#FF9800' }]}
-            >
-              <Text style={styles.permissionBannerText}>
-                📸 Camera permission required for selfie capture
-              </Text>
-              <TouchableOpacity onPress={() => Linking.openSettings()}>
-                <Text style={styles.permissionBannerLink}>Enable</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-        {!blocked &&
-          permissionsStatus.camera &&
-          !permissionsStatus.location && (
-            <View
-              style={[styles.permissionBanner, { backgroundColor: '#FF9800' }]}
-            >
-              <Text style={styles.permissionBannerText}>
-                📍 Location permission required for attendance verification
-              </Text>
-              <TouchableOpacity onPress={() => Linking.openSettings()}>
-                <Text style={styles.permissionBannerLink}>Enable</Text>
-              </TouchableOpacity>
-            </View>
-          )} */}
-
-      {/* FORCE UPDATE MODAL */}
-      {!blocked && (
-        <Modal visible={forceUpdate} transparent animationType="fade">
-          <View style={styles.modalContainer}>
-            <View style={styles.modalBox}>
-              <Text style={styles.title}>Update Required 🚨</Text>
-              <Text style={styles.desc}>
-                Please update the app to continue using it.
-              </Text>
-              <Text style={styles.version}>
-                Your Version: {DeviceInfo.getVersion()}
-              </Text>
-              {storeVersion && (
-                <Text style={styles.version}>
-                  Latest Version: {storeVersion}
-                </Text>
-              )}
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => storeUrl && Linking.openURL(storeUrl)}
-              >
-                <Text style={styles.buttonText}>Update Now</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       )}
 
       {/* NORMAL APP NAVIGATION */}

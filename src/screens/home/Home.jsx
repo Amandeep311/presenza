@@ -87,7 +87,7 @@ if (
 // Use API-provided status instead of recalculating
 const getAttendanceStatusConfig = (todayRecord, C, t) => {
   // If no record at all
-  if (!todayRecord) {
+  if (todayRecord && todayRecord.sessions.length === 0) {
     return {
       status: 'NOT_MARKED',
       label: t.attendance?.notMarked || 'Not Marked',
@@ -99,10 +99,10 @@ const getAttendanceStatusConfig = (todayRecord, C, t) => {
   }
 
   const apiStatus =
-    todayRecord.attendanceStatus || todayRecord.status || 'NOT_MARKED';
-  const lateMinutes = todayRecord.lateMinutes || 0;
-  const isLate = todayRecord.isLate || false;
-  const isHalfDay = todayRecord.isHalfDay || false;
+    todayRecord?.attendanceStatus || todayRecord?.status || 'NOT_MARKED';
+  const lateMinutes = todayRecord?.lateMinutes || 0;
+  const isLate = todayRecord?.isLate || false;
+  const isHalfDay = todayRecord?.isHalfDay || false;
 
   switch (apiStatus) {
     case 'PRESENT':
@@ -269,6 +269,7 @@ const HomeScreen = ({ navigation }) => {
       (s.breaks || []).reduce((bt, b) => bt + (b.durationMinutes || 0), 0),
     0,
   );
+  
 
   // ✅ Timer effect - runs every second to update current time
   useEffect(() => {
@@ -949,6 +950,7 @@ const HomeScreen = ({ navigation }) => {
               </Text>
             </View>
           ) : todayRecord || hasAnySessionToday ? (
+            // ----------------- HERE --------------
             <View
               style={[
                 styles.card,
@@ -1339,7 +1341,7 @@ const HomeScreen = ({ navigation }) => {
                 { backgroundColor: C.overlayBg },
               ]}
               activeOpacity={1}
-              onPress={() => setImagePopupVisible(false)}
+              onPress={() => setImagePopupVisible(true)}
             >
               <View style={styles.imagePopupContainer}>
                 <View

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   KeyboardAvoidingView,
@@ -37,23 +37,71 @@ const LoginScreen = ({ navigation }) => {
 
   const [employeeId, setEmployeeId] = useState('');
   const [employeeIdError, setEmployeeIdError] = useState('');
+  
+  // ✅ FIX: Prevent multiple API calls and duplicate toasts
+  const isSendingRef = useRef(false);
+  const lastErrorTimeRef = useRef(0);
+  const toastTimeoutRef = useRef(null);
 
   useEffect(() => {
     console.log('🔐 LoginScreen mounted');
-    return () => console.log('🔐 LoginScreen unmounted');
+    return () => {
+      console.log('🔐 LoginScreen unmounted');
+      // Cleanup timeout on unmount
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
   }, []);
 
-  // ✅ FIX 1: Jab bhi screen focus mein aaye, form reset karo
+  // ✅ FIX: Prevent duplicate error toasts by clearing previous timeout
+  useEffect(() => {
+    if (alert && alert.message && !alert.success) {
+      const currentTime = Date.now();
+      
+      // Check if we're showing the same error within 2 seconds
+      if ((currentTime - lastErrorTimeRef.current) < 2000) {
+        // This is a duplicate, don't show again
+        console.log('Duplicate toast prevented');
+        return;
+      }
+      
+      // Update last error time
+      lastErrorTimeRef.current = currentTime;
+      
+      // Clear any existing timeout
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      
+      // Auto-hide alert after 3 seconds
+      toastTimeoutRef.current = setTimeout(() => {
+        dispatch(hideAlert());
+        toastTimeoutRef.current = null;
+      }, 3000);
+    }
+  }, [alert, dispatch]);
+
+  // ✅ FIX: Reset form when screen focuses
   useFocusEffect(
     useCallback(() => {
       setEmployeeId('');
       setEmployeeIdError('');
-    }, [])
+      isSendingRef.current = false;
+      lastErrorTimeRef.current = 0;
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+      // Hide any existing alerts when screen focuses
+      dispatch(hideAlert());
+    }, [dispatch])
   );
 
   useEffect(() => {
     if (sendOtpSuccess && employeeId) {
       console.log('📧 OTP sent successfully, navigating to verification');
+      isSendingRef.current = false; // Reset sending flag
       navigation.navigate('Verify_Otp', {
         employeeId: employeeId.trim().toUpperCase(),
       });
@@ -70,6 +118,14 @@ const LoginScreen = ({ navigation }) => {
 
   const handleSendOtp = async () => {
     Keyboard.dismiss();
+    
+    // ✅ FIX: Prevent multiple API calls while one is in progress
+    if (isSendingRef.current) {
+      console.log('API call already in progress, ignoring duplicate click');
+      return;
+    }
+    
+    // Clear previous error
     setEmployeeIdError('');
 
     if (!validateEmployeeId(employeeId)) {
@@ -77,9 +133,18 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
+    // Set sending flag to prevent multiple calls
+    isSendingRef.current = true;
+    
     console.log('📤 Sending OTP for employee ID:', employeeId);
     const payloadEmployeeId = employeeId.trim().toUpperCase();
-    await dispatch(sendOtp(payloadEmployeeId));
+    
+    try {
+      await dispatch(sendOtp(payloadEmployeeId));
+    } catch (error) {
+      console.error('Error sending OTP:', error);
+      isSendingRef.current = false;
+    }
   };
 
   return (
@@ -111,6 +176,8 @@ const LoginScreen = ({ navigation }) => {
                 const filteredText = filterAlphanumeric(text);
                 setEmployeeId(filteredText);
                 setEmployeeIdError('');
+                // Reset flags when user starts typing
+                isSendingRef.current = false;
               }}
               keyboardType="default"
               maxLength={20}
@@ -127,7 +194,7 @@ const LoginScreen = ({ navigation }) => {
               title={t.login.sendOtpButton}
               onPress={handleSendOtp}
               loading={sendOtpLoading}
-              disabled={!validateEmployeeId(employeeId) || sendOtpLoading}
+              disabled={!validateEmployeeId(employeeId) || sendOtpLoading || isSendingRef.current}
             />
           </View>
         </ScrollView>

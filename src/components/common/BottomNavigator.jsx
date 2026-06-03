@@ -1,5 +1,5 @@
 // src/components/common/BottomNavigator.jsx
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -23,6 +23,11 @@ const BottomNavigator = () => {
   const { t } = useLanguage();
   const C = theme.colors;
   const insets = useSafeAreaInsets();
+  
+  // Add debounce refs
+  const hasShownToastRef = useRef(false);
+  const timeoutRef = useRef(null);
+  const DEBOUNCE_DELAY = 3000; // 3 seconds - prevent any second toast
   
   // Get today's attendance status from Redux
   const { history } = useSelector(state => state.attendance);
@@ -67,11 +72,34 @@ const BottomNavigator = () => {
     if (tab.route === 'DailyPuch') {
       // Check if already punched in
       if (isUserCheckedIn) {
-        // dispatch(setAlert(t.alerts.alreadyPunchedIn, 'error'));
-        showToast(t.alerts.alreadyPunchedIn, 'error', 4000);
+        // If toast already shown, don't show again
+        if (hasShownToastRef.current) {
+          console.log('Toast already shown, ignoring');
+          return;
+        }
+        
+        // Mark that toast has been shown
+        hasShownToastRef.current = true;
+        
+        // Show toast only once
+        showToast(t.alerts.alreadyPunchedIn || 'You are already punched in!', 'error', 3000);
+        
+        // Clear the timeout if exists
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        
+        // Reset after delay to allow future toasts (if needed)
+        timeoutRef.current = setTimeout(() => {
+          hasShownToastRef.current = false;
+          timeoutRef.current = null;
+        }, DEBOUNCE_DELAY);
+        
         return;
       }
     }
+    
+    // Navigate for other tabs or if not checked in
     navigation.navigate(tab.route);
   };
 
@@ -94,6 +122,7 @@ const BottomNavigator = () => {
             key={index}
             style={styles.tabItem}
             onPress={() => handleTabPress(tab)}
+            activeOpacity={0.7}
           >
             <Icon 
               size={wp('5.5%')} 
@@ -120,9 +149,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingTop: 12,
     position: 'absolute',
-   
     bottom: 0,
-    // Remove fixed paddingBottom - will be handled by insets
+    left: 0,
+    right: 0,
   },
   tabItem: {
     flex: 1,

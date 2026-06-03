@@ -135,6 +135,15 @@ const formatMinutes = minutes => {
 
 // ── Get API Status Config (Original - UNCHANGED) ──
 const getApiStatusConfig = (status, C, t) => {
+  // Check for Week Off (Sunday or weekly off)
+  if (status === 'WEEK_OFF') {
+    return {
+      label: 'Week Off',
+      color: C.textSecondary,
+      icon: CalendarDays,
+    };
+  }
+
   switch (status) {
     case 'PRESENT':
       return {
@@ -216,12 +225,15 @@ const getExtraDetails = (record, C) => {
 
 // ── Single Record Card ────────────────────────────
 const RecordCard = ({ record }) => {
+
   const [expanded, setExpanded] = useState(false);
   const { theme } = useTheme();
   const { t } = useLanguage();
   const C = theme.colors;
 
   const sessions = record.sessions || [];
+  console.log("sessions=======>", sessions);
+
 
   // ✅ ORIGINAL API STATUS - Jaise ka taise
   const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t);
@@ -242,6 +254,7 @@ const RecordCard = ({ record }) => {
   );
 
   const firstPunchIn = sessions[0]?.punchIn;
+  const autoPunch = sessions[0]?.autoPunchedOut
   const lastPunchOut = sessions[sessions.length - 1]?.punchOut;
 
   return (
@@ -300,7 +313,8 @@ const RecordCard = ({ record }) => {
                 { color: lastPunchOut ? C.error : C.textSecondary },
               ]}
             >
-              {lastPunchOut ? formatTime(lastPunchOut) : '---'}
+              {autoPunch ? '---' : lastPunchOut ? formatTime(lastPunchOut) : '---'}
+              {/* {lastPunchOut ? formatTime(lastPunchOut) : '---'} */}
             </Text>
           </View>
           <Text style={[cardStyles.durText, { color: C.textSecondary }]}>
@@ -427,9 +441,16 @@ const RecordCard = ({ record }) => {
                       { color: session.punchOut ? C.error : C.textSecondary },
                     ]}
                   >
-                    {session.punchOut
+                    {/* {session.punchOut
                       ? formatTime(session.punchOut)
-                      : t.reports?.ongoing || 'Ongoing'}
+                      : t.reports?.ongoing || 'Ongoing'} */}
+                    {
+                      autoPunch
+                        ? '---'
+                        : session.punchOut
+                          ? formatTime(session.punchOut)
+                          : t.reports?.ongoing || 'Ongoing'
+                    }
                   </Text>
                 </View>
                 <View

@@ -166,29 +166,59 @@ export const requestLocationPermission = async (showSettingsAlert = true) => {
 };
 
 /**
- * Check both permissions at app start
- * Shows alert if permissions are missing
+ * NEW FUNCTION: Just check permissions without requesting (for app start)
+ */
+export const checkPermissionsWithoutRequest = async () => {
+  console.log('🔐 Checking permissions without requesting...');
+  
+  if (Platform.OS === 'android') {
+    const cameraGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.CAMERA
+    );
+    const locationGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+    );
+    
+    return {
+      camera: { granted: cameraGranted, status: cameraGranted ? 'granted' : 'denied' },
+      location: { granted: locationGranted, status: locationGranted ? 'granted' : 'denied' },
+      allGranted: cameraGranted && locationGranted
+    };
+  } else {
+    const cameraStatus = await check(PERMISSIONS.IOS.CAMERA);
+    const locationStatus = await check(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
+    
+    const cameraGranted = cameraStatus === RESULTS.GRANTED;
+    const locationGranted = locationStatus === RESULTS.GRANTED;
+    
+    return {
+      camera: { granted: cameraGranted, status: cameraGranted ? 'granted' : 'denied' },
+      location: { granted: locationGranted, status: locationGranted ? 'granted' : 'denied' },
+      allGranted: cameraGranted && locationGranted
+    };
+  }
+};
+
+/**
+ * FIXED: Check both permissions at app start - ONLY CHECK, NO REQUEST
+ * This only checks permissions without showing any dialogs or popups
  */
 export const checkAllPermissionsAtStart = async () => {
-  console.log('🔐 Checking all permissions at app start...');
+  console.log('🔐 Checking all permissions at app start (no popups)...');
   
-  const cameraResult = await requestCameraPermission(true);
-  const locationResult = await requestLocationPermission(true);
+  // Use the check-only function
+  const result = await checkPermissionsWithoutRequest();
   
-  const allGranted = cameraResult.granted && locationResult.granted;
-  
-  if (!allGranted) {
-    console.log('⚠️ Some permissions are missing:');
-    if (!cameraResult.granted) console.log('  - Camera:', cameraResult.message);
-    if (!locationResult.granted) console.log('  - Location:', locationResult.message);
-  } else {
-    console.log('✅ All permissions granted');
-  }
+  console.log('📱 Permission check result:', {
+    camera: result.camera.granted,
+    location: result.location.granted,
+    allGranted: result.allGranted
+  });
   
   return {
-    camera: cameraResult,
-    location: locationResult,
-    allGranted: allGranted
+    camera: { granted: result.camera.granted, status: result.camera.status },
+    location: { granted: result.location.granted, status: result.location.status },
+    allGranted: result.allGranted
   };
 };
 

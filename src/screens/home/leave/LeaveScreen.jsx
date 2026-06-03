@@ -14,7 +14,7 @@ import {
   LayoutAnimation,
   RefreshControl,
 } from 'react-native';
-import {} from 'react-native';
+import { } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { applyLeave, fetchLeaves } from '../../../store/actions/leaveActions';
 import {
@@ -466,8 +466,8 @@ const calculateLeaveDays = (
         const name = branchHoliday
           ? branchHoliday.holiday.name
           : off
-          ? 'Weekly Off'
-          : 'Holiday';
+            ? 'Weekly Off'
+            : 'Holiday';
         label = `🥪 Sandwich: ${name} counted as leave`;
       } else {
         dayCount = 0;
@@ -842,12 +842,18 @@ const LeaveScreen = ({ navigation }) => {
 
   const fetchLeave = async () => {
     try {
+      console.log('📊 Fetching leaves...');
       const result = await dispatch(fetchLeaves());
       console.log('Fetch leaves result: ', result);
 
+      // Handle different response formats
       if (result?.success && result?.data) {
         setMyLeaves(result.data);
         console.log('✅ Leaves set successfully:', result.data.length);
+      } else if (result?.data) {
+        // If the result has data but no success flag
+        setMyLeaves(result.data);
+        console.log('✅ Leaves set successfully (alternative):', result.data.length);
       } else {
         console.log('❌ Failed to fetch leaves:', result?.error);
         setMyLeaves([]);
@@ -959,6 +965,15 @@ const LeaveScreen = ({ navigation }) => {
       setShortHalfType('half2');
     }
   }, [leaveType, startDate]);
+  // Listen for leaves state changes from Redux
+  const { leaves } = useSelector(state => state.leave || { leaves: [] });
+
+  useEffect(() => {
+    if (leaves && leaves.length > 0) {
+      console.log('🔄 Redux leaves updated:', leaves.length);
+      setMyLeaves(leaves);
+    }
+  }, [leaves]);
 
   const prevMonth = () => setCurrentMonth(m => Math.max(0, m - 1));
   const nextMonth = () => setCurrentMonth(m => Math.min(11, m + 1));
@@ -1029,94 +1044,157 @@ const LeaveScreen = ({ navigation }) => {
     }
   }, [isMultiDay]);
 
+
+  // Safe toast - only shows once within the delay period
+  const safeToast = (message, type = 'error', duration = 3000) => {
+    if (toastGuardRef.current) {
+      console.log('🚫 Toast blocked - already shown recently');
+      return;
+    }
+
+    toastGuardRef.current = true;
+    console.log('✅ Showing toast:', message);
+    showToast(message, type, duration);
+
+    setTimeout(() => {
+      toastGuardRef.current = false;
+    }, TOAST_GUARD_DELAY);
+  };
+
+  const ultraSafeToast = (message, type = 'error', duration = 3000) => {
+    const now = Date.now();
+    if (globalToastLock.current) return false;
+    if (now - LAST_TOAST_TIME.current < LOCK_DURATION) return false;
+    globalToastLock.current = true;
+    LAST_TOAST_TIME.current = now;
+    showToast(message, type, duration);
+    setTimeout(() => {
+      globalToastLock.current = false;
+    }, LOCK_DURATION);
+    return true;
+  };
+
   const handleDayPress = day => {
     if (!day) return;
+
+    // Prevent rapid taps
+    if (globalTapLock.current) {
+      console.log('👆 Tap blocked - too fast');
+      return;
+    }
+
+    // Set tap lock
+    globalTapLock.current = true;
+    setTimeout(() => {
+      globalTapLock.current = false;
+    }, 1000);
+
     const dateStr = toDateStr(year, currentMonth, day);
     const dateObj = new Date(dateStr);
     const todayOnly = new Date(todayStr);
 
+    // Past date - show info popup (no toast)
     if (dateObj < todayOnly) {
-      showHolidayInfo(day, dateStr);
+      const holiday = HOLIDAY_MAP[dateStr];
+      const dayOfWeek = new Date(dateStr).getDay();
+      const isSunday = dayOfWeek === 0;
+      const isSecondSat = day === secondSat;
+      const isFourthSat = day === fourthSat;
+
+      if (holiday || isSunday || isSecondSat || isFourthSat) {
+        // Only show popup if not already showing
+        if (!popupVisible) {
+          setSelectedDate({
+            day,
+            dateStr,
+            holiday,
+            isSunday,
+            isSecondSat,
+            isFourthSat,
+          });
+          setPopupVisible(true);
+        }
+      }
       return;
     }
 
-    if (
-      selectionMode === 'end' &&
-      dateStr === startDate &&
-      leaveType !== 'half' &&
-      leaveType !== 'short'
-    ) {
-      // Optionally show a message
-      showToast('Please select a different date for end date', 'info');
+    // Check for end date validation
+    if (selectionMode === 'end' && dateStr === startDate && leaveType !== 'half' && leaveType !== 'short') {
+      ultraSafeToast('Please select a different date for end date', 'info');
       return;
     }
 
     const branchHoliday = isHolidayForBranch(dateStr, USER_BRANCH);
     const off = isWeeklyOff(dateStr);
 
+    // Full holiday
     if (branchHoliday && branchHoliday.type === 'full' && !off) {
-      setLeaveAlertData({
-        type: 'full_holiday',
-        date: dateStr,
-        holiday: branchHoliday.holiday,
-        day,
-      });
-      setLeaveAlertVisible(true);
+      // Only show modal if not already showing
+      if (!leaveAlertVisible) {
+        setLeaveAlertData({
+          type: 'full_holiday',
+          date: dateStr,
+          holiday: branchHoliday.holiday,
+          day,
+        });
+        setLeaveAlertVisible(true);
+      }
       return;
     }
 
-    if (
-      branchHoliday &&
-      (branchHoliday.type === 'half1' || branchHoliday.type === 'half2')
-    ) {
-      setLeaveAlertData({
-        type: 'half_holiday',
-        date: dateStr,
-        holiday: branchHoliday.holiday,
-        halfType: branchHoliday.type,
-        day,
-        onProceed: () => proceedWithSelection(dateStr),
-      });
-      setLeaveAlertVisible(true);
+    // Half holiday
+    if (branchHoliday && (branchHoliday.type === 'half1' || branchHoliday.type === 'half2')) {
+      if (!leaveAlertVisible) {
+        setLeaveAlertData({
+          type: 'half_holiday',
+          date: dateStr,
+          holiday: branchHoliday.holiday,
+          halfType: branchHoliday.type,
+          day,
+          onProceed: () => proceedWithSelection(dateStr),
+        });
+        setLeaveAlertVisible(true);
+      }
       return;
     }
 
+    // Weekly off - show popup
     if (off) {
-      showHolidayInfo(day, dateStr);
+      if (!popupVisible) {
+        const holiday = HOLIDAY_MAP[dateStr];
+        const dayOfWeek = new Date(dateStr).getDay();
+        const isSunday = dayOfWeek === 0;
+        const isSecondSat = day === secondSat;
+        const isFourthSat = day === fourthSat;
+
+        setSelectedDate({
+          day,
+          dateStr,
+          holiday,
+          isSunday,
+          isSecondSat,
+          isFourthSat,
+        });
+        setPopupVisible(true);
+      }
       return;
     }
 
     proceedWithSelection(dateStr);
   };
 
-  const proceedWithSelection = dateStr => {
+  const proceedWithSelection = useCallback((dateStr) => {
     if (selectionMode === 'start') {
       setStartDate(dateStr);
       setEndDate(null);
       setSelectionMode('end');
-      // Show notification to select end date
-      // Alert.alert(
-      //   'Select End Date',
-      //   'Please select the end date for your leave.\n\nTap the same date for a single day leave.',
-      //   [{ text: 'OK' }],
-      // );
-      // Scroll to end date field
       setTimeout(() => {
         scrollToSection(endDateRef);
       }, 300);
     } else {
-      // For half day or short leave, end date should be same as start date
       if (leaveType === 'half' || leaveType === 'short') {
         setEndDate(startDate);
         setSelectionMode('start');
-        // Alert.alert(
-        //   'Date Selected',
-        //   `${
-        //     leaveType === 'half' ? 'Half Day' : 'Short Leave'
-        //   } will be applied for a single day.`,
-        //   [{ text: 'OK' }],
-        // );
-        // Scroll to leave type section
         setTimeout(() => {
           scrollToSection(leaveTypeRef);
         }, 300);
@@ -1128,21 +1206,32 @@ const LeaveScreen = ({ navigation }) => {
           setEndDate(dateStr);
         }
         setSelectionMode('start');
-        // Scroll to leave type section
         setTimeout(() => {
           scrollToSection(leaveTypeRef);
         }, 300);
       }
     }
-  };
+  }, [selectionMode, startDate, leaveType]);
 
   const showHolidayInfo = (day, dateStr) => {
+    // Prevent multiple popups
+    if (isProcessingTapRef.current) {
+      return;
+    }
+
+    isProcessingTapRef.current = true;
+
+    setTimeout(() => {
+      isProcessingTapRef.current = false;
+    }, DEBOUNCE_DELAY);
+
     const holiday = HOLIDAY_MAP[dateStr];
     const dayOfWeek = new Date(dateStr).getDay();
     const isSunday = dayOfWeek === 0;
     const d = new Date(year, currentMonth, day);
     const isSecondSat = day === secondSat;
     const isFourthSat = day === fourthSat;
+
     if (holiday || isSunday || isSecondSat || isFourthSat) {
       setSelectedDate({
         day,
@@ -1283,6 +1372,56 @@ const LeaveScreen = ({ navigation }) => {
   const leaveTypeRef = useRef(null);
   const reasonRef = useRef(null);
 
+
+  const isPopupOpenRef = useRef(false);
+  // Add this with your other refs
+  const lastTapTimeRef = useRef(0);
+  const isProcessingTapRef = useRef(false);
+  const lastToastTimeRef = useRef(0);
+  const lastToastMessageRef = useRef('');
+  const DEBOUNCE_DELAY = 2000; // 2 seconds delay
+  const toastGuardRef = useRef(false);
+  const tapGuardRef = useRef(false);
+  const TOAST_GUARD_DELAY = 2000; // 2 seconds
+  let globalToastShown = false;
+  const toastResetTimeout = useRef(null);
+  const globalToastLock = useRef(false);
+  const globalTapLock = useRef(false);
+  const LAST_TOAST_TIME = useRef(0);
+  const LOCK_DURATION = 3000;
+
+  const showDebouncedToast = (message, type = 'error', duration = 3000) => {
+    // Global flag to prevent ANY toast within the delay period
+    if (globalToastShown) {
+      console.log('Global toast blocked - already shown');
+      return;
+    }
+
+
+
+    const now = Date.now();
+    // Check if same message was shown within DEBOUNCE_DELAY
+    if (now - lastToastTimeRef.current < DEBOUNCE_DELAY &&
+      lastToastMessageRef.current === message) {
+      console.log('Toast debounced - already shown recently:', message);
+      return;
+    }
+
+    // Set global flag
+    globalToastShown = true;
+    lastToastTimeRef.current = now;
+    lastToastMessageRef.current = message;
+    showToast(message, type, duration);
+
+    // Reset global flag after delay
+    if (toastResetTimeout.current) {
+      clearTimeout(toastResetTimeout.current);
+    }
+    toastResetTimeout.current = setTimeout(() => {
+      globalToastShown = false;
+    }, DEBOUNCE_DELAY);
+  };
+
   const scrollToSection = ref => {
     if (ref?.current) {
       setTimeout(() => {
@@ -1291,7 +1430,7 @@ const LeaveScreen = ({ navigation }) => {
           (x, y) => {
             scrollViewRef.current?.scrollTo({ y: y - 100, animated: true });
           },
-          () => {},
+          () => { },
         );
       }, 100);
     }
@@ -1365,21 +1504,6 @@ const LeaveScreen = ({ navigation }) => {
       return;
     }
 
-    // ✅ DYNAMIC BALANCE CHECK - Total leave balance
-    const hasInsufficientBalance = leaveCalc.total > totalRemaining;
-
-    // ✅ DYNAMIC BALANCE CHECK - Short leave balance (only if leave type is short)
-    const hasInsufficientShortLeave =
-      leaveType === 'short' && leaveCalc.total > shortRemaining;
-
-    // ✅ Store the actual deficit values for display
-    const totalDeficit = hasInsufficientBalance
-      ? (leaveCalc.total - totalRemaining).toFixed(1)
-      : 0;
-    const shortDeficit = hasInsufficientShortLeave
-      ? (leaveCalc.total - shortRemaining).toFixed(1)
-      : 0;
-
     const payload = {
       leaveType: getLeaveTypePayload(),
       startDate: startDate,
@@ -1403,17 +1527,44 @@ const LeaveScreen = ({ navigation }) => {
           friction: 7,
         }).start();
         setReason('');
-        await fetchLeave();
+
+        // ✅ REFRESH BOTH - Leave history AND Employee profile (for updated balance)
+        console.log('🔄 Refreshing data after successful leave application...');
+
+        // Fetch leaves and update myLeaves state
+        const leavesResult = await dispatch(fetchLeaves());
+        console.log('Leaves result:', leavesResult);
+
+        if (leavesResult?.success && leavesResult?.data) {
+          setMyLeaves(leavesResult.data);
+          console.log('✅ Leaves updated:', leavesResult.data.length);
+        } else if (leavesResult?.data) {
+          // If the result doesn't have a success flag but has data
+          setMyLeaves(leavesResult.data);
+          console.log('✅ Leaves updated (alternative):', leavesResult.data.length);
+        } else {
+          // Fallback: try to get leaves from Redux state
+          const state = useSelector(state => state.leave);
+          if (state?.leaves) {
+            setMyLeaves(state.leaves);
+            console.log('✅ Leaves updated from Redux:', state.leaves.length);
+          }
+        }
+
+        // Fetch employee profile for updated balance
+        await dispatch(getEmployeeProfile());
+
+        console.log('✅ Data refresh complete');
       } else {
         showToast(result?.error || 'Something went wrong', 'warning');
       }
     } catch (err) {
+      console.log('❌ Submit error:', err);
       showToast('Unable to submit leave', 'warning');
     } finally {
       setIsSubmitting(false);
     }
   };
-
   const scrollToTop = () => {
     setTimeout(() => {
       if (scrollViewRef.current) {
@@ -1675,8 +1826,8 @@ const LeaveScreen = ({ navigation }) => {
                             backgroundColor: isOff
                               ? C.error
                               : isHalf
-                              ? C.warning
-                              : C.primary,
+                                ? C.warning
+                                : C.primary,
                           },
                         ]}
                       />
@@ -1753,7 +1904,7 @@ const LeaveScreen = ({ navigation }) => {
                       { color: C.textSecondary },
                     ]}
                   >
-                    {t?.leave?.total || 'Total Leave'}
+                    {t?.leave?.total || 'Total Leave'} {" "}
                   </Text>
                   <Text
                     style={[
@@ -1771,17 +1922,16 @@ const LeaveScreen = ({ navigation }) => {
                     style={[
                       styles.balanceBarFill,
                       {
-                        width: `${
-                          totalLeaveBalance > 0
-                            ? (totalRemaining / totalLeaveBalance) * 100
-                            : 0
-                        }%`,
+                        width: `${totalLeaveBalance > 0
+                          ? (totalRemaining / totalLeaveBalance) * 100
+                          : 0
+                          }%`,
                         backgroundColor:
                           totalRemaining <= 3
                             ? C.error
                             : totalRemaining <= 7
-                            ? C.warning
-                            : C.primary,
+                              ? C.warning
+                              : C.primary,
                       },
                     ]}
                   />
@@ -1790,16 +1940,16 @@ const LeaveScreen = ({ navigation }) => {
                   <Text
                     style={[styles.balanceUsedText, { color: C.textSecondary }]}
                   >
-                    {LEAVE_BALANCE.total.used} {t?.leave?.usedLabel || 'used'}
+                    {LEAVE_BALANCE.total.used} {t?.leave?.usedLabel || 'used'} {""}
                   </Text>
-                  <Text
+                  {/* <Text
                     style={[
                       styles.balanceAllocationText,
                       { color: C.primary + '80' },
                     ]}
                   >
                     +{monthlyLeaveAllocation}/mo
-                  </Text>
+                  </Text> */}
                 </View>
               </View>
 
@@ -1858,28 +2008,30 @@ const LeaveScreen = ({ navigation }) => {
                     style={[
                       styles.balanceBarFill,
                       {
-                        width: `${
-                          monthlyLeaveAllocation > 0
-                            ? (currentMonthLeaveRemaining /
-                                monthlyLeaveAllocation) *
-                              100
-                            : 0
-                        }%`,
+                        width: `${monthlyLeaveAllocation > 0
+                          ? (currentMonthLeaveRemaining /
+                            monthlyLeaveAllocation) *
+                          100
+                          : 0
+                          }%`,
                         backgroundColor:
                           currentMonthLeaveRemaining <= 0.5
                             ? C.error
                             : currentMonthLeaveRemaining <= 1
-                            ? C.warning
-                            : C.success,
+                              ? C.warning
+                              : C.success,
                       },
                     ]}
                   />
                 </View>
                 <View style={styles.balanceInfoRow}>
+
                   <Text
                     style={[styles.balanceUsedText, { color: C.textSecondary }]}
                   >
-                    {currentMonthLeaveUsed} used this month
+                    {currentMonthLeaveUsed} used
+                  </Text>
+                  {/* <Text style={[styles.balanceUsedText, { color: C.textSecondary }]}>
                   </Text>
                   <Text
                     style={[
@@ -1890,7 +2042,7 @@ const LeaveScreen = ({ navigation }) => {
                     {new Date().getMonth() === 2 || new Date().getMonth() === 7
                       ? '3.5/mo'
                       : '2.5/mo'}
-                  </Text>
+                  </Text> */}
                 </View>
               </View>
 
@@ -1939,7 +2091,7 @@ const LeaveScreen = ({ navigation }) => {
                       { color: C.textSecondary + '80' },
                     ]}
                   >
-                    Monthly 🔄
+                    {" "} Monthly 🔄
                   </Text>
                 </View>
                 <View
@@ -1949,13 +2101,12 @@ const LeaveScreen = ({ navigation }) => {
                     style={[
                       styles.balanceBarFill,
                       {
-                        width: `${
-                          LEAVE_BALANCE.short.totalPerMonth > 0
-                            ? (shortRemaining /
-                                LEAVE_BALANCE.short.totalPerMonth) *
-                              100
-                            : 0
-                        }%`,
+                        width: `${LEAVE_BALANCE.short.totalPerMonth > 0
+                          ? (shortRemaining /
+                            LEAVE_BALANCE.short.totalPerMonth) *
+                          100
+                          : 0
+                          }%`,
                         backgroundColor:
                           shortRemaining === 0 ? C.error : C.warning,
                       },
@@ -1966,18 +2117,78 @@ const LeaveScreen = ({ navigation }) => {
                   <Text
                     style={[styles.balanceUsedText, { color: C.textSecondary }]}
                   >
-                    {LEAVE_BALANCE.short.usedThisMonth} used
+                    {LEAVE_BALANCE.short.usedThisMonth} used {" "}
                   </Text>
-                  <Text
+                  {/* <Text
                     style={[
                       styles.balanceAllocationText,
                       { color: C.warning + '80' },
                     ]}
                   >
                     Resets monthly
-                  </Text>
+                  </Text> */}
                 </View>
               </View>
+{/* ------------------------------------------------------ */}
+
+  <View
+                style={[
+                  styles.balanceCard,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.warning + '40',
+                  },
+                ]}
+              >
+               <View
+                  style={[
+                    styles.balanceCardTop,
+                    { backgroundColor: C.lime + '12' },
+                  ]}
+                >
+                  <Text
+                    style={[styles.balanceCardRemaining, { color: C.lime }]}
+                  >
+                      {userProfile?.currentMonthLeaveLop}
+
+                  </Text>
+                 
+                </View>
+                <View style={styles.balanceCardLabelRow}>
+                  <Text
+                    style={[
+                      styles.balanceCardLabel,
+                      { color: C.textSecondary },
+                    ]}
+                  >
+                    Loss of Pay
+                  </Text>
+                  <Text
+                    style={[
+                      styles.balanceCardSubLabel,
+                      { color: C.textSecondary + '80' },
+                    ]}
+                  >
+                    {" "} Monthly
+                  </Text>
+                </View>
+                <View
+                  style={[styles.balanceBar, { backgroundColor: C.border }]}
+                >
+                  <View
+                    style={[
+                      styles.balanceBarFill,
+                      {
+                        width: "100%",
+                        backgroundColor: C.lime 
+                      },
+                    ]}
+                  />
+                </View>
+              
+              </View>
+
+
             </ScrollView>
           </View>
 
@@ -2743,8 +2954,8 @@ const LeaveScreen = ({ navigation }) => {
                             leaveType === 'full'
                               ? C.primary + '20'
                               : leaveType === 'half'
-                              ? C.warning + '20'
-                              : C.info + '20',
+                                ? C.warning + '20'
+                                : C.info + '20',
                         },
                       ]}
                     >
@@ -2756,19 +2967,17 @@ const LeaveScreen = ({ navigation }) => {
                               leaveType === 'full'
                                 ? C.primary
                                 : leaveType === 'half'
-                                ? C.warning
-                                : C.info,
+                                  ? C.warning
+                                  : C.info,
                           },
                         ]}
                       >
                         {leaveType === 'full'
                           ? '☀️ Full Day'
                           : leaveType === 'half'
-                          ? `🌓 ${
-                              halfDayType === 'half1' ? 'First' : 'Second'
+                            ? `🌓 ${halfDayType === 'half1' ? 'First' : 'Second'
                             } Half`
-                          : `⏱ Short (${
-                              shortHalfType === 'half1' ? '1st' : '2nd'
+                            : `⏱ Short (${shortHalfType === 'half1' ? '1st' : '2nd'
                             } Half)`}
                       </Text>
                     </View>
@@ -2866,8 +3075,12 @@ const LeaveScreen = ({ navigation }) => {
 
           {/* ── Leave Reason ── */}
           <View style={styles.reasonSection}>
-            <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
+            {/* <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
               {t?.leave?.reasonForLeave || 'Reason for Leave *'}
+            </Text> */}
+            <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
+              {t?.leave?.reasonForLeave ? t?.leave?.reasonForLeave.replace('*', '') : 'Reason for Leave '}
+              <Text style={{ color: C.error }}>*</Text>
             </Text>
 
             <TextInput
@@ -2940,17 +3153,17 @@ const LeaveScreen = ({ navigation }) => {
               {
                 backgroundColor:
                   !startDate ||
-                  isSubmitting ||
-                  isAllLeaveBlocked ||
-                  !reason.trim() ||
-                  wordCount > MAX_WORDS
+                    isSubmitting ||
+                    isAllLeaveBlocked ||
+                    !reason.trim() ||
+                    wordCount > MAX_WORDS
                     ? C.border
                     : C.primary,
                 opacity:
                   !startDate ||
-                  isAllLeaveBlocked ||
-                  !reason.trim() ||
-                  wordCount > MAX_WORDS
+                    isAllLeaveBlocked ||
+                    !reason.trim() ||
+                    wordCount > MAX_WORDS
                     ? 0.5
                     : 1,
               },
@@ -2995,15 +3208,13 @@ const LeaveScreen = ({ navigation }) => {
                     },
                   ]}
                 >
-                  {`${t?.leave?.applyBtn || 'Apply Leave'}${
-                    leaveCalc && leaveCalc.total !== undefined
-                      ? ` · ${formatLeaveDays(leaveCalc.total)} ${
-                          parseFloat(leaveCalc.total) > 1
-                            ? t?.leave?.daysLabel || 'Days'
-                            : t?.leave?.dayLabel || 'Day'
-                        }`
-                      : ''
-                  }`}
+                  {`${t?.leave?.applyBtn || 'Apply Leave'}${leaveCalc && leaveCalc.total !== undefined
+                    ? ` · ${formatLeaveDays(leaveCalc.total)} ${parseFloat(leaveCalc.total) > 1
+                      ? t?.leave?.daysLabel || 'Days'
+                      : t?.leave?.dayLabel || 'Day'
+                    }`
+                    : ''
+                    }`}
                 </Text>
               </View>
             )}
@@ -3092,7 +3303,7 @@ const LeaveScreen = ({ navigation }) => {
                 style={styles.leavesScrollView}
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={true}
-                // ref={scrollViewRef}
+              // ref={scrollViewRef}
               >
                 {myLeaves
                   .slice()
@@ -3139,7 +3350,7 @@ const LeaveScreen = ({ navigation }) => {
                               ]}
                             >
                               {startDateFormatted}
-                              {isMultiDay && ` → ${endDateFormatted}`}
+                              {isMultiDay && endDateFormatted && ` → ${endDateFormatted}`}
                             </Text>
                           </View>
                           <View
@@ -3477,8 +3688,8 @@ const LeaveScreen = ({ navigation }) => {
                         {domType === 'full'
                           ? t?.leave?.fullDay || 'Full Day'
                           : domType === 'half1'
-                          ? t?.leave?.firstHalf || 'First Half'
-                          : t?.leave?.secondHalf || 'Second Half'}
+                            ? t?.leave?.firstHalf || 'First Half'
+                            : t?.leave?.secondHalf || 'Second Half'}
                       </Text>
                     </View>
 
@@ -3599,10 +3810,10 @@ const LeaveScreen = ({ navigation }) => {
               <Text style={[styles.popupDate, { color: C.textPrimary }]}>
                 {selectedDate
                   ? new Date(selectedDate.dateStr).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                    })
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                  })
                   : ''}
               </Text>
               <TouchableOpacity
@@ -3619,29 +3830,29 @@ const LeaveScreen = ({ navigation }) => {
             {(selectedDate?.isSunday ||
               selectedDate?.isSecondSat ||
               selectedDate?.isFourthSat) && (
-              <View
-                style={[
-                  styles.popupHolidayRow,
-                  { backgroundColor: C.error + '15' },
-                ]}
-              >
-                <CalendarDays size={wp('5%')} color={C.error} />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[styles.popupHolidayName, { color: C.textPrimary }]}
-                  >
-                    {selectedDate.isSunday
-                      ? 'Sunday'
-                      : selectedDate.isSecondSat
-                      ? '2nd Saturday'
-                      : '4th Saturday'}
-                  </Text>
-                  <Text style={[styles.popupHolidayType, { color: C.error }]}>
-                    Weekly Off
-                  </Text>
+                <View
+                  style={[
+                    styles.popupHolidayRow,
+                    { backgroundColor: C.error + '15' },
+                  ]}
+                >
+                  <CalendarDays size={wp('5%')} color={C.error} />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.popupHolidayName, { color: C.textPrimary }]}
+                    >
+                      {selectedDate.isSunday
+                        ? 'Sunday'
+                        : selectedDate.isSecondSat
+                          ? '2nd Saturday'
+                          : '4th Saturday'}
+                    </Text>
+                    <Text style={[styles.popupHolidayType, { color: C.error }]}>
+                      Weekly Off
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
             {selectedDate?.holiday &&
               (() => {
@@ -3685,8 +3896,8 @@ const LeaveScreen = ({ navigation }) => {
                           {domType === 'full'
                             ? '✓ Full Day'
                             : domType === 'half1'
-                            ? '½ First Half'
-                            : '½ Second Half'}
+                              ? '½ First Half'
+                              : '½ Second Half'}
                         </Text>
                       </View>
                     </View>
@@ -3885,7 +4096,7 @@ const LeaveScreen = ({ navigation }) => {
         visible={successModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => {}}
+        onRequestClose={() => { }}
       >
         <View style={[styles.popupOverlay, { backgroundColor: C.overlayBg }]}>
           <Animated.View
@@ -3985,8 +4196,8 @@ const LeaveScreen = ({ navigation }) => {
                     {leaveType === 'full'
                       ? t?.leave?.fullDay || 'Full Day'
                       : leaveType === 'half'
-                      ? t?.leave?.halfDayLabel || 'Half Day'
-                      : t?.leave?.shortLabel || 'Short Leave'}
+                        ? t?.leave?.halfDayLabel || 'Half Day'
+                        : t?.leave?.shortLabel || 'Short Leave'}
                   </Text>
                 </View>
               )}
@@ -4321,8 +4532,8 @@ const styles = StyleSheet.create({
   },
   balanceInfoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    // justifyContent: 'space-between',
+    // alignItems: 'center',
     marginTop: 1,
   },
   balanceAllocationText: {

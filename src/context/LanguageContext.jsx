@@ -212,7 +212,7 @@ export const translations = {
       onBreak: 'On Break',
     },
     reports: {
-      title: 'Attendance Reports',
+      title: 'Attendance Report',
       totalRecords: 'records total',
       present: 'Present',
       absent: 'Absent',

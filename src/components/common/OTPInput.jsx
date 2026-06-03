@@ -4,10 +4,16 @@ import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from 'react-native-responsive-screen';
-import { Colors, Fonts } from '../../utils/GlobalText';
+import { Fonts } from '../../utils/GlobalText';
+import { useTheme } from '../../context/ThemeContext';
 
 const OTPInput = ({ otp, setOtp }) => {
   const inputs = useRef([]);
+  const { theme } = useTheme();
+  const C = theme.colors;
+  
+  // Check if it's light theme
+  const isLightTheme = theme.dark === false;
 
   const handleChange = (text, index) => {
     // Allow only numbers
@@ -63,7 +69,12 @@ const OTPInput = ({ otp, setOtp }) => {
           ref={ref => inputs.current[index] = ref}
           style={[
             styles.box,
-            digit ? styles.boxFilled : null,
+            digit && styles.boxFilled,
+            {
+              borderColor: digit ? C.primary : C.border,
+              backgroundColor: digit ? C.primary + '10' : C.surface,
+              color: isLightTheme ? '#000000' : C.textPrimary,
+            },
           ]}
           value={digit}
           onChangeText={(text) => handleChange(text, index)}
@@ -83,22 +94,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: wp('2%'),
+    gap: wp('2%'),
   },
   box: {
     width: wp('13%'),
     height: wp('13%'),
     borderWidth: 1.5,
-    borderColor: Colors.otpBorder,
     borderRadius: wp('2%'),
     textAlign: 'center',
     fontSize: wp('5%'),
     fontFamily: Fonts.medium,
-    color: Colors.textPrimary,
-    backgroundColor: Colors.background,
   },
   boxFilled: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(250, 204, 21, 0.1)',
+    // Empty now - styles are handled inline
   },
 });
 

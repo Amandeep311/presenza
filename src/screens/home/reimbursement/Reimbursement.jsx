@@ -56,6 +56,7 @@ import {
   createExpense,
   fetchExpenses,
 } from '../../../store/actions/expenseActions';
+import { requestCameraPermission, requestLocationPermission, quickCheckPermissions } from '../../../utils/permissions';
 
 const Reimbursement = ({ navigation }) => {
   const { theme } = useTheme();
@@ -106,9 +107,200 @@ const Reimbursement = ({ navigation }) => {
   const PURPOSE_MAX_LENGTH = 30;
   const DESCRIPTION_MAX_LENGTH = 30;
 
+  // Date picker visibility states
+  const [showFromDatePicker, setShowFromDatePicker] = useState(false);
+  const [showToDatePicker, setShowToDatePicker] = useState(false);
+
+  // Selected dates states
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate] = useState(null);
+
+  // Temporary states for From Date picker
+  const [tempFromDay, setTempFromDay] = useState(1);
+  const [tempFromMonth, setTempFromMonth] = useState(new Date().getMonth() + 1);
+  const [tempFromYear, setTempFromYear] = useState(new Date().getFullYear());
+
+  // Temporary states for To Date picker
+  const [tempToDay, setTempToDay] = useState(1);
+  const [tempToMonth, setTempToMonth] = useState(new Date().getMonth() + 1);
+  const [tempToYear, setTempToYear] = useState(new Date().getFullYear());
+
+  // Refs for From Date picker
+  const fromDayScrollRef = useRef(null);
+  const fromMonthScrollRef = useRef(null);
+  const fromYearScrollRef = useRef(null);
+
+  // Refs for To Date picker
+  const toDayScrollRef = useRef(null);
+  const toMonthScrollRef = useRef(null);
+  const toYearScrollRef = useRef(null);
+
+  // ============ REFS FOR EXISTING DATE PICKER ============
+  const dayScrollRef = useRef(null);
+  const monthScrollRef = useRef(null);
+  const yearScrollRef = useRef(null);
+
+  const ITEM_HEIGHT = hp('5%');
+
   useEffect(() => {
     loadExpenses();
   }, []);
+
+  // Helper function to get days in a month
+  const getDaysInMonthForPicker = (month, year) => {
+    return new Date(year, month, 0).getDate();
+  };
+
+  // Handle From Date confirmation
+  // Handle From Date confirmation
+  const handleFromDateConfirm = () => {
+    const selectedFromDate = new Date(tempFromYear, tempFromMonth - 1, tempFromDay);
+    setFromDate(selectedFromDate);
+    setShowFromDatePicker(false);
+
+    // If To Date exists and is earlier than From Date, show alert and reset
+    if (toDate && selectedFromDate > toDate) {
+      alert('To Date cannot be earlier than From Date');
+      setToDate(null);
+    }
+  };
+
+  // Auto-scroll for From Date picker
+  useLayoutEffect(() => {
+    if (!showFromDatePicker) return;
+
+    const timer = setTimeout(() => {
+      if (fromDayScrollRef.current && tempFromDay) {
+        const dayIndex = tempFromDay - 1;
+        fromDayScrollRef.current.scrollTo({
+          y: dayIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+      if (fromMonthScrollRef.current && tempFromMonth) {
+        const monthIndex = tempFromMonth - 1;
+        fromMonthScrollRef.current.scrollTo({
+          y: monthIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+
+      const yearsArray = generateYearsArray();
+      if (fromYearScrollRef.current && tempFromYear) {
+        const yearIndex = yearsArray.indexOf(tempFromYear);
+        if (yearIndex !== -1) {
+          fromYearScrollRef.current.scrollTo({
+            y: yearIndex * ITEM_HEIGHT,
+            animated: false,
+          });
+        }
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [showFromDatePicker, tempFromDay, tempFromMonth, tempFromYear]);
+
+  // Auto-scroll for To Date picker
+  useLayoutEffect(() => {
+    if (!showToDatePicker) return;
+
+    const timer = setTimeout(() => {
+      if (toDayScrollRef.current && tempToDay) {
+        const dayIndex = tempToDay - 1;
+        toDayScrollRef.current.scrollTo({
+          y: dayIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+      if (toMonthScrollRef.current && tempToMonth) {
+        const monthIndex = tempToMonth - 1;
+        toMonthScrollRef.current.scrollTo({
+          y: monthIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+
+      const yearsArray = generateYearsArray();
+      if (toYearScrollRef.current && tempToYear) {
+        const yearIndex = yearsArray.indexOf(tempToYear);
+        if (yearIndex !== -1) {
+          toYearScrollRef.current.scrollTo({
+            y: yearIndex * ITEM_HEIGHT,
+            animated: false,
+          });
+        }
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [showToDatePicker, tempToDay, tempToMonth, tempToYear]);
+
+  // Auto-scroll for Existing Date Picker
+  useLayoutEffect(() => {
+    if (!showDatePickerModal) return;
+
+    const years = Array.from(
+      { length: 50 },
+      (_, i) => new Date().getFullYear() - 10 + i,
+    );
+
+    const timer = setTimeout(() => {
+      if (dayScrollRef.current && tempDay) {
+        const dayIndex = tempDay - 1;
+        dayScrollRef.current.scrollTo({
+          y: dayIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+      if (monthScrollRef.current && tempMonth) {
+        const monthIndex = tempMonth - 1;
+        monthScrollRef.current.scrollTo({
+          y: monthIndex * ITEM_HEIGHT,
+          animated: false,
+        });
+      }
+      if (yearScrollRef.current && tempYear) {
+        const yearIndex = years.indexOf(tempYear);
+        if (yearIndex !== -1) {
+          yearScrollRef.current.scrollTo({
+            y: yearIndex * ITEM_HEIGHT,
+            animated: false,
+          });
+        }
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [showDatePickerModal, tempDay, tempMonth, tempYear]);
+
+  // Handle To Date confirmation with validation
+  const handleToDateConfirm = () => {
+    const selectedToDate = new Date(tempToYear, tempToMonth - 1, tempToDay);
+
+    // Check if To Date is before From Date
+    if (fromDate && selectedToDate < fromDate) {
+      alert('To Date cannot be earlier than From Date');
+      return;
+    }
+
+    setToDate(selectedToDate);
+    setShowToDatePicker(false);
+  };
+
+  // Helper function to format date for display (renamed to avoid conflict)
+  const formatDateForPicker = (day, month, year) => {
+    if (!day || !month || !year) return '';
+    return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+  };
+
+  // Helper function to generate years array
+  const generateYearsArray = () => {
+    const currentYear = new Date().getFullYear();
+    return Array.from(
+      { length: 50 },
+      (_, i) => currentYear - 10 + i
+    );
+  };
 
   const loadExpenses = async () => {
     const result = await dispatch(fetchExpenses());
@@ -352,47 +544,90 @@ const Reimbursement = ({ navigation }) => {
     return true;
   };
 
-  const handleImagePick = () => {
-    if (selectedFiles.length >= 1) {
-      Alert.alert('Limit Reached', 'You can only upload 1 file');
-      return;
-    }
+  // const handleImagePick = () => {
+  //   if (selectedFiles.length >= 1) {
+  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
+  //     return;
+  //   }
 
-    launchImageLibrary(
-      {
-        mediaType: 'photo',
-        selectionLimit: 1,
-        quality: 0.8,
-        maxHeight: 2000,
-        maxWidth: 2000,
-      },
-      response => {
-        if (response.didCancel) {
-          console.log('User cancelled image picker');
-        } else if (response.error) {
-          Alert.alert('Error', 'Failed to pick image: ' + response.error);
-        } else if (response.assets && response.assets.length > 0) {
-          const asset = response.assets[0];
+  //   launchImageLibrary(
+  //     {
+  //       mediaType: 'photo',
+  //       selectionLimit: 1,
+  //       quality: 0.8,
+  //       maxHeight: 2000,
+  //       maxWidth: 2000,
+  //     },
+  //     response => {
+  //       if (response.didCancel) {
+  //         console.log('User cancelled image picker');
+  //       } else if (response.error) {
+  //         Alert.alert('Error', 'Failed to pick image: ' + response.error);
+  //       } else if (response.assets && response.assets.length > 0) {
+  //         const asset = response.assets[0];
 
-          if (!validateFileSize(asset.fileSize)) {
-            return;
-          }
+  //         if (!validateFileSize(asset.fileSize)) {
+  //           return;
+  //         }
 
-          const imageFile = {
-            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            uri: asset.uri,
-            type: asset.type?.includes('png') ? 'png' : 'jpg',
-            name: asset.fileName || `image_${Date.now()}.jpg`,
-            size: asset.fileSize,
-            mimeType: asset.type || 'image/jpeg',
-          };
+  //         const imageFile = {
+  //           id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  //           uri: asset.uri,
+  //           type: asset.type?.includes('png') ? 'png' : 'jpg',
+  //           name: asset.fileName || `image_${Date.now()}.jpg`,
+  //           size: asset.fileSize,
+  //           mimeType: asset.type || 'image/jpeg',
+  //         };
 
-          setSelectedFiles(prev => [...prev, imageFile]);
-          Alert.alert('Success', 'Image selected');
+  //         setSelectedFiles(prev => [...prev, imageFile]);
+  //         Alert.alert('Success', 'Image selected');
+  //       }
+  //     },
+  //   );
+  // };
+
+const handleImagePick = async () => {
+  if (selectedFiles.length >= 1) {
+    Alert.alert('Limit Reached', 'You can only upload 1 file');
+    return;
+  }
+
+  // For image picker, we don't need camera permission, just storage
+  launchImageLibrary(
+    {
+      mediaType: 'photo',
+      selectionLimit: 1,
+      quality: 0.8,
+      maxHeight: 2000,
+      maxWidth: 2000,
+    },
+    response => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.error) {
+        Alert.alert('Error', 'Failed to pick image: ' + response.error);
+      } else if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0];
+
+        if (!validateFileSize(asset.fileSize)) {
+          return;
         }
-      },
-    );
-  };
+
+        const imageFile = {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          uri: asset.uri,
+          type: asset.type?.includes('png') ? 'png' : 'jpg',
+          name: asset.fileName || `image_${Date.now()}.jpg`,
+          size: asset.fileSize,
+          mimeType: asset.type || 'image/jpeg',
+        };
+
+        setSelectedFiles(prev => [...prev, imageFile]);
+        Alert.alert('Success', 'Image selected');
+      }
+    },
+  );
+};
 
   const handlePDFPick = async () => {
     if (selectedFiles.length >= 1) {
@@ -433,50 +668,111 @@ const Reimbursement = ({ navigation }) => {
     }
   };
 
-  const handleCameraCapture = () => {
-    if (selectedFiles.length >= 1) {
-      Alert.alert('Limit Reached', 'You can only upload 1 file');
-      return;
-    }
+  // ;const handleCameraCapture = () => {
+  //   if (selectedFiles.length >= 1) {
+  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
+  //     return;
+  //   }
 
-    launchCamera(
-      {
-        mediaType: 'photo',
-        quality: 0.8,
-        maxHeight: 2000,
-        maxWidth: 2000,
-        saveToPhotos: false,
-      },
-      response => {
-        if (response.didCancel) {
-          console.log('User cancelled camera');
-        } else if (response.error) {
-          Alert.alert(
-            'Camera Error',
-            'Failed to capture image: ' + response.error,
-          );
-        } else if (response.assets && response.assets.length > 0) {
-          const asset = response.assets[0];
+  //   launchCamera(
+  //     {
+  //       mediaType: 'photo',
+  //       quality: 0.8,
+  //       maxHeight: 2000,
+  //       maxWidth: 2000,
+  //       saveToPhotos: false,
+  //     },
+  //     response => {
+  //       if (response.didCancel) {
+  //         console.log('User cancelled camera');
+  //       } else if (response.error) {
+  //         Alert.alert(
+  //           'Camera Error',
+  //           'Failed to capture image: ' + response.error,
+  //         );
+  //       } else if (response.assets && response.assets.length > 0) {
+  //         const asset = response.assets[0];
 
-          if (!validateFileSize(asset.fileSize)) {
-            return;
-          }
+  //         if (!validateFileSize(asset.fileSize)) {
+  //           return;
+  //         }
 
-          const imageFile = {
-            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            uri: asset.uri,
-            type: 'jpg',
-            name: asset.fileName || `capture_${Date.now()}.jpg`,
-            size: asset.fileSize,
-            mimeType: 'image/jpeg',
-          };
+  //         const imageFile = {
+  //           id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  //           uri: asset.uri,
+  //           type: 'jpg',
+  //           name: asset.fileName || `capture_${Date.now()}.jpg`,
+  //           size: asset.fileSize,
+  //           mimeType: 'image/jpeg',
+  //         };
 
-          setSelectedFiles(prev => [...prev, imageFile]);
-          Alert.alert('Success', 'Photo captured');
-        }
-      },
+  //         setSelectedFiles(prev => [...prev, imageFile]);
+  //         Alert.alert('Success', 'Photo captured');
+  //       }
+  //     },
+  //   );
+  // }
+
+const handleCameraCapture = async () => {
+  if (selectedFiles.length >= 1) {
+    Alert.alert('Limit Reached', 'You can only upload 1 file');
+    return;
+  }
+
+  // Check camera permission first
+  const cameraPermission = await requestCameraPermission(true);
+  
+  if (!cameraPermission.granted) {
+    Alert.alert(
+      'Camera Permission Required',
+      'Camera permission is needed to take photos for expense receipts. Please grant permission to continue.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() }
+      ]
     );
-  };
+    return;
+  }
+
+  // Permission granted, proceed with camera
+  launchCamera(
+    {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxHeight: 2000,
+      maxWidth: 2000,
+      saveToPhotos: false,
+    },
+    response => {
+      if (response.didCancel) {
+        console.log('User cancelled camera');
+      } else if (response.error) {
+        Alert.alert(
+          'Camera Error',
+          'Failed to capture image: ' + response.error,
+        );
+      } else if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0];
+
+        if (!validateFileSize(asset.fileSize)) {
+          return;
+        }
+
+        const imageFile = {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          uri: asset.uri,
+          type: 'jpg',
+          name: asset.fileName || `capture_${Date.now()}.jpg`,
+          size: asset.fileSize,
+          mimeType: 'image/jpeg',
+        };
+
+        setSelectedFiles(prev => [...prev, imageFile]);
+        Alert.alert('Success', 'Photo captured');
+      }
+    },
+  );
+};
 
   const showFilePickerOptions = () => {
     if (selectedFiles.length >= 1) {
@@ -494,7 +790,7 @@ const Reimbursement = ({ navigation }) => {
         { text: 'PDF Document', onPress: handlePDFPick },
         { text: 'Image', onPress: handleImagePick },
         { text: 'Take Photo', onPress: handleCameraCapture },
-        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        { text: 'Cancel', onPress: () => { }, style: 'cancel' },
       ],
       { cancelable: true },
     );
@@ -563,8 +859,13 @@ const Reimbursement = ({ navigation }) => {
       Alert.alert('Validation Error', 'Please enter a valid travel amount');
       return;
     }
-    if (!date) {
-      Alert.alert('Validation Error', 'Please select a date');
+    // Replace date validation with fromDate and toDate validation
+    if (!fromDate) {
+      Alert.alert('Validation Error', 'Please select From Date');
+      return;
+    }
+    if (!toDate) {
+      Alert.alert('Validation Error', 'Please select To Date');
       return;
     }
     if (!fromLocation.trim()) {
@@ -616,7 +917,7 @@ const Reimbursement = ({ navigation }) => {
 
     submitToServer();
   };
-
+  // ---------------------------------------------------------
   const submitToServer = async () => {
     setSubmitting(true);
 
@@ -629,13 +930,29 @@ const Reimbursement = ({ navigation }) => {
     };
 
     try {
+      // Format dates for API
+      const formatDateForAPI = (date) => {
+        if (!date) return null;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      // Debug logs to check dates
+      console.log('fromDate state:', fromDate);
+      console.log('toDate state:', toDate);
+      console.log('formatted fromDate:', fromDate ? formatDateForAPI(fromDate) : null);
+      console.log('formatted toDate:', toDate ? formatDateForAPI(toDate) : null);
+
       const expenseData = {
         travelType: expenseType.toUpperCase(),
         grade: grade,
         policySnapshot: policySnapshot,
         fromLocation: fromLocation.trim(),
         toLocation: toLocation.trim(),
-        date: date,
+        fromDate: fromDate ? formatDateForAPI(fromDate) : null,
+        toDate: toDate ? formatDateForAPI(toDate) : null,
         businessPurpose: purpose.trim(),
         distanceKm:
           expenseType === 'car' ? parseFloat(kilometers) || 0 : undefined,
@@ -671,13 +988,16 @@ const Reimbursement = ({ navigation }) => {
           })),
       };
 
+      // Debug log the entire expenseData
+      console.log('Sending expenseData:', JSON.stringify(expenseData, null, 2));
+
       const receiptFile =
         selectedFiles.length > 0
           ? {
-              uri: selectedFiles[0].uri,
-              type: selectedFiles[0].type,
-              name: selectedFiles[0].name,
-            }
+            uri: selectedFiles[0].uri,
+            type: selectedFiles[0].type,
+            name: selectedFiles[0].name,
+          }
           : null;
 
       const result = await dispatch(createExpense(expenseData, receiptFile));
@@ -694,12 +1014,13 @@ const Reimbursement = ({ navigation }) => {
         Alert.alert('Error', result.error || 'Failed to submit expense');
       }
     } catch (error) {
+      console.error('Submit error:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
-
+  // ----------------------serve data end--------------------------
   const resetForm = () => {
     setExpenseType('car');
     setAmount('');
@@ -715,43 +1036,71 @@ const Reimbursement = ({ navigation }) => {
     setOtherExpenses([]);
     setKilometers('');
     setSelectedFiles([]);
+    setFromDate(null);  // Add this
+    setToDate(null);    // Add this
 
     const now = new Date();
 
     setTempDay(now.getDate());
     setTempMonth(now.getMonth() + 1);
     setTempYear(now.getFullYear());
+    setTempFromDay(1);
+    setTempFromMonth(now.getMonth() + 1);
+    setTempFromYear(now.getFullYear());
+    setTempToDay(1);
+    setTempToMonth(now.getMonth() + 1);
+    setTempToYear(now.getFullYear());
   };
 
-  const getFilteredRequests = () => {
-    if (!expenses || !Array.isArray(expenses)) return [];
+const getFilteredRequests = () => {
+  if (!expenses || !Array.isArray(expenses)) return [];
 
-    if (activeFilter === 'pending') {
-      return expenses
-        .filter(r => (r.status || '').toUpperCase() === 'PENDING')
-        .reverse();
-    } else if (activeFilter === 'approved') {
-      return expenses
-        .filter(r => (r.status || '').toUpperCase() === 'APPROVED')
-        .reverse();
-    }
+  // Debug: Log all status values
+  console.log('All status values:', expenses.map(r => r.status));
+  console.log('Active filter:', activeFilter);
 
-    return [...expenses].reverse();
-  };
+  if (activeFilter === 'pending') {
+    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'PENDING');
+    console.log('Pending filtered count:', filtered.length);
+    return filtered.reverse();
+  } else if (activeFilter === 'approved') {
+    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'APPROVED');
+    console.log('Approved filtered count:', filtered.length);
+    return filtered.reverse();
+  } else if (activeFilter === 'rejected') {
+    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'REJECTED');
+    console.log('Rejected filtered count:', filtered.length);
+    console.log('Rejected items:', filtered.map(r => ({ id: r._id, status: r.status })));
+    return filtered.reverse();
+  }
 
-  const getFilterCounts = () => {
-    if (!expenses || !Array.isArray(expenses)) {
-      return { pending: 0, approved: 0 };
-    }
-    return {
-      pending: expenses.filter(
-        r => (r.status || '').toUpperCase() === 'PENDING',
-      ).length,
-      approved: expenses.filter(
-        r => (r.status || '').toUpperCase() === 'APPROVED',
-      ).length,
-    };
-  };
+  return [...expenses].reverse();
+};
+
+const getFilterCounts = () => {
+  if (!expenses || !Array.isArray(expenses)) {
+    return { pending: 0, approved: 0, rejected: 0 };
+  }
+  
+  const pending = expenses.filter(r => {
+    const status = (r.status || '').toUpperCase();
+    return status === 'PENDING';
+  }).length;
+  
+  const approved = expenses.filter(r => {
+    const status = (r.status || '').toUpperCase();
+    return status === 'APPROVED';
+  }).length;
+  
+  const rejected = expenses.filter(r => {
+    const status = (r.status || '').toUpperCase();
+    return status === 'REJECTED';
+  }).length;
+  
+  console.log('Counts - Pending:', pending, 'Approved:', approved, 'Rejected:', rejected);
+  
+  return { pending, approved, rejected };
+};
 
   const counts = getFilterCounts();
 
@@ -806,7 +1155,7 @@ const Reimbursement = ({ navigation }) => {
                   <Text style={[styles.viewStatusText, { color: '#fff' }]}>
                     {selectedRequest.status
                       ? selectedRequest.status.charAt(0).toUpperCase() +
-                        selectedRequest.status.slice(1).toLowerCase()
+                      selectedRequest.status.slice(1).toLowerCase()
                       : 'Unknown'}
                   </Text>
                 </View>
@@ -881,7 +1230,7 @@ const Reimbursement = ({ navigation }) => {
                   </Text>
                 </View>
 
-                <View style={styles.viewInfoRow}>
+                {/* <View style={styles.viewInfoRow}>
                   <Text
                     style={[styles.viewInfoLabel, { color: C.textSecondary }]}
                   >
@@ -891,6 +1240,32 @@ const Reimbursement = ({ navigation }) => {
                     style={[styles.viewInfoValue, { color: C.textPrimary }]}
                   >
                     {formatDate(selectedRequest.date)}
+                  </Text>
+                </View> */}
+
+                <View style={styles.viewInfoRow}>
+                  <Text
+                    style={[styles.viewInfoLabel, { color: C.textSecondary }]}
+                  >
+                    From Date
+                  </Text>
+                  <Text
+                    style={[styles.viewInfoValue, { color: C.textPrimary }]}
+                  >
+                    {selectedRequest.fromDate ? formatDate(selectedRequest.fromDate) : 'N/A'}
+                  </Text>
+                </View>
+
+                <View style={styles.viewInfoRow}>
+                  <Text
+                    style={[styles.viewInfoLabel, { color: C.textSecondary }]}
+                  >
+                    To Date
+                  </Text>
+                  <Text
+                    style={[styles.viewInfoValue, { color: C.textPrimary }]}
+                  >
+                    {selectedRequest.toDate ? formatDate(selectedRequest.toDate) : 'N/A'}
                   </Text>
                 </View>
 
@@ -957,7 +1332,7 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Paid By:{' '}
                         {selectedRequest.expenses.travel.paymentMethod ===
-                        'COMPANY'
+                          'COMPANY'
                           ? 'Company'
                           : 'Self'}
                       </Text>
@@ -1003,7 +1378,7 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Paid By:{' '}
                         {selectedRequest.expenses.hotel.paymentMethod ===
-                        'COMPANY'
+                          'COMPANY'
                           ? 'Company'
                           : 'Self'}
                       </Text>
@@ -1047,7 +1422,7 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Paid By:{' '}
                         {selectedRequest.expenses.food.paymentMethod ===
-                        'COMPANY'
+                          'COMPANY'
                           ? 'Company'
                           : 'Self'}
                       </Text>
@@ -1217,6 +1592,388 @@ const Reimbursement = ({ navigation }) => {
     );
   };
 
+  const renderFromDatePickerModal = () => {
+    const daysInMonth = getDaysInMonthForPicker(tempFromMonth, tempFromYear);
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+    const years = generateYearsArray();
+
+    return (
+      <Modal
+        visible={showFromDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFromDatePicker(false)}
+      >
+        <View style={styles.datePickerOverlay}>
+          <View
+            style={[
+              styles.datePickerContainer,
+              { backgroundColor: C.background },
+            ]}
+          >
+            <View
+              style={[styles.datePickerHeader, { borderBottomColor: C.border }]}
+            >
+              <Text style={[styles.datePickerTitle, { color: C.textPrimary }]}>
+                Select From Date
+              </Text>
+              <TouchableOpacity onPress={() => setShowFromDatePicker(false)}>
+                <XCircle size={wp('6%')} color={C.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.datePickerColumns}>
+              {/* Day Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Day
+                </Text>
+                <ScrollView
+                  ref={fromDayScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {days.map(day => (
+                    <TouchableOpacity
+                      key={day}
+                      style={[
+                        styles.datePickerItem,
+                        tempFromDay === day && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => setTempFromDay(day)}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempFromDay === day ? C.primary : C.textPrimary },
+                          tempFromDay === day && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Month Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Month
+                </Text>
+                <ScrollView
+                  ref={fromMonthScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {months.map(month => (
+                    <TouchableOpacity
+                      key={month}
+                      style={[
+                        styles.datePickerItem,
+                        tempFromMonth === month && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => {
+                        setTempFromMonth(month);
+                        const maxDays = getDaysInMonthForPicker(month, tempFromYear);
+                        if (tempFromDay > maxDays) {
+                          setTempFromDay(maxDays);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempFromMonth === month ? C.primary : C.textPrimary },
+                          tempFromMonth === month && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {month.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Year Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Year
+                </Text>
+                <ScrollView
+                  ref={fromYearScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {years.map(year => (
+                    <TouchableOpacity
+                      key={year}
+                      style={[
+                        styles.datePickerItem,
+                        tempFromYear === year && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => {
+                        setTempFromYear(year);
+                        const maxDays = getDaysInMonthForPicker(tempFromMonth, year);
+                        if (tempFromDay > maxDays) {
+                          setTempFromDay(maxDays);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempFromYear === year ? C.primary : C.textPrimary },
+                          tempFromYear === year && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {year}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View
+              style={[styles.datePickerButtons, { borderTopColor: C.border }]}
+            >
+              <TouchableOpacity
+                style={[styles.datePickerCancelBtn, { borderColor: C.border }]}
+                onPress={() => setShowFromDatePicker(false)}
+              >
+                <Text
+                  style={[
+                    styles.datePickerCancelText,
+                    { color: C.textSecondary },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.datePickerConfirmBtn,
+                  { backgroundColor: C.primary },
+                ]}
+                onPress={handleFromDateConfirm}
+              >
+                <Text style={styles.datePickerConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderToDatePickerModal = () => {
+    const daysInMonth = getDaysInMonthForPicker(tempToMonth, tempToYear);
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+    const years = generateYearsArray();
+
+    return (
+      <Modal
+        visible={showToDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowToDatePicker(false)}
+      >
+        <View style={styles.datePickerOverlay}>
+          <View
+            style={[
+              styles.datePickerContainer,
+              { backgroundColor: C.background },
+            ]}
+          >
+            <View
+              style={[styles.datePickerHeader, { borderBottomColor: C.border }]}
+            >
+              <Text style={[styles.datePickerTitle, { color: C.textPrimary }]}>
+                Select To Date
+              </Text>
+              <TouchableOpacity onPress={() => setShowToDatePicker(false)}>
+                <XCircle size={wp('6%')} color={C.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.datePickerColumns}>
+              {/* Day Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Day
+                </Text>
+                <ScrollView
+                  ref={toDayScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {days.map(day => (
+                    <TouchableOpacity
+                      key={day}
+                      style={[
+                        styles.datePickerItem,
+                        tempToDay === day && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => setTempToDay(day)}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempToDay === day ? C.primary : C.textPrimary },
+                          tempToDay === day && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Month Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Month
+                </Text>
+                <ScrollView
+                  ref={toMonthScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {months.map(month => (
+                    <TouchableOpacity
+                      key={month}
+                      style={[
+                        styles.datePickerItem,
+                        tempToMonth === month && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => {
+                        setTempToMonth(month);
+                        const maxDays = getDaysInMonthForPicker(month, tempToYear);
+                        if (tempToDay > maxDays) {
+                          setTempToDay(maxDays);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempToMonth === month ? C.primary : C.textPrimary },
+                          tempToMonth === month && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {month.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Year Column */}
+              <View style={styles.datePickerColumn}>
+                <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
+                  Year
+                </Text>
+                <ScrollView
+                  ref={toYearScrollRef}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.datePickerScroll}
+                  contentContainerStyle={styles.datePickerScrollContent}
+                >
+                  {years.map(year => (
+                    <TouchableOpacity
+                      key={year}
+                      style={[
+                        styles.datePickerItem,
+                        tempToYear === year && {
+                          backgroundColor: C.primary + '20',
+                          borderLeftWidth: 3,
+                          borderLeftColor: C.primary,
+                        },
+                      ]}
+                      onPress={() => {
+                        setTempToYear(year);
+                        const maxDays = getDaysInMonthForPicker(tempToMonth, year);
+                        if (tempToDay > maxDays) {
+                          setTempToDay(maxDays);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerItemText,
+                          { color: tempToYear === year ? C.primary : C.textPrimary },
+                          tempToYear === year && { fontFamily: Fonts.bold },
+                        ]}
+                      >
+                        {year}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View
+              style={[styles.datePickerButtons, { borderTopColor: C.border }]}
+            >
+              <TouchableOpacity
+                style={[styles.datePickerCancelBtn, { borderColor: C.border }]}
+                onPress={() => setShowToDatePicker(false)}
+              >
+                <Text
+                  style={[
+                    styles.datePickerCancelText,
+                    { color: C.textSecondary },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.datePickerConfirmBtn,
+                  { backgroundColor: C.primary },
+                ]}
+                onPress={handleToDateConfirm}
+              >
+                <Text style={styles.datePickerConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   // ============ DATE PICKER MODAL ============
   const renderDatePickerModal = () => {
     const daysInMonth = getDaysInMonth(tempMonth, tempYear);
@@ -1226,45 +1983,6 @@ const Reimbursement = ({ navigation }) => {
       { length: 50 },
       (_, i) => new Date().getFullYear() - 10 + i,
     );
-
-    const dayScrollRef = useRef(null);
-    const monthScrollRef = useRef(null);
-    const yearScrollRef = useRef(null);
-
-    const ITEM_HEIGHT = hp('5%');
-
-    // Fixed: Use layout effect with cleanup
-    useLayoutEffect(() => {
-      if (!showDatePickerModal) return;
-
-      const timer = setTimeout(() => {
-        if (dayScrollRef.current && tempDay) {
-          const dayIndex = tempDay - 1;
-          dayScrollRef.current.scrollTo({
-            y: dayIndex * ITEM_HEIGHT,
-            animated: false,
-          });
-        }
-        if (monthScrollRef.current && tempMonth) {
-          const monthIndex = tempMonth - 1;
-          monthScrollRef.current.scrollTo({
-            y: monthIndex * ITEM_HEIGHT,
-            animated: false,
-          });
-        }
-        if (yearScrollRef.current && tempYear) {
-          const yearIndex = years.indexOf(tempYear);
-          if (yearIndex !== -1) {
-            yearScrollRef.current.scrollTo({
-              y: yearIndex * ITEM_HEIGHT,
-              animated: false,
-            });
-          }
-        }
-      }, 50);
-
-      return () => clearTimeout(timer);
-    }, [showDatePickerModal, tempDay, tempMonth, tempYear, years, ITEM_HEIGHT]);
 
     return (
       <Modal
@@ -1511,56 +2229,84 @@ const Reimbursement = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.filterContainer, { borderBottomColor: C.border }]}>
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            activeFilter === 'pending' && styles.activeFilterTab,
-            activeFilter === 'pending' && { borderBottomColor: C.primary },
-          ]}
-          onPress={() => setActiveFilter('pending')}
-        >
-          <Clock
-            size={wp('4%')}
-            color={activeFilter === 'pending' ? C.primary : C.textSecondary}
-          />
-          <Text
-            style={[
-              styles.filterText,
-              {
-                color: activeFilter === 'pending' ? C.primary : C.textSecondary,
-              },
-            ]}
-          >
-            Pending ({counts.pending})
-          </Text>
-        </TouchableOpacity>
+     <View style={[styles.filterContainer, { borderBottomColor: C.border }]}>
+  {/* Pending Tab */}
+  <TouchableOpacity
+    style={[
+      styles.filterTab,
+      activeFilter === 'pending' && styles.activeFilterTab,
+      activeFilter === 'pending' && { borderBottomColor: C.primary },
+          { marginLeft: wp('5%') }, // Add this line
 
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            activeFilter === 'approved' && styles.activeFilterTab,
-            activeFilter === 'approved' && { borderBottomColor: C.primary },
-          ]}
-          onPress={() => setActiveFilter('approved')}
-        >
-          <CheckCircle
-            size={wp('4%')}
-            color={activeFilter === 'approved' ? C.primary : C.textSecondary}
-          />
-          <Text
-            style={[
-              styles.filterText,
-              {
-                color:
-                  activeFilter === 'approved' ? C.primary : C.textSecondary,
-              },
-            ]}
-          >
-            Approved ({counts.approved})
-          </Text>
-        </TouchableOpacity>
-      </View>
+    ]}
+    onPress={() => setActiveFilter('pending')}
+  >
+    <Clock
+      size={wp('4%')}
+      color={activeFilter === 'pending' ? C.primary : C.textSecondary}
+    />
+    <Text
+      style={[
+        styles.filterText,
+        {
+          color: activeFilter === 'pending' ? C.primary : C.textSecondary,
+        },
+      ]}
+    >
+      Pending ({counts.pending})
+    </Text>
+  </TouchableOpacity>
+
+  {/* Approved Tab */}
+  <TouchableOpacity
+    style={[
+      styles.filterTab,
+      activeFilter === 'approved' && styles.activeFilterTab,
+      activeFilter === 'approved' && { borderBottomColor: C.primary },
+    ]}
+    onPress={() => setActiveFilter('approved')}
+  >
+    <CheckCircle
+      size={wp('4%')}
+      color={activeFilter === 'approved' ? C.primary : C.textSecondary}
+    />
+    <Text
+      style={[
+        styles.filterText,
+        {
+          color: activeFilter === 'approved' ? C.primary : C.textSecondary,
+        },
+      ]}
+    >
+      Approved ({counts.approved})
+    </Text>
+  </TouchableOpacity>
+
+  {/* Rejected Tab - Only shows REJECTED status requests */}
+  <TouchableOpacity
+    style={[
+      styles.filterTab,
+      activeFilter === 'rejected' && styles.activeFilterTab,
+      activeFilter === 'rejected' && { borderBottomColor: C.primary },
+    ]}
+    onPress={() => setActiveFilter('rejected')}
+  >
+    <XCircle
+      size={wp('4%')}
+      color={activeFilter === 'rejected' ? C.primary : C.textSecondary}
+    />
+    <Text
+      style={[
+        styles.filterText,
+        {
+          color: activeFilter === 'rejected' ? C.primary : C.textSecondary,
+        },
+      ]}
+    >
+      Rejected ({counts.rejected})
+    </Text>
+  </TouchableOpacity>
+</View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -1620,13 +2366,20 @@ const Reimbursement = ({ navigation }) => {
                       numberOfLines={1}
                     >
                       {getTravelTypeLabel(item.travelType)} Travel
-                    </Text>
+                    </Text>.
                     <Text
                       style={[styles.requestDate, { color: C.textSecondary }]}
                     >
-                      {formatDate(item.date)} •{' '}
-                      {truncateText(item.fromLocation, 20)} →{' '}
-                      {truncateText(item.toLocation, 20)}
+                      {/* {formatDate(item.date)} •{' '} */}
+                      <Text
+                        style={[styles.requestDate, { color: C.textSecondary }]}
+                      >
+                        {item.fromDate ? formatDate(item.fromDate) : 'N/A'} - {item.toDate ? formatDate(item.toDate) : 'N/A'} •{' '}
+                        {truncateText(item.fromLocation, 20)} →{' '}
+                        {truncateText(item.toLocation, 20)}
+                      </Text>
+                      {/* {truncateText(item.fromLocation, 20)} →{' '}
+                      {truncateText(item.toLocation, 20)} */}
                     </Text>
                   </View>
                   <View style={styles.cardRightActions}>
@@ -1669,7 +2422,7 @@ const Reimbursement = ({ navigation }) => {
                       >
                         {item.status
                           ? item.status.charAt(0).toUpperCase() +
-                            item.status.slice(1).toLowerCase()
+                          item.status.slice(1).toLowerCase()
                           : 'Unknown'}
                       </Text>
                     </View>
@@ -2057,8 +2810,8 @@ const Reimbursement = ({ navigation }) => {
                     >
                       <View style={styles.filePreviewContainer}>
                         {file.type === 'jpg' ||
-                        file.type === 'png' ||
-                        file.type === 'jpeg' ? (
+                          file.type === 'png' ||
+                          file.type === 'jpeg' ? (
                           <Image
                             source={{ uri: file.uri }}
                             style={styles.fileThumbnail}
@@ -2108,30 +2861,65 @@ const Reimbursement = ({ navigation }) => {
                 </View>
               )}
 
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Date *
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.dateInput,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                  },
-                ]}
-                onPress={openDatePicker}
-              >
-                <Calendar size={wp('4%')} color={C.textSecondary} />
-                <Text
-                  style={[
-                    styles.dateInputText,
-                    { color: dateDisplay ? C.textPrimary : C.textTertiary },
-                  ]}
-                >
-                  {dateDisplay || 'DD/MM/YYYY'}
+              <>
+                {/* From Date Field */}
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  From Date *
                 </Text>
-              </TouchableOpacity>
-              {renderDatePickerModal()}
+                <TouchableOpacity
+                  style={[
+                    styles.dateInput,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                    },
+                  ]}
+                  onPress={() => setShowFromDatePicker(true)}
+                >
+                  <Calendar size={wp('4%')} color={C.textSecondary} />
+                  <Text
+                    style={[
+                      styles.dateInputText,
+                      { color: fromDate ? C.textPrimary : C.textTertiary },
+                    ]}
+                  >
+                    {fromDate
+                      ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
+                      : 'DD/MM/YYYY'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* To Date Field */}
+                <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
+                  To Date *
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.dateInput,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                    },
+                  ]}
+                  onPress={() => setShowToDatePicker(true)}
+                >
+                  <Calendar size={wp('4%')} color={C.textSecondary} />
+                  <Text
+                    style={[
+                      styles.dateInputText,
+                      { color: toDate ? C.textPrimary : C.textTertiary },
+                    ]}
+                  >
+                    {toDate
+                      ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
+                      : 'DD/MM/YYYY'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Render both date picker modals */}
+                {renderFromDatePickerModal()}
+                {renderToDatePickerModal()}
+              </>
 
               <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                 From Location *
@@ -2228,6 +3016,7 @@ const Reimbursement = ({ navigation }) => {
       </Modal>
 
       {renderViewModal()}
+      {renderDatePickerModal()}
     </View>
   );
 };
@@ -2789,6 +3578,87 @@ const styles = StyleSheet.create({
   },
   viewModalScroll: {
     paddingBottom: hp('2%'),
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerContainer: {
+    width: wp('85%'),
+    maxHeight: hp('60%'),
+    borderRadius: wp('4%'),
+    overflow: 'hidden',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp('4%'),
+    borderBottomWidth: 1,
+  },
+  datePickerTitle: {
+    fontSize: wp('4.5%'),
+    fontFamily: Fonts.bold,
+  },
+  datePickerColumns: {
+    flexDirection: 'row',
+    padding: wp('2%'),
+  },
+  datePickerColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  datePickerColumnLabel: {
+    fontSize: wp('3%'),
+    marginBottom: wp('2%'),
+    fontFamily: Fonts.medium,
+  },
+  datePickerScroll: {
+    height: hp('30%'),
+  },
+  datePickerScrollContent: {
+    alignItems: 'center',
+  },
+  datePickerItem: {
+    width: wp('20%'),
+    paddingVertical: hp('1.5%'),
+    alignItems: 'center',
+    marginVertical: hp('0.3%'),
+    borderRadius: wp('2%'),
+  },
+  datePickerItemText: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.regular,
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    padding: wp('3%'),
+    gap: wp('2%'),
+  },
+  datePickerCancelBtn: {
+    flex: 1,
+    paddingVertical: hp('1.2%'),
+    alignItems: 'center',
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  datePickerCancelText: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.medium,
+  },
+  datePickerConfirmBtn: {
+    flex: 1,
+    paddingVertical: hp('1.2%'),
+    alignItems: 'center',
+    borderRadius: wp('2%'),
+  },
+  datePickerConfirmText: {
+    fontSize: wp('3.5%'),
+    color: '#FFFFFF',
+    fontFamily: Fonts.medium,
   },
 });
 
