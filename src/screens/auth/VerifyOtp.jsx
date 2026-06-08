@@ -244,7 +244,8 @@ const VerifyOTP = ({ route, navigation }) => {
 
       <KeyboardAvoidingView
         style={styles.kavContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
       >
         <Animated.View
           style={[
@@ -286,16 +287,20 @@ const VerifyOTP = ({ route, navigation }) => {
             </TouchableWithoutFeedback>
 
             <View style={styles.resendContainer}>
-              <Clock size={wp('4%')} color={C.textSecondary} />
-              <Text style={[styles.resendText, { color: C.textSecondary }]}>
-                {canResend
-                  ? resendCount >= 3
-                    ? 'Maximum attempts reached. Please try again later.'
-                    : t.otp.resendPrompt || "Didn't receive the code?"
-                  : `${t.otp.resendIn || 'Resend in'} 00:${timer
-                      .toString()
-                      .padStart(2, '0')}`}
-              </Text>
+              {resendCount < 3 && (
+                <>
+                  {(!canResend || resendCount >= 3) ? (
+                    <Text style={[styles.resendText, { color: C.textSecondary }]}>
+                      {`${t.otp.resendIn || 'Resend in'} 00:${timer.toString().padStart(2, '0')}`}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.resendText, { color: C.textSecondary }]}>
+                      {t.otp.resendPrompt || "Didn't receive the code?"}
+                    </Text>
+                  )}
+                </>
+              )}
+
               {canResend && resendCount < 3 && (
                 <TouchableOpacity
                   onPress={handleResendOtp}
@@ -322,7 +327,7 @@ const VerifyOTP = ({ route, navigation }) => {
 
             {resendCount >= 3 && (
               <Text style={[styles.resendInfoText, { color: '#E74C3C' }]}>
-                Maximum resend limit reached. Please contact support.
+                Maximum resend limit reached. Please try again later.
               </Text>
             )}
 
@@ -339,24 +344,30 @@ const VerifyOTP = ({ route, navigation }) => {
             </Text> */}
           </ScrollView>
         </Animated.View>
-        <TouchableOpacity
-          style={[styles.settingsButton, { backgroundColor: C.primary }]}
-          onPress={() =>
-            navigation.navigate('AuthSettings', { fromAuth: true })
-          }
-        >
-          <Settings size={wp('5%')} color={C.textDark} />
-        </TouchableOpacity>
       </KeyboardAvoidingView>
+
+      {/* Settings Button - Fixed at bottom, moved up */}
+      <TouchableOpacity
+        style={[styles.settingsButton, { backgroundColor: C.primary }]}
+        onPress={() =>
+          navigation.navigate('AuthSettings', { fromAuth: true })
+        }
+        activeOpacity={0.8}
+      >
+        <Settings size={wp('5%')} color={C.textDark} />
+      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  rootContainer: { flex: 1 },
+  rootContainer: { 
+    flex: 1,
+    position: 'relative',
+  },
   settingsButton: {
     position: 'absolute',
-    bottom: hp('4%'),
+    bottom: hp('6%'), // Moved up from bottom
     right: wp('6%'),
     width: wp('14%'),
     height: wp('14%'),
@@ -368,6 +379,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 6,
     elevation: 8,
+    zIndex: 999,
   },
   topShadow: {
     position: 'absolute',
@@ -393,7 +405,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingTop: hp('20%'),
-    paddingBottom: hp('6%'),
+    paddingBottom: hp('12%'), // Increased to prevent content hiding behind button
   },
   backButton: {
     flexDirection: 'row',

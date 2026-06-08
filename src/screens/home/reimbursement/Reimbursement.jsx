@@ -2340,7 +2340,7 @@ const getFilterCounts = () => {
             <Text style={[styles.emptySubText, { color: C.textTertiary }]}>
               {activeFilter === 'pending'
                 ? 'Tap + button to create a new request'
-                : 'Approved requests will appear here'}
+                : 'Rejected requests will appear here'}
             </Text>
           </View>
         ) : (

@@ -208,8 +208,8 @@ const ActiveTimeDisplay = ({
         {!isAbsent && (isUserLate || isHalfDay || isEarlyLeave) && (
           <>
             <View style={[styles.divider, { backgroundColor: C.border }]} />
-            <View style={styles.tagsRow}>
-              {isUserLate && isPunchedIn && (
+            <View style={[styles.tagsRow,{  paddingVertical: hp('0%'),}]}>
+              {/* {isUserLate && isPunchedIn && (
                 <View
                   style={[styles.tag, { backgroundColor: C.error + '20' }]}>
                   <Text style={[styles.tagText, { color: C.error }]}>
@@ -217,7 +217,7 @@ const ActiveTimeDisplay = ({
                     {formatMinutes(lateMinutes)}
                   </Text>
                 </View>
-              )}
+              )} */}
               {isHalfDay && isPunchedIn && (
                 <View
                   style={[styles.tag, { backgroundColor: C.warning + '20' }]}>

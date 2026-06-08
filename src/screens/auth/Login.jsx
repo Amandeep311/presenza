@@ -198,24 +198,26 @@ const LoginScreen = ({ navigation }) => {
             />
           </View>
         </ScrollView>
-        <TouchableOpacity
+        
+      </KeyboardAvoidingView>
+      <TouchableOpacity
           style={[styles.settingsButton, { backgroundColor: C.primary }]}
           onPress={() => navigation.navigate('AuthSettings', { fromAuth: true })}
         >
           <Settings size={wp('5%')} color={C.textDark} />
         </TouchableOpacity>
-      </KeyboardAvoidingView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   rootContainer: {
+    position: 'relative',
     flex: 1,
   },
   settingsButton: {
     position: 'absolute',
-    bottom: hp('4%'),
+    bottom: hp('6%'),
     right: wp('6%'),
     width: wp('14%'),
     height: wp('14%'),

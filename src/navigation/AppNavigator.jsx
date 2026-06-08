@@ -53,6 +53,21 @@ import {
 
 const Stack = createNativeStackNavigator();
 
+// Helper function to compare versions
+const compareVersions = (a, b) => {
+  if (!a || !b) return 0;
+  const pa = a.toString().split('.').map(part => Number(part) || 0);
+  const pb = b.toString().split('.').map(part => Number(part) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+};
+
 // Global function to show toast from anywhere
 global.showToast = showToast;
 
@@ -224,6 +239,64 @@ const AppNavigator = () => {
     setSecurityInitialized(true);
   };
 
+  // ================= VERSION CHECK =================
+  const checkAppVersion = async () => {
+    try {
+      console.log('📦 Checking app version...');
+      
+      // Get current version from app
+      const currentVersion = await VersionCheck.getCurrentVersion();
+      console.log('Current version:', currentVersion);
+      
+      // Get latest version from Play Store
+      const latestVersion = await VersionCheck.getLatestVersion();
+      console.log('Latest version from store:', latestVersion);
+      
+      // Get store URL
+      const storeUrl = await VersionCheck.getStoreUrl();
+      console.log('Store URL:', storeUrl);
+      
+      // Compare versions manually (MORE RELIABLE)
+      const compareResult = compareVersions(currentVersion, latestVersion);
+      const needsUpdate = compareResult < 0;
+      
+      // Check minimum version support
+      const MIN_SUPPORTED_VERSION = '1.0.0'; // Set your minimum supported version
+      const isBelowMinimum = compareVersions(currentVersion, MIN_SUPPORTED_VERSION) < 0;
+      
+      if (needsUpdate || isBelowMinimum) {
+        console.log('⚠️ Update needed!');
+        console.log(`Current: ${currentVersion}, Latest: ${latestVersion}`);
+        setForceUpdate(true);
+        setStoreUrl(storeUrl);
+        setStoreVersion(latestVersion);
+      } else {
+        console.log('✅ App is up to date');
+        setForceUpdate(false);
+      }
+    } catch (e) {
+      console.log('❌ Version check error:', e);
+      // Don't block the app if version check fails
+      setForceUpdate(false);
+    }
+  };
+
+  // Function to open app store
+  const openAppStore = async () => {
+    const url = storeUrl || (await VersionCheck.getStoreUrl());
+    if (!url) {
+      console.log('⚠️ Store URL not available');
+      Alert.alert('Error', 'Could not open app store. Please update manually.');
+      return;
+    }
+    try {
+      await Linking.openURL(url);
+    } catch (err) {
+      console.log('❌ Failed to open store URL:', err);
+      Alert.alert('Error', 'Could not open app store. Please update manually.');
+    }
+  };
+
   // ================= INITIALIZE EVERYTHING ON APP START =================
   useEffect(() => {
     console.log('🚀 App initializing');
@@ -343,27 +416,6 @@ const AppNavigator = () => {
     appStateRef.current = nextAppState;
   };
 
-  // ================= VERSION CHECK =================
-  const checkAppVersion = async () => {
-    try {
-      console.log('📦 Checking app version...');
-      const res = await VersionCheck.needUpdate();
-
-      if (res?.isNeeded) {
-        console.log('⚠️ Update needed:', res.storeUrl);
-        setForceUpdate(true);
-        setStoreUrl(res.storeUrl);
-        const latest = await VersionCheck.getLatestVersion();
-        setStoreVersion(latest);
-      } else {
-        console.log('✅ App is up to date');
-        setForceUpdate(false);
-      }
-    } catch (e) {
-      console.log('❌ Version check error:', e);
-    }
-  };
-
   // ================= EXPOSE PERMISSION STATUS TO CHILDREN =================
   useEffect(() => {
     setPermissionCallbacks({
@@ -406,10 +458,28 @@ const AppNavigator = () => {
         </View>
       )}
 
+      {/* 📱 VERSION UPDATE MODAL */}
+      {forceUpdate && !blocked && (
+        <Modal visible={true} transparent={true} animationType="fade">
+          <View style={styles.modalContainer}>
+            <View style={styles.modalBox}>
+              <Text style={styles.title}>Update Required</Text>
+              <Text style={styles.desc}>
+                A new version of the app is available. Please update to continue using the app.
+              </Text>
+              {storeVersion ? (
+                <Text style={styles.version}>Latest version: {storeVersion}</Text>
+              ) : null}
+              <TouchableOpacity style={styles.button} onPress={openAppStore}>
+                <Text style={styles.buttonText}>Update Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* NORMAL APP NAVIGATION */}
-      {!blocked &&
-        !forceUpdate &&
-        (isAuthenticated ? <AppStack /> : <AuthStack />)}
+      {!blocked && !forceUpdate && (isAuthenticated ? <AppStack /> : <AuthStack />)}
     </View>
   );
 };
