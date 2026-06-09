@@ -143,7 +143,13 @@ const getApiStatusConfig = (status, C, t) => {
       icon: CalendarDays,
     };
   }
-
+  if (status === 'ON_LEAVE') {
+    return {
+      label: 'On Leave',
+      color: C.textSecondary,
+      icon: CalendarDays,
+    };
+  }
   switch (status) {
     case 'PRESENT':
       return {

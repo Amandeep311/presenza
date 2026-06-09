@@ -110,9 +110,9 @@ const getAttendanceStatusConfig = (todayRecord, C, t) => {
         return {
           status: 'LATE',
           label:"",
-          // label: `Late Login (${Math.floor(lateMinutes / 60)}h ${
-          //   lateMinutes % 60
-          // }m late)`,
+          label: `Late Login (${Math.floor(lateMinutes / 60)}h ${
+            lateMinutes % 60
+          }m)`,
           type: 'late',
           // color: C.warning,
           icon: CheckCircle2,
