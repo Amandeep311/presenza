@@ -1,14 +1,11 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/react-native-permissions/scripts/setup'
 
-platform :ios, min_ios_version_supported
+platform :ios, '15.1'
 prepare_react_native_project!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
+# Force disable new architecture
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
 
 target 'Presenza' do
   config = use_native_modules!
@@ -16,33 +13,101 @@ target 'Presenza' do
   use_react_native!(
     :path => config[:reactNativePath],
     :app_path => "#{Pod::Config.instance.installation_root}/..",
-    :fabric_enabled => false  # 👈 ADD THIS LINE - Disable New Architecture
+    :hermes_enabled => true,
+    :fabric_enabled => false
   )
 
-  # Permissions setup
   setup_permissions([
     'LocationWhenInUse',
     'Camera',
     'PhotoLibrary',
   ])
 
-  post_install do |installer|
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-    )
+post_install do |installer|
+  # Standard React Native post-install
+  react_native_post_install(
+    installer,
+    config[:reactNativePath],
+    :mac_catalyst_enabled => false,
+  )
 
-    installer.pods_project.targets.each do |target|
-      if target.name == 'fmt'
-        target.build_configurations.each do |config|
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEXPR=0'
-          config.build_settings['OTHER_CPLUSPLUSFLAGS'] ||= ['$(inherited)']
-          config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFMT_STRING(s)=s'
-          config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFMT_COMPILE(s)=s'
-        end
-      end
+  # Apply settings to all Pods
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # React Native 0.83.x requires C++20
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
+      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+      config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'  # Changed from c99 to gnu99
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+      config.build_settings['COMPILER_INDEX_STORE_ENABLE'] = 'NO'
+      config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+      config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
+      config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
+      config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
+      config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      
+      # Remove excluded architectures
+      config.build_settings.delete 'EXCLUDED_ARCHS'
     end
   end
+
+  # FIX 1: Override C++ standard for fmt pod to C++17
+  fmt_target = installer.pods_project.targets.find { |t| t.name == 'fmt' }
+  if fmt_target
+    fmt_target.build_configurations.each do |config|
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
+    end
+    puts "✅ Fixed fmt pod"
+  end
+
+  # FIX 2: Fix SocketRocket
+  socket_target = installer.pods_project.targets.find { |t| t.name == 'SocketRocket' }
+  if socket_target
+    socket_target.build_configurations.each do |config|
+      config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
+      config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
+      config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
+    end
+    puts "✅ Fixed SocketRocket pod"
+  end
+
+  # FIX 3: Fix glog
+  glog_target = installer.pods_project.targets.find { |t| t.name == 'glog' }
+  if glog_target
+    glog_target.build_configurations.each do |config|
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+    end
+  end
+
+  # Specifically target React Native libraries
+  [
+    'React-bridging',
+    'ReactCommon',
+    'React-runtimeexecutor',
+    'React-runtimescheduler'
+  ].each do |lib|
+    installer.pods_project.targets.find { |t| t.name == lib }&.build_configurations&.each do |config|
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
+      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+    end
+  end
+  
+  # Direct patch to fmt header
+  fmt_header = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+  if File.exist?(fmt_header)
+    content = File.read(fmt_header)
+    patched = content.gsub(/^#elif defined\(__cpp_consteval\)\s*\n\s*#\s*define FMT_USE_CONSTEVAL 1/m, 
+                           "#elif defined(__cpp_consteval)\n#  define FMT_USE_CONSTEVAL 0")
+    if content != patched
+      File.write(fmt_header, patched)
+      puts "✅ Patched fmt/base.h"
+    end
+  end
+end
 end

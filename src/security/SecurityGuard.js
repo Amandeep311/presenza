@@ -234,16 +234,41 @@ const detectDebugger = () => {
   return false;
 };
 
-// ================= KILL APP =================
-const killApp = () => {
-  if (Platform.OS === 'android') {
-    BackHandler.exitApp();
-  } else {
-    throw new Error('Security violation - Device compromised');
-  }
+// ================= UPDATED: SHOW ALERT INSTEAD OF CRASHING =================
+const showSecurityAlertAndContinue = (reason, details = '') => {
+  console.log('🚨 SECURITY VIOLATION:', reason, details);
+
+  Alert.alert(
+    'Security Warning 🛡️',
+    `${reason}\n\n${details}\n\nThis app cannot run on compromised devices.\n\nPlease enable automatic date & time and restart the app.`,
+    [
+      {
+        text: 'Continue Anyway',
+        onPress: () => {
+          console.log('User chose to continue despite security warning');
+          // You can optionally disable sensitive features here
+        },
+        style: 'cancel',
+      },
+      {
+        text: 'Exit App',
+        onPress: () => {
+          if (Platform.OS === 'android') {
+            BackHandler.exitApp();
+          } else {
+            // iOS: Just close the alert, can't programmatically exit
+            console.log('iOS: User chose to exit - please close app manually');
+            Alert.alert('Exit App', 'Please close the app manually from app switcher');
+          }
+        },
+        style: 'destructive',
+      }
+    ],
+    { cancelable: false }
+  );
 };
 
-// ================= BLOCK UI =================
+// ================= BLOCK UI (Updated to not crash) =================
 const triggerBlock = (reason, details = '') => {
   if (compromised) return;
 
@@ -254,21 +279,8 @@ const triggerBlock = (reason, details = '') => {
     global.setBlockedGlobal(true);
   }
 
-  Alert.alert(
-    'Security Violation 🚨',
-    `${reason}\n\n${details}\n\nThis app cannot run on compromised devices.`,
-    [
-      {
-        text: 'OK',
-        onPress: () => killApp(),
-      },
-    ],
-    { cancelable: false },
-  );
-
-  setTimeout(() => {
-    if (compromised) killApp();
-  }, 5000);
+  // Show alert but don't crash the app
+  showSecurityAlertAndContinue(reason, details);
 };
 
 // ================= IMPROVED APP STATE CHANGE HANDLER =================

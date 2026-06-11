@@ -1,0 +1,22 @@
+diff --git a/node_modules/react-native/ReactCommon/reactperflogger/fusebox/FuseboxTracer.cpp b/node_modules/react-native/ReactCommon/reactperflogger/fusebox/FuseboxTracer.cpp
+index xxxxxxx..xxxxxxx 100644
+--- a/node_modules/react-native/ReactCommon/reactperflogger/fusebox/FuseboxTracer.cpp
++++ b/node_modules/react-native/ReactCommon/reactperflogger/fusebox/FuseboxTracer.cpp
+@@ -72,7 +72,7 @@ uint64_t FuseboxTracer::getNextMarkerId(const std::string& name) {
+ 
+ uint64_t FuseboxTracer::getNextTrackId(const std::string& name) {
+   auto it = trackIds_.find(name);
+-  if (trackIds_.contains(name)) {
++  if (it != trackIds_.end()) {
+     return it->second;
+   }
+   uint64_t newTrackId = nextTrackId_++;
+@@ -83,7 +83,7 @@ uint64_t FuseboxTracer::getNextTrackId(const std::string& name) {
+ 
+ uint64_t FuseboxTracer::getNextFlowId(const std::string& name) {
+   auto it = flowIds_.find(name);
+-  if (flowIds_.contains(name)) {
++  if (it != flowIds_.end()) {
+     return it->second;
+   }
+   uint64_t newFlowId = nextFlowId_++;
