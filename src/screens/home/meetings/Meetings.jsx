@@ -101,7 +101,55 @@ export const MeetingsScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const outerListRef = useRef(null);
   const calendarRef = useRef(null); // Ref for calendar position
+  
+  // ========== REFS FOR PREVENTING MULTIPLE TOASTS ==========
+  const lastClickTimeRef = useRef(0);
+  const isValidationInProgress = useRef(false);
+  const lastToastTimeRef = useRef(0);
+  const isShowingToastRef = useRef(false);
+  const globalToastLockRef = useRef(false);
+  
   const { user } = useSelector(state => state.auth);
+
+  // ========== TOAST DEDUPLICATION FUNCTION ==========
+  const showUniqueToast = useCallback((message, type = 'warning') => {
+    const now = Date.now();
+    
+    // GLOBAL LOCK - Most aggressive prevention
+    if (globalToastLockRef.current) {
+      console.log('🚫 Toast blocked - Global lock active');
+      return;
+    }
+    
+    // Block ANY toast within 3 seconds of the last one
+    if (now - lastToastTimeRef.current < 3000) {
+      console.log('🚫 Toast blocked - Too soon (within 3 seconds)');
+      return;
+    }
+    
+    // Block if a toast is currently being shown
+    if (isShowingToastRef.current) {
+      console.log('🚫 Toast blocked - Another toast is already showing');
+      return;
+    }
+    
+    // Set global lock
+    globalToastLockRef.current = true;
+    
+    // Set flags
+    lastToastTimeRef.current = now;
+    isShowingToastRef.current = true;
+    
+    // Show the toast
+    console.log('✅ Showing toast:', message);
+    showToast(message, type);
+    
+    // Reset flags after toast duration (3 seconds)
+    setTimeout(() => {
+      isShowingToastRef.current = false;
+      globalToastLockRef.current = false;
+    }, 3000);
+  }, []);
 
   // Redux State
   const { employees: employeesList, loading: employeesLoading } = useSelector(
@@ -158,7 +206,7 @@ export const MeetingsScreen = ({ navigation }) => {
     if (!employeesList || employeesList.length === 0) return [];
     let filtered = employeesList.filter(
       // employee => employee._id !== user?._id && employee.email !== user?.email,
-        employee => employee._id !== user?._id
+      employee => employee._id !== user?._id
     );
     if (!employeeSearchQuery.trim()) return filtered;
     const query = employeeSearchQuery.toLowerCase();
@@ -212,13 +260,13 @@ export const MeetingsScreen = ({ navigation }) => {
 
   const loadEmployees = async () => {
     const result = await dispatch(fetchEmployees());
-    if (!result.success) showToast(result.error, 'warning');
+    if (!result.success) showUniqueToast(result.error, 'warning');
   };
 
   const loadMeetings = async () => {
     const result = await dispatch(fetchMeetings());
     if (result.success) setMyMeetings(result.data);
-    else showToast(result.error, 'warning');
+    else showUniqueToast(result.error, 'warning');
   };
 
   const convertToISOString = (dateStr, timeStr) => {
@@ -256,70 +304,111 @@ export const MeetingsScreen = ({ navigation }) => {
     [formData.meetingType, updateFormData],
   );
 
+  // ========== UPDATED HANDLE SCHEDULE MEETING ==========
   const handleScheduleMeeting = async () => {
-    const {
-      meetingTitle,
-      meetingDate,
-      meetingTime,
-      endTime,
-      meetingLocation,
-      meetingType,
-      meetingAgenda,
-    } = formData;
+    // IMMEDIATE BLOCK - Check if toast is showing or validation in progress
+    if (globalToastLockRef.current || isShowingToastRef.current || isValidationInProgress.current) {
+      console.log('🚫 handleScheduleMeeting blocked - Toast/Validation in progress');
+      return;
+    }
+    
+    // Set validation flag immediately
+    isValidationInProgress.current = true;
+    
+    // Debounce clicks - prevent multiple clicks within 1.5 seconds
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < 1500) {
+      console.log('🚫 handleScheduleMeeting blocked - Click debounce');
+      isValidationInProgress.current = false;
+      return;
+    }
+    lastClickTimeRef.current = now;
+    
+    // Prevent submission if already creating meeting
+    if (creatingMeeting) {
+      console.log('🚫 handleScheduleMeeting blocked - Already creating meeting');
+      isValidationInProgress.current = false;
+      return;
+    }
+    
+    try {
+      const {
+        meetingTitle,
+        meetingDate,
+        meetingTime,
+        endTime,
+        meetingLocation,
+        meetingType,
+        meetingAgenda,
+      } = formData;
 
-    if (
-      !meetingTitle ||
-      !meetingDate ||
-      !meetingTime ||
-      !endTime ||
-      selectedEmployees.length === 0
-    ) {
-      showToast('Please fill all required fields', 'warning');
-      return;
-    }
-    if (meetingType === 'VIRTUAL' && !meetingLocation.trim()) {
-      showToast('Please provide a meeting link for virtual meeting', 'warning');
-      return;
-    }
-    if (meetingType === 'VIRTUAL' && !isValidURL(meetingLocation)) {
-      showToast(
-        'Please enter a valid meeting URL (e.g., https://zoom.us/j/123456789)',
-        'warning',
-      );
-      return;
-    }
-    const filteredAttendees = selectedEmployees.filter(id => id !== user?._id);
-    if (filteredAttendees.length === 0) {
-      showToast(
-        'Please select at least one attendee other than yourself',
-        'warning',
-      );
-      return;
-    }
-    const startTime = new Date(convertToISOString(meetingDate, meetingTime));
-    const endTimeObj = new Date(convertToISOString(meetingDate, endTime));
-    if (startTime >= endTimeObj) {
-      showToast('End time must be after start time', 'warning');
-      return;
-    }
-    const meetingData = {
-      title: meetingTitle,
-      description: meetingAgenda || 'No agenda provided',
-      type: meetingType,
-      date: meetingDate,
-      startTime: startTime.toISOString(),
-      endTime: endTimeObj.toISOString(),
-      location: meetingLocation,
-      attendees: filteredAttendees,
-    };
-    const result = await dispatch(createMeeting(meetingData));
-    if (result.success) {
-      showToast(result.message || 'Meeting scheduled successfully!', 'success');
-      resetForm();
-      setShowCreateForm(false);
-      await loadMeetings();
-    } else {
-      showToast(result.error, 'warning');
+      if (
+        !meetingTitle ||
+        !meetingDate ||
+        !meetingTime ||
+        !endTime ||
+        selectedEmployees.length === 0
+      ) {
+        showUniqueToast('Please fill all required fields', 'warning');
+        return;
+      }
+      if (meetingType === 'VIRTUAL' && !meetingLocation.trim()) {
+        showUniqueToast('Please provide a meeting link for virtual meeting', 'warning');
+        return;
+      }
+      if (meetingType === 'VIRTUAL' && !isValidURL(meetingLocation)) {
+        showUniqueToast(
+          'Please enter a valid meeting URL (e.g., https://zoom.us/j/123456789)',
+          'warning',
+        );
+        return;
+      }
+      const filteredAttendees = selectedEmployees.filter(id => id !== user?._id);
+      if (filteredAttendees.length === 0) {
+        showUniqueToast(
+          'Please select at least one attendee other than yourself',
+          'warning',
+        );
+        return;
+      }
+      const startTime = new Date(convertToISOString(meetingDate, meetingTime));
+      const endTimeObj = new Date(convertToISOString(meetingDate, endTime));
+      if (startTime >= endTimeObj) {
+        showUniqueToast('End time must be after start time', 'warning');
+        return;
+      }
+      
+      // All validations passed - proceed with API call
+      const meetingData = {
+        title: meetingTitle,
+        description: meetingAgenda || 'No agenda provided',
+        type: meetingType,
+        date: meetingDate,
+        startTime: startTime.toISOString(),
+        endTime: endTimeObj.toISOString(),
+        location: meetingLocation,
+        attendees: filteredAttendees,
+      };
+      
+      const result = await dispatch(createMeeting(meetingData));
+      
+      if (result.success) {
+        showToast(result.message || 'Meeting scheduled successfully!', 'success');
+        resetForm();
+        setShowCreateForm(false);
+        await loadMeetings();
+      } else {
+        showUniqueToast(result.error, 'warning');
+      }
+    } catch (error) {
+      console.log('Error in handleScheduleMeeting:', error);
+      showUniqueToast('Something went wrong. Please try again.', 'error');
+    } finally {
+      isValidationInProgress.current = false;
+      // Reset click debounce after a short delay
+      setTimeout(() => {
+        lastClickTimeRef.current = 0;
+      }, 500);
     }
   };
 
@@ -387,7 +476,7 @@ export const MeetingsScreen = ({ navigation }) => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
-      showToast('Failed to copy link', 'warning');
+      showUniqueToast('Failed to copy link', 'warning');
     }
   };
 
@@ -395,9 +484,9 @@ export const MeetingsScreen = ({ navigation }) => {
     if (meeting.type === 'VIRTUAL') {
       const result = await openMeetingLink(meeting.location);
       if (result.success) showToast(`Opening ${meeting.title}...`, 'success');
-      else showToast(result.error, 'error');
+      else showUniqueToast(result.error, 'error');
     } else {
-      showToast(`📍 Location: ${meeting.location}`, 'info');
+      showUniqueToast(`📍 Location: ${meeting.location}`, 'info');
     }
   };
 
@@ -547,8 +636,6 @@ export const MeetingsScreen = ({ navigation }) => {
     [C],
   );
 
-  // ... rest of the component remains the same ...
-
   // ================= RENDER EMPLOYEE ITEM =================
   const renderEmployeeItem = useCallback(
     ({ item: employee }) => (
@@ -621,9 +708,7 @@ export const MeetingsScreen = ({ navigation }) => {
     0,
   );
   const virtualMeetings = myMeetings.filter(m => m.type === 'VIRTUAL').length;
-
-  // ... The rest of the component continues with the existing code ...
-  // (I'm keeping the return JSX the same, just changing the date input onPress)
+  const inPersonMeetings = myMeetings.filter(m => m.type === 'IN_PERSON').length;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -671,7 +756,7 @@ export const MeetingsScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* ✅ FIX: Use FlatList with keyboardShouldPersistTaps="handled" */}
+      {/* Main Content */}
       <FlatList
         ref={outerListRef}
         data={[]}
@@ -689,10 +774,10 @@ export const MeetingsScreen = ({ navigation }) => {
                 leaveType="full"
                 todayStr={todayStr}
                 onStartDateChange={handleDayPress}
-                onEndDateChange={() => {}}
-                onSelectionModeChange={() => {}}
-                onFullHolidayPress={() => {}}
-                onHalfHolidayPress={() => {}}
+                onEndDateChange={() => { }}
+                onSelectionModeChange={() => { }}
+                onFullHolidayPress={() => { }}
+                onHalfHolidayPress={() => { }}
                 showHolidayList={false}
                 showStats={false}
               />
@@ -740,10 +825,10 @@ export const MeetingsScreen = ({ navigation }) => {
               >
                 <Users size={wp('5%')} color={C.success} />
                 <Text style={[styles.statValue, { color: C.textPrimary }]}>
-                  {totalParticipants}
+                  {inPersonMeetings}
                 </Text>
-                <Text style={[styles.statLabel, { color: C.textSecondary }]}>
-                  Total Participants
+                <Text style={[styles.statLabel, { color: C.textSecondary,}]}>
+                 In-person Meetings
                 </Text>
               </View>
               <View
@@ -865,6 +950,8 @@ export const MeetingsScreen = ({ navigation }) => {
                     placeholderTextColor={C.disabled}
                     value={formData.meetingTitle}
                     onChangeText={text => updateFormData('meetingTitle', text)}
+                    maxLength={50}
+                    multiline={true}
                   />
                 </View>
 
@@ -1098,6 +1185,8 @@ export const MeetingsScreen = ({ navigation }) => {
                     onChangeText={handleMeetingLocationChange}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    maxLength={100}
+                    multiline={true}
                   />
                   {urlError ? (
                     <View
@@ -1146,9 +1235,15 @@ export const MeetingsScreen = ({ navigation }) => {
 
                 {/* Agenda */}
                 <View style={styles.formGroup}>
-                  <Text style={[styles.formLabel, { color: C.textSecondary }]}>
-                    Agenda / Description
-                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[styles.formLabel, { color: C.textSecondary }]}>
+                      Agenda / Description
+                    </Text>
+                    <Text style={{ color: C.textSecondary, fontSize: 12 }}>
+                      {formData.meetingAgenda?.length || 0}/200 characters
+                    </Text>
+                  </View>
+                  
                   <TextInput
                     style={[
                       styles.formTextArea,
@@ -1165,6 +1260,7 @@ export const MeetingsScreen = ({ navigation }) => {
                     multiline
                     numberOfLines={4}
                     textAlignVertical="top"
+                    maxLength={200}
                   />
                 </View>
 

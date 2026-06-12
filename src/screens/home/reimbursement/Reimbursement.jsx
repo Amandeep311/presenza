@@ -13,6 +13,7 @@ import {
   Image,
   Linking,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import FileViewer from 'react-native-file-viewer';
 import RNFS from 'react-native-fs';
@@ -98,7 +99,7 @@ const Reimbursement = ({ navigation }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
 
   // ============ CONSTANTS ============
-  const AMOUNT_MAX_LENGTH = 10;
+  const AMOUNT_MAX_LENGTH = 5;
   const AMOUNT_MAX_VALUE = 100000;
   const KM_MAX_VALUE = 1000;
   const MAX_FILE_SIZE_MB = 5;
@@ -312,8 +313,7 @@ const Reimbursement = ({ navigation }) => {
     if (!value) return '';
     const numValue = value.replace(/[^0-9]/g, '');
     if (numValue === '') return '';
-    const num = parseInt(numValue, 10);
-    if (num > AMOUNT_MAX_VALUE) return AMOUNT_MAX_VALUE.toString();
+    // Just return the sliced value - NO max value check
     return numValue.slice(0, AMOUNT_MAX_LENGTH);
   };
 
@@ -586,48 +586,48 @@ const Reimbursement = ({ navigation }) => {
   //   );
   // };
 
-const handleImagePick = async () => {
-  if (selectedFiles.length >= 1) {
-    Alert.alert('Limit Reached', 'You can only upload 1 file');
-    return;
-  }
+  const handleImagePick = async () => {
+    if (selectedFiles.length >= 1) {
+      Alert.alert('Limit Reached', 'You can only upload 1 file');
+      return;
+    }
 
-  // For image picker, we don't need camera permission, just storage
-  launchImageLibrary(
-    {
-      mediaType: 'photo',
-      selectionLimit: 1,
-      quality: 0.8,
-      maxHeight: 2000,
-      maxWidth: 2000,
-    },
-    response => {
-      if (response.didCancel) {
-        console.log('User cancelled image picker');
-      } else if (response.error) {
-        Alert.alert('Error', 'Failed to pick image: ' + response.error);
-      } else if (response.assets && response.assets.length > 0) {
-        const asset = response.assets[0];
+    // For image picker, we don't need camera permission, just storage
+    launchImageLibrary(
+      {
+        mediaType: 'photo',
+        selectionLimit: 1,
+        quality: 0.8,
+        maxHeight: 2000,
+        maxWidth: 2000,
+      },
+      response => {
+        if (response.didCancel) {
+          console.log('User cancelled image picker');
+        } else if (response.error) {
+          Alert.alert('Error', 'Failed to pick image: ' + response.error);
+        } else if (response.assets && response.assets.length > 0) {
+          const asset = response.assets[0];
 
-        if (!validateFileSize(asset.fileSize)) {
-          return;
+          if (!validateFileSize(asset.fileSize)) {
+            return;
+          }
+
+          const imageFile = {
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            uri: asset.uri,
+            type: asset.type?.includes('png') ? 'png' : 'jpg',
+            name: asset.fileName || `image_${Date.now()}.jpg`,
+            size: asset.fileSize,
+            mimeType: asset.type || 'image/jpeg',
+          };
+
+          setSelectedFiles(prev => [...prev, imageFile]);
+          Alert.alert('Success', 'Image selected');
         }
-
-        const imageFile = {
-          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          uri: asset.uri,
-          type: asset.type?.includes('png') ? 'png' : 'jpg',
-          name: asset.fileName || `image_${Date.now()}.jpg`,
-          size: asset.fileSize,
-          mimeType: asset.type || 'image/jpeg',
-        };
-
-        setSelectedFiles(prev => [...prev, imageFile]);
-        Alert.alert('Success', 'Image selected');
-      }
-    },
-  );
-};
+      },
+    );
+  };
 
   const handlePDFPick = async () => {
     if (selectedFiles.length >= 1) {
@@ -713,66 +713,66 @@ const handleImagePick = async () => {
   //   );
   // }
 
-const handleCameraCapture = async () => {
-  if (selectedFiles.length >= 1) {
-    Alert.alert('Limit Reached', 'You can only upload 1 file');
-    return;
-  }
+  const handleCameraCapture = async () => {
+    if (selectedFiles.length >= 1) {
+      Alert.alert('Limit Reached', 'You can only upload 1 file');
+      return;
+    }
 
-  // Check camera permission first
-  const cameraPermission = await requestCameraPermission(true);
-  
-  if (!cameraPermission.granted) {
-    Alert.alert(
-      'Camera Permission Required',
-      'Camera permission is needed to take photos for expense receipts. Please grant permission to continue.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open Settings', onPress: () => Linking.openSettings() }
-      ]
-    );
-    return;
-  }
+    // Check camera permission first
+    const cameraPermission = await requestCameraPermission(true);
 
-  // Permission granted, proceed with camera
-  launchCamera(
-    {
-      mediaType: 'photo',
-      quality: 0.8,
-      maxHeight: 2000,
-      maxWidth: 2000,
-      saveToPhotos: false,
-    },
-    response => {
-      if (response.didCancel) {
-        console.log('User cancelled camera');
-      } else if (response.error) {
-        Alert.alert(
-          'Camera Error',
-          'Failed to capture image: ' + response.error,
-        );
-      } else if (response.assets && response.assets.length > 0) {
-        const asset = response.assets[0];
+    if (!cameraPermission.granted) {
+      Alert.alert(
+        'Camera Permission Required',
+        'Camera permission is needed to take photos for expense receipts. Please grant permission to continue.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() }
+        ]
+      );
+      return;
+    }
 
-        if (!validateFileSize(asset.fileSize)) {
-          return;
+    // Permission granted, proceed with camera
+    launchCamera(
+      {
+        mediaType: 'photo',
+        quality: 0.8,
+        maxHeight: 2000,
+        maxWidth: 2000,
+        saveToPhotos: false,
+      },
+      response => {
+        if (response.didCancel) {
+          console.log('User cancelled camera');
+        } else if (response.error) {
+          Alert.alert(
+            'Camera Error',
+            'Failed to capture image: ' + response.error,
+          );
+        } else if (response.assets && response.assets.length > 0) {
+          const asset = response.assets[0];
+
+          if (!validateFileSize(asset.fileSize)) {
+            return;
+          }
+
+          const imageFile = {
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            uri: asset.uri,
+            type: 'jpg',
+            name: asset.fileName || `capture_${Date.now()}.jpg`,
+            size: asset.fileSize,
+            mimeType: 'image/jpeg',
+          };
+
+          setSelectedFiles(prev => [...prev, imageFile]);
+          Alert.alert('Success', 'Photo captured');
         }
-
-        const imageFile = {
-          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          uri: asset.uri,
-          type: 'jpg',
-          name: asset.fileName || `capture_${Date.now()}.jpg`,
-          size: asset.fileSize,
-          mimeType: 'image/jpeg',
-        };
-
-        setSelectedFiles(prev => [...prev, imageFile]);
-        Alert.alert('Success', 'Photo captured');
-      }
-    },
-  );
-};
+      },
+    );
+  };
 
   const showFilePickerOptions = () => {
     if (selectedFiles.length >= 1) {
@@ -1052,55 +1052,55 @@ const handleCameraCapture = async () => {
     setTempToYear(now.getFullYear());
   };
 
-const getFilteredRequests = () => {
-  if (!expenses || !Array.isArray(expenses)) return [];
+  const getFilteredRequests = () => {
+    if (!expenses || !Array.isArray(expenses)) return [];
 
-  // Debug: Log all status values
-  console.log('All status values:', expenses.map(r => r.status));
-  console.log('Active filter:', activeFilter);
+    // Debug: Log all status values
+    console.log('All status values:', expenses.map(r => r.status));
+    console.log('Active filter:', activeFilter);
 
-  if (activeFilter === 'pending') {
-    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'PENDING');
-    console.log('Pending filtered count:', filtered.length);
-    return filtered.reverse();
-  } else if (activeFilter === 'approved') {
-    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'APPROVED');
-    console.log('Approved filtered count:', filtered.length);
-    return filtered.reverse();
-  } else if (activeFilter === 'rejected') {
-    const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'REJECTED');
-    console.log('Rejected filtered count:', filtered.length);
-    console.log('Rejected items:', filtered.map(r => ({ id: r._id, status: r.status })));
-    return filtered.reverse();
-  }
+    if (activeFilter === 'pending') {
+      const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'PENDING');
+      console.log('Pending filtered count:', filtered.length);
+      return filtered.reverse();
+    } else if (activeFilter === 'approved') {
+      const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'APPROVED');
+      console.log('Approved filtered count:', filtered.length);
+      return filtered.reverse();
+    } else if (activeFilter === 'rejected') {
+      const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'REJECTED');
+      console.log('Rejected filtered count:', filtered.length);
+      console.log('Rejected items:', filtered.map(r => ({ id: r._id, status: r.status })));
+      return filtered.reverse();
+    }
 
-  return [...expenses].reverse();
-};
+    return [...expenses].reverse();
+  };
 
-const getFilterCounts = () => {
-  if (!expenses || !Array.isArray(expenses)) {
-    return { pending: 0, approved: 0, rejected: 0 };
-  }
-  
-  const pending = expenses.filter(r => {
-    const status = (r.status || '').toUpperCase();
-    return status === 'PENDING';
-  }).length;
-  
-  const approved = expenses.filter(r => {
-    const status = (r.status || '').toUpperCase();
-    return status === 'APPROVED';
-  }).length;
-  
-  const rejected = expenses.filter(r => {
-    const status = (r.status || '').toUpperCase();
-    return status === 'REJECTED';
-  }).length;
-  
-  console.log('Counts - Pending:', pending, 'Approved:', approved, 'Rejected:', rejected);
-  
-  return { pending, approved, rejected };
-};
+  const getFilterCounts = () => {
+    if (!expenses || !Array.isArray(expenses)) {
+      return { pending: 0, approved: 0, rejected: 0 };
+    }
+
+    const pending = expenses.filter(r => {
+      const status = (r.status || '').toUpperCase();
+      return status === 'PENDING';
+    }).length;
+
+    const approved = expenses.filter(r => {
+      const status = (r.status || '').toUpperCase();
+      return status === 'APPROVED';
+    }).length;
+
+    const rejected = expenses.filter(r => {
+      const status = (r.status || '').toUpperCase();
+      return status === 'REJECTED';
+    }).length;
+
+    console.log('Counts - Pending:', pending, 'Approved:', approved, 'Rejected:', rejected);
+
+    return { pending, approved, rejected };
+  };
 
   const counts = getFilterCounts();
 
@@ -2229,84 +2229,84 @@ const getFilterCounts = () => {
         </TouchableOpacity>
       </View>
 
-     <View style={[styles.filterContainer, { borderBottomColor: C.border }]}>
-  {/* Pending Tab */}
-  <TouchableOpacity
-    style={[
-      styles.filterTab,
-      activeFilter === 'pending' && styles.activeFilterTab,
-      activeFilter === 'pending' && { borderBottomColor: C.primary },
-          { marginLeft: wp('5%') }, // Add this line
+      <View style={[styles.filterContainer, { borderBottomColor: C.border }]}>
+        {/* Pending Tab */}
+        <TouchableOpacity
+          style={[
+            styles.filterTab,
+            activeFilter === 'pending' && styles.activeFilterTab,
+            activeFilter === 'pending' && { borderBottomColor: C.primary },
+            { marginLeft: wp('5%') }, // Add this line
 
-    ]}
-    onPress={() => setActiveFilter('pending')}
-  >
-    <Clock
-      size={wp('4%')}
-      color={activeFilter === 'pending' ? C.primary : C.textSecondary}
-    />
-    <Text
-      style={[
-        styles.filterText,
-        {
-          color: activeFilter === 'pending' ? C.primary : C.textSecondary,
-        },
-      ]}
-    >
-      Pending ({counts.pending})
-    </Text>
-  </TouchableOpacity>
+          ]}
+          onPress={() => setActiveFilter('pending')}
+        >
+          <Clock
+            size={wp('4%')}
+            color={activeFilter === 'pending' ? C.primary : C.textSecondary}
+          />
+          <Text
+            style={[
+              styles.filterText,
+              {
+                color: activeFilter === 'pending' ? C.primary : C.textSecondary,
+              },
+            ]}
+          >
+            Pending ({counts.pending})
+          </Text>
+        </TouchableOpacity>
 
-  {/* Approved Tab */}
-  <TouchableOpacity
-    style={[
-      styles.filterTab,
-      activeFilter === 'approved' && styles.activeFilterTab,
-      activeFilter === 'approved' && { borderBottomColor: C.primary },
-    ]}
-    onPress={() => setActiveFilter('approved')}
-  >
-    <CheckCircle
-      size={wp('4%')}
-      color={activeFilter === 'approved' ? C.primary : C.textSecondary}
-    />
-    <Text
-      style={[
-        styles.filterText,
-        {
-          color: activeFilter === 'approved' ? C.primary : C.textSecondary,
-        },
-      ]}
-    >
-      Approved ({counts.approved})
-    </Text>
-  </TouchableOpacity>
+        {/* Approved Tab */}
+        <TouchableOpacity
+          style={[
+            styles.filterTab,
+            activeFilter === 'approved' && styles.activeFilterTab,
+            activeFilter === 'approved' && { borderBottomColor: C.primary },
+          ]}
+          onPress={() => setActiveFilter('approved')}
+        >
+          <CheckCircle
+            size={wp('4%')}
+            color={activeFilter === 'approved' ? C.primary : C.textSecondary}
+          />
+          <Text
+            style={[
+              styles.filterText,
+              {
+                color: activeFilter === 'approved' ? C.primary : C.textSecondary,
+              },
+            ]}
+          >
+            Approved ({counts.approved})
+          </Text>
+        </TouchableOpacity>
 
-  {/* Rejected Tab - Only shows REJECTED status requests */}
-  <TouchableOpacity
-    style={[
-      styles.filterTab,
-      activeFilter === 'rejected' && styles.activeFilterTab,
-      activeFilter === 'rejected' && { borderBottomColor: C.primary },
-    ]}
-    onPress={() => setActiveFilter('rejected')}
-  >
-    <XCircle
-      size={wp('4%')}
-      color={activeFilter === 'rejected' ? C.primary : C.textSecondary}
-    />
-    <Text
-      style={[
-        styles.filterText,
-        {
-          color: activeFilter === 'rejected' ? C.primary : C.textSecondary,
-        },
-      ]}
-    >
-      Rejected ({counts.rejected})
-    </Text>
-  </TouchableOpacity>
-</View>
+        {/* Rejected Tab - Only shows REJECTED status requests */}
+        <TouchableOpacity
+          style={[
+            styles.filterTab,
+            activeFilter === 'rejected' && styles.activeFilterTab,
+            activeFilter === 'rejected' && { borderBottomColor: C.primary },
+          ]}
+          onPress={() => setActiveFilter('rejected')}
+        >
+          <XCircle
+            size={wp('4%')}
+            color={activeFilter === 'rejected' ? C.primary : C.textSecondary}
+          />
+          <Text
+            style={[
+              styles.filterText,
+              {
+                color: activeFilter === 'rejected' ? C.primary : C.textSecondary,
+              },
+            ]}
+          >
+            Rejected ({counts.rejected})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -2461,556 +2461,567 @@ const getFilterCounts = () => {
                 <XCircle size={wp('6%')} color={C.textSecondary} />
               </TouchableOpacity>
             </View>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+              <ScrollView
+                contentContainerStyle={{
+                  paddingBottom: Platform.OS === 'ios' ? 40 : 20, // Extra bottom padding
+                  paddingHorizontal: wp('4%'), // Add horizontal padding if needed
+                }}
+                keyboardShouldPersistTaps="handled"
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Travel Type *
-              </Text>
-              <View style={styles.typeGrid}>
-                {['car', 'train', 'flight', 'other'].map(type => (
+                showsVerticalScrollIndicator={false}>
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Travel Type *
+                </Text>
+                <View style={styles.typeGrid}>
+                  {['car', 'train', 'flight', 'other'].map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.typeOption,
+                        { borderColor: C.border },
+                        expenseType === type && {
+                          borderColor: C.primary,
+                          backgroundColor: C.primary + '10',
+                        },
+                      ]}
+                      onPress={() => setExpenseType(type)}
+                    >
+                      {type === 'car' && (
+                        <Car
+                          size={wp('5%')}
+                          color={
+                            expenseType === type ? C.primary : C.textSecondary
+                          }
+                        />
+                      )}
+                      {type === 'train' && (
+                        <Train
+                          size={wp('5%')}
+                          color={
+                            expenseType === type ? C.primary : C.textSecondary
+                          }
+                        />
+                      )}
+                      {type === 'flight' && (
+                        <Plane
+                          size={wp('5%')}
+                          color={
+                            expenseType === type ? C.primary : C.textSecondary
+                          }
+                        />
+                      )}
+                      {type === 'other' && (
+                        <FileText
+                          size={wp('5%')}
+                          color={
+                            expenseType === type ? C.primary : C.textSecondary
+                          }
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.typeText,
+                          {
+                            color:
+                              expenseType === type ? C.primary : C.textSecondary,
+                          },
+                        ]}
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {expenseType === 'car' && (
+                  <View>
+                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                      Distance (KM) *
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                          color: C.textPrimary,
+                        },
+                      ]}
+                      placeholder="Enter kilometers"
+                      placeholderTextColor={C.textTertiary}
+                      keyboardType="numeric"
+                      value={kilometers}
+                      onChangeText={text =>
+                        setKilometers(validateKilometers(text))
+                      }
+                      maxLength={6}
+                    />
+                  </View>
+                )}
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Travel Amount *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Enter amount"
+                  placeholderTextColor={C.textTertiary}
+                  keyboardType="numeric"
+                  value={amount}
+                  onChangeText={text => setAmount(validateAmount(text))}
+                  maxLength={AMOUNT_MAX_LENGTH}
+                />
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Payment Method *
+                </Text>
+                <View style={styles.paymentMethodGrid}>
                   <TouchableOpacity
-                    key={type}
                     style={[
-                      styles.typeOption,
+                      styles.paymentMethodOption,
                       { borderColor: C.border },
-                      expenseType === type && {
+                      travelPaymentMethod === 'self-paid' && {
                         borderColor: C.primary,
                         backgroundColor: C.primary + '10',
                       },
                     ]}
-                    onPress={() => setExpenseType(type)}
+                    onPress={() => setTravelPaymentMethod('self-paid')}
                   >
-                    {type === 'car' && (
-                      <Car
-                        size={wp('5%')}
-                        color={
-                          expenseType === type ? C.primary : C.textSecondary
-                        }
-                      />
-                    )}
-                    {type === 'train' && (
-                      <Train
-                        size={wp('5%')}
-                        color={
-                          expenseType === type ? C.primary : C.textSecondary
-                        }
-                      />
-                    )}
-                    {type === 'flight' && (
-                      <Plane
-                        size={wp('5%')}
-                        color={
-                          expenseType === type ? C.primary : C.textSecondary
-                        }
-                      />
-                    )}
-                    {type === 'other' && (
-                      <FileText
-                        size={wp('5%')}
-                        color={
-                          expenseType === type ? C.primary : C.textSecondary
-                        }
-                      />
-                    )}
+                    <Wallet
+                      size={wp('4%')}
+                      color={
+                        travelPaymentMethod === 'self-paid'
+                          ? C.primary
+                          : C.textSecondary
+                      }
+                    />
                     <Text
                       style={[
-                        styles.typeText,
+                        styles.paymentMethodText,
                         {
                           color:
-                            expenseType === type ? C.primary : C.textSecondary,
+                            travelPaymentMethod === 'self-paid'
+                              ? C.primary
+                              : C.textSecondary,
                         },
                       ]}
                     >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                      Self-Paid
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-
-              {expenseType === 'car' && (
-                <View>
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Distance (KM) *
-                  </Text>
-                  <TextInput
+                  <TouchableOpacity
                     style={[
-                      styles.input,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
+                      styles.paymentMethodOption,
+                      { borderColor: C.border },
+                      travelPaymentMethod === 'company-paid' && {
+                        borderColor: C.primary,
+                        backgroundColor: C.primary + '10',
                       },
                     ]}
-                    placeholder="Enter kilometers"
-                    placeholderTextColor={C.textTertiary}
-                    keyboardType="numeric"
-                    value={kilometers}
-                    onChangeText={text =>
-                      setKilometers(validateKilometers(text))
-                    }
-                    maxLength={6}
-                  />
+                    onPress={() => setTravelPaymentMethod('company-paid')}
+                  >
+                    <CreditCard
+                      size={wp('4%')}
+                      color={
+                        travelPaymentMethod === 'company-paid'
+                          ? C.primary
+                          : C.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.paymentMethodText,
+                        {
+                          color:
+                            travelPaymentMethod === 'company-paid'
+                              ? C.primary
+                              : C.textSecondary,
+                        },
+                      ]}
+                    >
+                      Company-Paid
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )}
 
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Travel Amount *
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Enter amount"
-                placeholderTextColor={C.textTertiary}
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={text => setAmount(validateAmount(text))}
-                maxLength={AMOUNT_MAX_LENGTH}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Payment Method *
-              </Text>
-              <View style={styles.paymentMethodGrid}>
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodOption,
-                    { borderColor: C.border },
-                    travelPaymentMethod === 'self-paid' && {
-                      borderColor: C.primary,
-                      backgroundColor: C.primary + '10',
-                    },
-                  ]}
-                  onPress={() => setTravelPaymentMethod('self-paid')}
-                >
-                  <Wallet
-                    size={wp('4%')}
-                    color={
-                      travelPaymentMethod === 'self-paid'
-                        ? C.primary
-                        : C.textSecondary
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.paymentMethodText,
-                      {
-                        color:
-                          travelPaymentMethod === 'self-paid'
-                            ? C.primary
-                            : C.textSecondary,
-                      },
-                    ]}
-                  >
-                    Self-Paid
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodOption,
-                    { borderColor: C.border },
-                    travelPaymentMethod === 'company-paid' && {
-                      borderColor: C.primary,
-                      backgroundColor: C.primary + '10',
-                    },
-                  ]}
-                  onPress={() => setTravelPaymentMethod('company-paid')}
-                >
-                  <CreditCard
-                    size={wp('4%')}
-                    color={
-                      travelPaymentMethod === 'company-paid'
-                        ? C.primary
-                        : C.textSecondary
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.paymentMethodText,
-                      {
-                        color:
-                          travelPaymentMethod === 'company-paid'
-                            ? C.primary
-                            : C.textSecondary,
-                      },
-                    ]}
-                  >
-                    Company-Paid
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
-                Additional Expenses (Optional)
-              </Text>
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Hotel Cost
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Enter hotel cost"
-                placeholderTextColor={C.textTertiary}
-                keyboardType="numeric"
-                value={hotelCost}
-                onChangeText={text => setHotelCost(validateAmount(text))}
-                maxLength={AMOUNT_MAX_LENGTH}
-              />
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Food Cost
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Enter food cost"
-                placeholderTextColor={C.textTertiary}
-                keyboardType="numeric"
-                value={foodCost}
-                onChangeText={text => setFoodCost(validateAmount(text))}
-                maxLength={AMOUNT_MAX_LENGTH}
-              />
-
-              <View style={styles.otherExpensesHeader}>
                 <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
-                  Other Expenses
+                  Additional Expenses (Optional)
                 </Text>
-                <TouchableOpacity
-                  onPress={addOtherExpense}
-                  style={[styles.addExpenseBtn, { borderColor: C.primary }]}
-                >
-                  <Plus size={wp('3%')} color={C.primary} />
-                  <Text style={[styles.addExpenseText, { color: C.primary }]}>
-                    Add
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Hotel Cost
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Enter hotel cost"
+                  placeholderTextColor={C.textTertiary}
+                  keyboardType="numeric"
+                  value={hotelCost}
+                  onChangeText={text => setHotelCost(validateAmount(text))}
+                  maxLength={AMOUNT_MAX_LENGTH}
+                />
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Food Cost
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Enter food cost"
+                  placeholderTextColor={C.textTertiary}
+                  keyboardType="numeric"
+                  value={foodCost}
+                  onChangeText={text => setFoodCost(validateAmount(text))}
+                  maxLength={AMOUNT_MAX_LENGTH}
+                />
 
-              {otherExpenses.map(expense => (
-                <View key={expense.id} style={styles.otherExpenseItem}>
-                  <TextInput
-                    style={[
-                      styles.otherExpenseInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                        flex: 2,
-                      },
-                    ]}
-                    placeholder="Description (max 30 chars)"
-                    placeholderTextColor={C.textTertiary}
-                    value={expense.description}
-                    onChangeText={text =>
-                      updateOtherExpense(expense.id, 'description', text)
-                    }
-                    maxLength={DESCRIPTION_MAX_LENGTH}
-                  />
-                  <TextInput
-                    style={[
-                      styles.otherExpenseInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                        flex: 1,
-                      },
-                    ]}
-                    placeholder="Amount"
-                    placeholderTextColor={C.textTertiary}
-                    keyboardType="numeric"
-                    value={expense.amount}
-                    onChangeText={text =>
-                      updateOtherExpense(expense.id, 'amount', text)
-                    }
-                    maxLength={AMOUNT_MAX_LENGTH}
-                  />
-                  <TouchableOpacity
-                    onPress={() => removeOtherExpense(expense.id)}
-                  >
-                    <Trash2 size={wp('5%')} color="#E74C3C" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-
-              <View style={styles.uploadSectionHeader}>
-                <View>
+                <View style={styles.otherExpensesHeader}>
                   <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
-                    Receipt/Document *
+                    Other Expenses
                   </Text>
-                  <Text
-                    style={[styles.uploadSubtitle, { color: C.textTertiary }]}
-                  >
-                    Upload 1 file only (PDF, JPG, or PNG, Max {MAX_FILE_SIZE_MB}
-                    MB) - {selectedFiles.length}/1
-                  </Text>
-                </View>
-              </View>
-
-              {selectedFiles.length === 0 ? (
-                <View style={styles.uploadButtonsContainer}>
                   <TouchableOpacity
-                    style={[
-                      styles.uploadOptionBtn,
-                      { backgroundColor: C.surface, borderColor: C.border },
-                    ]}
-                    onPress={showFilePickerOptions}
+                    onPress={addOtherExpense}
+                    style={[styles.addExpenseBtn, { borderColor: C.primary }]}
                   >
-                    <View
-                      style={[
-                        styles.uploadIconCircle,
-                        { backgroundColor: C.primary + '15' },
-                      ]}
-                    >
-                      <FilePlus size={wp('6%')} color={C.primary} />
-                    </View>
-                    <Text
-                      style={[
-                        styles.uploadOptionTitle,
-                        { color: C.textPrimary },
-                      ]}
-                    >
-                      Upload Files
-                    </Text>
-                    <Text
-                      style={[
-                        styles.uploadOptionSubtitle,
-                        { color: C.textTertiary },
-                      ]}
-                    >
-                      PDF, JPG, PNG{`\n`}(Max {MAX_FILE_SIZE_MB}MB)
+                    <Plus size={wp('3%')} color={C.primary} />
+                    <Text style={[styles.addExpenseText, { color: C.primary }]}>
+                      Add
                     </Text>
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <View style={styles.fileListContainer}>
-                  {selectedFiles.map(file => (
-                    <View
-                      key={file.id}
+
+                {otherExpenses.map(expense => (
+                  <View key={expense.id} style={styles.otherExpenseItem}>
+                    <TextInput
                       style={[
-                        styles.fileItemCard,
+                        styles.otherExpenseInput,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                          color: C.textPrimary,
+                          flex: 2,
+                        },
+                      ]}
+                      placeholder="Description (max 30 chars)"
+                      placeholderTextColor={C.textTertiary}
+                      value={expense.description}
+                      onChangeText={text =>
+                        updateOtherExpense(expense.id, 'description', text)
+                      }
+                      maxLength={DESCRIPTION_MAX_LENGTH}
+                    />
+                    <TextInput
+                      style={[
+                        styles.otherExpenseInput,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                          color: C.textPrimary,
+                          flex: 1,
+                        },
+                      ]}
+                      placeholder="Amount"
+                      placeholderTextColor={C.textTertiary}
+                      keyboardType="numeric"
+                      value={expense.amount}
+                      onChangeText={text =>
+                        updateOtherExpense(expense.id, 'amount', text)
+                      }
+                      maxLength={AMOUNT_MAX_LENGTH}
+                    />
+                    <TouchableOpacity
+                      onPress={() => removeOtherExpense(expense.id)}
+                    >
+                      <Trash2 size={wp('5%')} color="#E74C3C" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                <View style={styles.uploadSectionHeader}>
+                  <View>
+                    <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
+                      Receipt/Document *
+                    </Text>
+                    <Text
+                      style={[styles.uploadSubtitle, { color: C.textTertiary }]}
+                    >
+                      Upload 1 file only (PDF, JPG, or PNG, Max {MAX_FILE_SIZE_MB}
+                      MB) - {selectedFiles.length}/1
+                    </Text>
+                  </View>
+                </View>
+
+                {selectedFiles.length === 0 ? (
+                  <View style={styles.uploadButtonsContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.uploadOptionBtn,
                         { backgroundColor: C.surface, borderColor: C.border },
                       ]}
+                      onPress={showFilePickerOptions}
                     >
-                      <View style={styles.filePreviewContainer}>
-                        {file.type === 'jpg' ||
-                          file.type === 'png' ||
-                          file.type === 'jpeg' ? (
-                          <Image
-                            source={{ uri: file.uri }}
-                            style={styles.fileThumbnail}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.fileTypeIcon,
-                              { backgroundColor: '#E74C3C15' },
-                            ]}
-                          >
-                            <FileText size={wp('7%')} color="#E74C3C" />
-                          </View>
-                        )}
-                      </View>
-
-                      <View style={styles.fileDetailsContainer}>
-                        <Text
-                          style={[styles.fileName, { color: C.textPrimary }]}
-                          numberOfLines={1}
-                        >
-                          {truncateText(file.name, 30)}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.fileMetaText,
-                            { color: C.textSecondary },
-                          ]}
-                        >
-                          {formatFileSize(file.size)} •{' '}
-                          {file.type.toUpperCase()}
-                        </Text>
-                      </View>
-
-                      <TouchableOpacity
+                      <View
                         style={[
-                          styles.iconButton,
-                          { backgroundColor: '#E74C3C15' },
+                          styles.uploadIconCircle,
+                          { backgroundColor: C.primary + '15' },
                         ]}
-                        onPress={() => removeFile(file.id)}
                       >
-                        <Trash2 size={wp('4%')} color="#E74C3C" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              <>
-                {/* From Date Field */}
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  From Date *
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateInput,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                    },
-                  ]}
-                  onPress={() => setShowFromDatePicker(true)}
-                >
-                  <Calendar size={wp('4%')} color={C.textSecondary} />
-                  <Text
-                    style={[
-                      styles.dateInputText,
-                      { color: fromDate ? C.textPrimary : C.textTertiary },
-                    ]}
-                  >
-                    {fromDate
-                      ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
-                      : 'DD/MM/YYYY'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* To Date Field */}
-                <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
-                  To Date *
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateInput,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                    },
-                  ]}
-                  onPress={() => setShowToDatePicker(true)}
-                >
-                  <Calendar size={wp('4%')} color={C.textSecondary} />
-                  <Text
-                    style={[
-                      styles.dateInputText,
-                      { color: toDate ? C.textPrimary : C.textTertiary },
-                    ]}
-                  >
-                    {toDate
-                      ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
-                      : 'DD/MM/YYYY'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Render both date picker modals */}
-                {renderFromDatePickerModal()}
-                {renderToDatePickerModal()}
-              </>
-
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                From Location *
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Starting point (max 30 chars)"
-                placeholderTextColor={C.textTertiary}
-                value={fromLocation}
-                onChangeText={text => setFromLocation(validateLocation(text))}
-                maxLength={LOCATION_MAX_LENGTH}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                To Location *
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Destination (max 30 chars)"
-                placeholderTextColor={C.textTertiary}
-                value={toLocation}
-                onChangeText={text => setToLocation(validateLocation(text))}
-                maxLength={LOCATION_MAX_LENGTH}
-              />
-
-              <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                Business Purpose *
-              </Text>
-              <TextInput
-                style={[
-                  styles.textArea,
-                  {
-                    backgroundColor: C.surface,
-                    borderColor: C.border,
-                    color: C.textPrimary,
-                  },
-                ]}
-                placeholder="Describe the purpose (max 30 chars)..."
-                placeholderTextColor={C.textTertiary}
-                multiline
-                numberOfLines={3}
-                value={purpose}
-                onChangeText={text => setPurpose(validatePurpose(text))}
-                maxLength={PURPOSE_MAX_LENGTH}
-              />
-
-              <View
-                style={[styles.totalContainer, { borderTopColor: C.border }]}
-              >
-                <Text style={[styles.totalLabel, { color: C.textPrimary }]}>
-                  Total Amount:
-                </Text>
-                <Text style={[styles.totalAmount, { color: C.primary }]}>
-                  {formatCurrency(calculateTotalAmount())}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.submitBtn,
-                  {
-                    backgroundColor: submitting ? C.primary + '80' : C.primary,
-                  },
-                ]}
-                onPress={handleSubmitExpense}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <View style={styles.submittingContainer}>
-                    <ActivityIndicator color="#fff" />
-                    <Text style={styles.submitBtnText}>Submitting...</Text>
+                        <FilePlus size={wp('6%')} color={C.primary} />
+                      </View>
+                      <Text
+                        style={[
+                          styles.uploadOptionTitle,
+                          { color: C.textPrimary },
+                        ]}
+                      >
+                        Upload Files
+                      </Text>
+                      <Text
+                        style={[
+                          styles.uploadOptionSubtitle,
+                          { color: C.textTertiary },
+                        ]}
+                      >
+                        PDF, JPG, PNG{`\n`}(Max {MAX_FILE_SIZE_MB}MB)
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
-                  <Text style={styles.submitBtnText}>Submit Request</Text>
+                  <View style={styles.fileListContainer}>
+                    {selectedFiles.map(file => (
+                      <View
+                        key={file.id}
+                        style={[
+                          styles.fileItemCard,
+                          { backgroundColor: C.surface, borderColor: C.border },
+                        ]}
+                      >
+                        <View style={styles.filePreviewContainer}>
+                          {file.type === 'jpg' ||
+                            file.type === 'png' ||
+                            file.type === 'jpeg' ? (
+                            <Image
+                              source={{ uri: file.uri }}
+                              style={styles.fileThumbnail}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                styles.fileTypeIcon,
+                                { backgroundColor: '#E74C3C15' },
+                              ]}
+                            >
+                              <FileText size={wp('7%')} color="#E74C3C" />
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.fileDetailsContainer}>
+                          <Text
+                            style={[styles.fileName, { color: C.textPrimary }]}
+                            numberOfLines={1}
+                          >
+                            {truncateText(file.name, 30)}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.fileMetaText,
+                              { color: C.textSecondary },
+                            ]}
+                          >
+                            {formatFileSize(file.size)} •{' '}
+                            {file.type.toUpperCase()}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.iconButton,
+                            { backgroundColor: '#E74C3C15' },
+                          ]}
+                          onPress={() => removeFile(file.id)}
+                        >
+                          <Trash2 size={wp('4%')} color="#E74C3C" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
                 )}
-              </TouchableOpacity>
-            </ScrollView>
+
+                <>
+                  {/* From Date Field */}
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    From Date *
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateInput,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                      },
+                    ]}
+                    onPress={() => setShowFromDatePicker(true)}
+                  >
+                    <Calendar size={wp('4%')} color={C.textSecondary} />
+                    <Text
+                      style={[
+                        styles.dateInputText,
+                        { color: fromDate ? C.textPrimary : C.textTertiary },
+                      ]}
+                    >
+                      {fromDate
+                        ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
+                        : 'DD/MM/YYYY'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* To Date Field */}
+                  <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
+                    To Date *
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateInput,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                      },
+                    ]}
+                    onPress={() => setShowToDatePicker(true)}
+                  >
+                    <Calendar size={wp('4%')} color={C.textSecondary} />
+                    <Text
+                      style={[
+                        styles.dateInputText,
+                        { color: toDate ? C.textPrimary : C.textTertiary },
+                      ]}
+                    >
+                      {toDate
+                        ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
+                        : 'DD/MM/YYYY'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Render both date picker modals */}
+                  {renderFromDatePickerModal()}
+                  {renderToDatePickerModal()}
+                </>
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  From Location *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Starting point (max 30 chars)"
+                  placeholderTextColor={C.textTertiary}
+                  value={fromLocation}
+                  onChangeText={text => setFromLocation(validateLocation(text))}
+                  maxLength={LOCATION_MAX_LENGTH}
+                />
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  To Location *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Destination (max 30 chars)"
+                  placeholderTextColor={C.textTertiary}
+                  value={toLocation}
+                  onChangeText={text => setToLocation(validateLocation(text))}
+                  maxLength={LOCATION_MAX_LENGTH}
+                />
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  Business Purpose *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.textArea,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Describe the purpose (max 30 chars)..."
+                  placeholderTextColor={C.textTertiary}
+                  multiline
+                  numberOfLines={3}
+                  value={purpose}
+                  onChangeText={text => setPurpose(validatePurpose(text))}
+                  maxLength={PURPOSE_MAX_LENGTH}
+                />
+
+                <View
+                  style={[styles.totalContainer, { borderTopColor: C.border }]}
+                >
+                  <Text style={[styles.totalLabel, { color: C.textPrimary }]}>
+                    Total Amount:
+                  </Text>
+                  <Text style={[styles.totalAmount, { color: C.primary }]}>
+                    {formatCurrency(calculateTotalAmount())}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor: submitting ? C.primary + '80' : C.primary,
+                    },
+                  ]}
+                  onPress={handleSubmitExpense}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <View style={styles.submittingContainer}>
+                      <ActivityIndicator color="#fff" />
+                      <Text style={styles.submitBtnText}>Submitting...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.submitBtnText}>Submit Request</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </KeyboardAvoidingView>
           </View>
         </View>
       </Modal>

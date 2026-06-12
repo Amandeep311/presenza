@@ -44,6 +44,7 @@ import {
   Key,
   X,
 } from 'lucide-react-native';
+import NetInfo from '@react-native-community/netinfo';
 import MainLayout from '../../components/layout/MainLayout';
 import { setAlert } from '../../store/actions/authActions';
 import {
@@ -197,6 +198,10 @@ const HomeScreen = ({ navigation }) => {
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [imagePopupVisible, setImagePopupVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  // ✅ ADDED - Network state variables
+  const [isConnected, setIsConnected] = useState(true);
+  const [noInternetToastVisible, setNoInternetToastVisible] = useState(false);
+  const [lastNoInternetToastTime, setLastNoInternetToastTime] = useState(0); // ✅ ADDED - Track last toast time
   // Expand/Collapse states
   const [expandedSections, setExpandedSections] = useState({
     breaks: false,
@@ -278,6 +283,53 @@ const HomeScreen = ({ navigation }) => {
     return () => clearInterval(timerRef.current);
   }, []);
 
+  // ✅ ADDED - Network monitoring effect (silent, no UI banner)
+  useEffect(() => {
+    // Subscribe to network state updates
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      setIsConnected(connected);
+    });
+
+    // Initial check
+    NetInfo.fetch().then(state => {
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      setIsConnected(connected);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // ✅ ADDED - Function to show no internet message with throttling (prevents multiple toasts)
+  const showNoInternetMessage = useCallback(() => {
+    const now = Date.now();
+    // Only show toast if 3 seconds have passed since the last one
+    if (!noInternetToastVisible && (now - lastNoInternetToastTime) >= 3000) {
+      setNoInternetToastVisible(true);
+      setLastNoInternetToastTime(now);
+      showToast('No internet connection. Please check your internet.', 'error');
+      setTimeout(() => {
+        setNoInternetToastVisible(false);
+      }, 3000);
+    }
+  }, [noInternetToastVisible, lastNoInternetToastTime]);
+
+  // ✅ ADDED - Check internet before any action
+  const checkInternetAndProceed = useCallback(async (action, ...args) => {
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return false;
+    }
+    
+    if (action) {
+      await action(...args);
+    }
+    return true;
+  }, [showNoInternetMessage]);
+
   // ✅ INITIAL LOAD - Called ONCE when component mounts
   useEffect(() => {
     if (isInitialMountRef.current) {
@@ -288,10 +340,8 @@ const HomeScreen = ({ navigation }) => {
   }, []);
 
   // ✅ FOCUS EFFECT - Called when user navigates back to this screen
-  // This will refresh data without making the user manually pull-to-refresh
   useFocusEffect(
     useCallback(() => {
-      // Only load if it's not the initial mount (to avoid double loading)
       if (!isInitialMountRef.current && dataLoadedRef.current) {
         console.log('🔄 HomeScreen: Screen focused - Refreshing data...');
         loadAttendanceHistory();
@@ -302,6 +352,15 @@ const HomeScreen = ({ navigation }) => {
 
   // ✅ Helper: Load all data on initial mount
   const loadInitialData = async () => {
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      dataLoadedRef.current = true;
+      return;
+    }
+    
     try {
       console.log('📊 Loading initial data...');
       await Promise.all([
@@ -312,12 +371,20 @@ const HomeScreen = ({ navigation }) => {
       console.log('✅ Initial data loaded');
     } catch (e) {
       console.log('❌ Error loading initial data:', e);
-      dataLoadedRef.current = true; // Mark as loaded even if error to prevent infinite attempts
+      dataLoadedRef.current = true;
     }
   };
 
   // ✅ Helper: Load attendance history only
   const loadAttendanceHistory = async () => {
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return;
+    }
+    
     try {
       console.log('📊 Loading attendance history...');
       await dispatch(getAttendanceHistory());
@@ -329,6 +396,14 @@ const HomeScreen = ({ navigation }) => {
 
   // ✅ Helper: Load employee profile only
   const loadEmployeeProfile = async () => {
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return;
+    }
+    
     try {
       console.log('👤 Loading employee profile...');
       await dispatch(getEmployeeProfile());
@@ -338,10 +413,23 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // ✅ Pull-to-refresh handler - Called when user pulls down
+  // ✅ Pull-to-refresh handler - Fixed to prevent multiple toasts
   const onRefresh = useCallback(async () => {
+    // Don't show multiple toasts for rapid refresh attempts
+    if (refreshing) return;
+    
     setRefreshing(true);
     console.log('🔄 User pulled to refresh');
+    
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      setRefreshing(false);
+      return;
+    }
+    
     try {
       await Promise.all([
         dispatch(getAttendanceHistory()),
@@ -353,7 +441,7 @@ const HomeScreen = ({ navigation }) => {
     } finally {
       setRefreshing(false);
     }
-  }, [dispatch]);
+  }, [dispatch, refreshing, showNoInternetMessage]);
 
   const toggleSection = section => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -372,7 +460,6 @@ const HomeScreen = ({ navigation }) => {
     if (isProcessing || breakLoading) return;
 
     if (label === t.home.dailyPunch) {
-      // 🔥 If already punched in, ask to punch out
       if (isPunchedIn) {
         Alert.alert(
           t.attendance.punchOut || 'Punch Out',
@@ -382,13 +469,13 @@ const HomeScreen = ({ navigation }) => {
             {
               text: t.alerts.yesPunchOut || 'Yes, Punch Out',
               style: 'destructive',
-              onPress: handlePunchOut,
+              onPress: () => checkInternetAndProceed(handlePunchOut),
             },
           ],
         );
         return;
       }
-      navigation.navigate('DailyPuch');
+      checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
       return;
     }
 
@@ -407,7 +494,7 @@ const HomeScreen = ({ navigation }) => {
             {
               text: t.alerts.yesEndBreak || 'Yes, End Break',
               style: 'destructive',
-              onPress: handleBreakOut,
+              onPress: () => checkInternetAndProceed(handleBreakOut),
             },
           ],
         );
@@ -432,7 +519,7 @@ const HomeScreen = ({ navigation }) => {
             {
               text: t.alerts.yesEndBreak || 'Yes, End Break',
               style: 'destructive',
-              onPress: handleBreakOut,
+              onPress: () => checkInternetAndProceed(handleBreakOut),
             },
           ],
         );
@@ -443,17 +530,17 @@ const HomeScreen = ({ navigation }) => {
     }
 
     if (label === t.home.reports) {
-      navigation.navigate('Reports');
+      checkInternetAndProceed(() => navigation.navigate('Reports'));
       return;
     }
 
     if (label === t.home.leaveManagement) {
-      navigation.navigate('Leave');
+      checkInternetAndProceed(() => navigation.navigate('Leave'));
       return;
     }
 
     if (label === t.home.reimbursement) {
-      navigation.navigate('Reimbursement');
+      checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
       return;
     }
 
@@ -463,11 +550,11 @@ const HomeScreen = ({ navigation }) => {
     }
 
     if (label === t.home.meetings) {
-      navigation.navigate('Meetings');
+      checkInternetAndProceed(() => navigation.navigate('Meetings'));
       return;
     }
     if (label === t.home.kra) {
-      navigation.navigate('KRA');
+      checkInternetAndProceed(() => navigation.navigate('KRA'));
       return;
     }
     showToast(
@@ -477,12 +564,19 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleBreakIn = async (breakType, remarks) => {
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return;
+    }
+    
     try {
       setIsProcessing(true);
       const result = await dispatch(breakIn(breakType, remarks));
       if (result?.success) {
         setBreakModalVisible(false);
-        // Refresh data after successful break in
         await loadAttendanceHistory();
       }
     } catch {
@@ -493,6 +587,14 @@ const HomeScreen = ({ navigation }) => {
 
   const handleBreakOut = async () => {
     if (isProcessing || breakLoading) return;
+
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return;
+    }
 
     Alert.alert(t.breaks.endBreak, t.alerts.endBreakConfirm, [
       { text: t.buttons.cancel, style: 'cancel' },
@@ -505,7 +607,6 @@ const HomeScreen = ({ navigation }) => {
             const result = await dispatch(
               breakOut(currentBreak?.breakType || 'LUNCH', 'Break ended'),
             );
-            // Refresh data after successful break out
             if (result?.success) {
               await loadAttendanceHistory();
             }
@@ -538,14 +639,12 @@ const HomeScreen = ({ navigation }) => {
             setIsProcessing(true);
             const result = await dispatch(punchOut());
 
-            // 🔥 Handle camera cancellation
             if (result?.cancelled) {
               console.log('📸 Punch out cancelled');
               setIsProcessing(false);
               return;
             }
 
-            // Refresh data after successful punch out
             if (result?.success) {
               await loadAttendanceHistory();
             }
@@ -624,7 +723,6 @@ const HomeScreen = ({ navigation }) => {
 
   // 🔥 Use API status for display
   const getStatusConfig = () => {
-    // If on break, show break status
     if (isOnBreak && isPunchedIn) {
       return {
         label: t.breaks?.onBreak || 'On Break',
@@ -633,7 +731,6 @@ const HomeScreen = ({ navigation }) => {
       };
     }
 
-    // If punched in but on break
     if (isOnBreak) {
       return {
         label: t.breaks?.onBreak || 'On Break',
@@ -642,7 +739,6 @@ const HomeScreen = ({ navigation }) => {
       };
     }
 
-    // Return the API-calculated status
     return calculatedAttendance;
   };
 
@@ -951,7 +1047,6 @@ const HomeScreen = ({ navigation }) => {
               </Text>
             </View>
           ) : todayRecord || hasAnySessionToday ? (
-            // ----------------- HERE --------------
             <View
               style={[
                 styles.card,
@@ -1026,7 +1121,7 @@ const HomeScreen = ({ navigation }) => {
                       { backgroundColor: C.error },
                       isLoading && { backgroundColor: C.disabled },
                     ]}
-                    onPress={handlePunchOut}
+                    onPress={() => checkInternetAndProceed(handlePunchOut)}
                     disabled={isLoading}
                   >
                     <LogOut
@@ -1086,9 +1181,6 @@ const HomeScreen = ({ navigation }) => {
                   </>
                 )}
               </View>
-
-              {/* Short Leave */}
-              {/* {renderShortLeaveInfo()} */}
 
               {/* Late / Short Leave / Early Leave / Half Day - Show based on API values */}
               {(isUserLate || isEarlyLeave || isHalfDay || isShortLeave) && (
@@ -1311,7 +1403,7 @@ const HomeScreen = ({ navigation }) => {
                 ]}
                 onPress={() => {
                   if (isLoading) return;
-                  navigation.navigate('DailyPuch');
+                  checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
                 }}
                 disabled={isLoading}
               >
