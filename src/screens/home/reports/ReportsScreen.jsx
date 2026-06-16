@@ -12,6 +12,7 @@ import {
   Platform,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -39,6 +40,8 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { Fonts } from '../../../utils/GlobalText';
 import { getAttendanceHistory } from '../../../store/actions/attendanceActions';
 import { formatMinutesToHours } from '../../../utils/utils';
+const arrowIcon = require('../../../assets/arrow_right.png');
+
 
 // ── Date Filter Helpers ───────────────────────────────────────
 const getDateRange = (filter, customDate = null) => {
@@ -310,9 +313,19 @@ const RecordCard = ({ record }) => {
             <Text style={[cardStyles.timeIn, { color: C.success }]}>
               {formatTime(firstPunchIn)}
             </Text>
-            <Text style={[cardStyles.timeSep, { color: C.textSecondary }]}>
+            <Image
+              source={arrowIcon}
+              style={{
+                width: 8,
+                height: 14,
+                marginHorizontal: 2,
+                tintColor: C.textSecondary,  // Remove the > here
+              }}
+              resizeMode="contain"
+            />
+            {/* <Text style={[cardStyles.timeSep, { color: C.textSecondary }]}>
               →
-            </Text>
+            </Text> */}
             <Text
               style={[
                 cardStyles.timeOut,

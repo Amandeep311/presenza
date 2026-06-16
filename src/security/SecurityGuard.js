@@ -242,14 +242,14 @@ const showSecurityAlertAndContinue = (reason, details = '') => {
     'Security Warning 🛡️',
     `${reason}\n\n${details}\n\nThis app cannot run on compromised devices.\n\nPlease enable automatic date & time and restart the app.`,
     [
-      {
-        text: 'Continue Anyway',
-        onPress: () => {
-          console.log('User chose to continue despite security warning');
-          // You can optionally disable sensitive features here
-        },
-        style: 'cancel',
-      },
+      // {
+      //   text: 'Continue Anyway',
+      //   onPress: () => {
+      //     console.log('User chose to continue despite security warning');
+      //     // You can optionally disable sensitive features here
+      //   },
+      //   style: 'cancel',
+      // },
       {
         text: 'Exit App',
         onPress: () => {

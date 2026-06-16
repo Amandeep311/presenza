@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		002E4FF72FE15F1300072FBE /* hermesvm.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 002E4FF62FE15F1300072FBE /* hermesvm.xcframework */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		1B592AD98215409EA4E7BA76 /* GothamBoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A18CE6B0BEB14365AF68B665 /* GothamBoldItalic.ttf */; };
 		26A457BC34094E42AEA0E077 /* GothamMediumItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A957304FAACC45A29EDA01F4 /* GothamMediumItalic.ttf */; };
@@ -31,6 +32,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		002E4FF62FE15F1300072FBE /* hermesvm.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = hermesvm.xcframework; path = "Pods/hermes-engine/destroot/Library/Frameworks/universal/hermesvm.xcframework"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Presenza.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Presenza.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Presenza/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Presenza/Info.plist; sourceTree = "<group>"; };
@@ -64,6 +66,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				002E4FF72FE15F1300072FBE /* hermesvm.xcframework in Frameworks */,
 				3295BC1C19DC8D69C300368C /* libPods-Presenza.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -86,6 +89,7 @@
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				002E4FF62FE15F1300072FBE /* hermesvm.xcframework */,
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				86BEB87A054DA442FBB91AD0 /* libPods-Presenza.a */,
 			);
@@ -350,6 +354,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = HCDKS6755V;
 				ENABLE_BITCODE = NO;
@@ -361,7 +367,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.7;
+				MARKETING_VERSION = 1.1.8;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -369,6 +375,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.paulfincap.presenza;
 				PRODUCT_NAME = Presenza;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -382,6 +389,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = HCDKS6755V;
 				INFOPLIST_FILE = Presenza/Info.plist;
@@ -392,7 +401,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.7;
+				MARKETING_VERSION = 1.1.8;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -400,6 +409,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.paulfincap.presenza;
 				PRODUCT_NAME = Presenza;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};

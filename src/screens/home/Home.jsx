@@ -1717,6 +1717,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderStyle: 'dashed',
+  
   },
   emptyIconWrap: {
     width: wp('20%'),

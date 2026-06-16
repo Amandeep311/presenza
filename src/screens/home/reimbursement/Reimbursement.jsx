@@ -105,7 +105,7 @@ const Reimbursement = ({ navigation }) => {
   const MAX_FILE_SIZE_MB = 5;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const LOCATION_MAX_LENGTH = 30;
-  const PURPOSE_MAX_LENGTH = 30;
+  const PURPOSE_MAX_LENGTH = 200;
   const DESCRIPTION_MAX_LENGTH = 30;
 
   // Date picker visibility states
@@ -321,8 +321,8 @@ const Reimbursement = ({ navigation }) => {
     if (!value) return '';
     const numValue = value.replace(/[^0-9]/g, '');
     if (numValue === '') return '';
-    const num = parseInt(numValue, 10);
-    if (num > KM_MAX_VALUE) return KM_MAX_VALUE.toString();
+    // const num = parseInt(numValue, 10);
+    // if (num > KM_MAX_VALUE) return KM_MAX_VALUE.toString();
     return numValue.slice(0, 6);
   };
 
@@ -2981,7 +2981,7 @@ const Reimbursement = ({ navigation }) => {
                       color: C.textPrimary,
                     },
                   ]}
-                  placeholder="Describe the purpose (max 30 chars)..."
+                  placeholder="Describe the purpose (max 200 chars)..."
                   placeholderTextColor={C.textTertiary}
                   multiline
                   numberOfLines={3}
