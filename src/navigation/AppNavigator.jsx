@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -16,6 +16,7 @@ import VersionCheck from 'react-native-version-check';
 import DeviceInfo from 'react-native-device-info';
 import { ToastProvider, showToast } from '../components/common/ToastProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 
 import LoginScreen from '../screens/auth/Login';
 import HomeScreen from '../screens/home/Home';
@@ -31,8 +32,13 @@ import Reimbursement from '../screens/home/reimbursement/Reimbursement';
 import Meetings from '../screens/home/meetings/Meetings';
 import KRA from '../screens/home/kra/KRA';
 
+// ✅ Screens
+import MaintenanceScreen from '../screens/MaintenanceScreen';
+import NoInternetScreen from '../screens/NoInternetScreen';
+import { checkApiHealth } from '../utils/healthCheck';
+
 // ============================================================
-// 🚨 SECURITY GUARD - COMMENTED FOR EMULATOR TESTING
+// 🚨 SECURITY GUARD
 // ============================================================
 import {
   startSecurityGuard,
@@ -110,18 +116,150 @@ const AppNavigator = () => {
     location: false,
   });
 
+  // ✅ HEALTH CHECK STATES
+  const [isApiHealthy, setIsApiHealthy] = useState(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const healthCheckDoneRef = useRef(false);
+
+  // ✅ INTERNET CONNECTION STATE - INITIALIZE AS FALSE to prevent loading state issues
+  const [isInternetConnected, setIsInternetConnected] = useState(false);
+  const [isCheckingInternet, setIsCheckingInternet] = useState(false);
+  const [isInitialCheckComplete, setIsInitialCheckComplete] = useState(false);
+
+  // ✅ Track if auth was already checked
+  const authCheckedRef = useRef(false);
+
+  // ✅ Toast throttling
+  const [noInternetToastVisible, setNoInternetToastVisible] = useState(false);
+  const [lastNoInternetToastTime, setLastNoInternetToastTime] = useState(0);
+
   // CRITICAL: Use a ref to prevent duplicate toasts in the same session
   const isShowingToast = useRef(false);
   const toastTimeoutRef = useRef(null);
 
+  // ✅ Function to show no internet message with throttling
+  const showNoInternetMessage = useCallback(() => {
+    const now = Date.now();
+    if (!noInternetToastVisible && (now - lastNoInternetToastTime) >= 3000) {
+      setNoInternetToastVisible(true);
+      setLastNoInternetToastTime(now);
+      showToast('No internet connection. Please check your internet.', 'error');
+      setTimeout(() => {
+        setNoInternetToastVisible(false);
+      }, 3000);
+    }
+  }, [noInternetToastVisible, lastNoInternetToastTime]);
+
+  // ✅ NETWORK MONITORING
+  useEffect(() => {
+    let mounted = true;
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (!mounted) return;
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      console.log(`📡 Network state changed: ${connected ? 'Connected' : 'Disconnected'}`);
+      setIsInternetConnected(connected);
+      
+      // ✅ If internet becomes available and health check was previously done, recheck
+      if (connected && healthCheckDoneRef.current && mounted) {
+        console.log('📡 Internet restored, rechecking API health...');
+        performHealthCheck();
+      }
+    });
+
+    // ✅ Initial check
+    NetInfo.fetch().then(state => {
+      if (!mounted) return;
+      const connected = state.isConnected === true && state.isInternetReachable !== false;
+      console.log(`📡 Initial internet connection: ${connected ? 'Connected' : 'Disconnected'}`);
+      setIsInternetConnected(connected);
+      setIsInitialCheckComplete(true);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // ✅ CHECK INTERNET FUNCTION
+  const checkInternetConnection = useCallback(async () => {
+    if (isCheckingInternet) return;
+    
+    setIsCheckingInternet(true);
+    console.log('📡 Checking internet connection...');
+    
+    try {
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected === true && netInfo.isInternetReachable !== false;
+      
+      console.log(`📡 Internet connection: ${isConnected ? '✅ Connected' : '❌ Disconnected'}`);
+      setIsInternetConnected(isConnected);
+      return isConnected;
+    } catch (error) {
+      console.log('❌ Internet check error:', error);
+      setIsInternetConnected(false);
+      return false;
+    } finally {
+      setIsCheckingInternet(false);
+    }
+  }, [isCheckingInternet]);
+
+  // ✅ HEALTH CHECK FUNCTION
+  const performHealthCheck = useCallback(async () => {
+    if (isCheckingHealth) {
+      console.log('⏭️ Health check already in progress, skipping');
+      return;
+    }
+    
+    // ✅ First check internet connection
+    const isConnected = await checkInternetConnection();
+    
+    if (!isConnected) {
+      console.log('❌ No internet connection');
+      showNoInternetMessage();
+      setIsInternetConnected(false);
+      // ✅ Set API healthy to null to show loading only on initial check
+      // But keep previous state if already set
+      return false;
+    }
+    
+    setIsCheckingHealth(true);
+    console.log('📡 Performing health check...');
+    
+    try {
+      const result = await checkApiHealth();
+      console.log('📡 Health check result:', result);
+      
+      // ✅ Set both states based on result
+      setIsApiHealthy(result.isHealthy);
+      setIsInternetConnected(true);
+      
+      if (result.isHealthy) {
+        healthCheckDoneRef.current = true;
+        console.log('✅ API is healthy, app will load');
+      } else {
+        healthCheckDoneRef.current = false;
+        console.log('❌ API is not healthy, user can retry');
+      }
+      
+      return result.isHealthy;
+    } catch (error) {
+      console.log('❌ Health check error:', error);
+      setIsApiHealthy(false);
+      healthCheckDoneRef.current = false;
+      return false;
+    } finally {
+      setIsCheckingHealth(false);
+    }
+  }, [isCheckingHealth, checkInternetConnection, showNoInternetMessage]);
+
   // Function to show toast only once
   const showToastOnce = (message, type, duration) => {
-    // Clear any pending toast
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
     
-    // If we're already showing a toast, don't show another
     if (isShowingToast.current) {
       console.log('⏭️ Toast already showing, skipping duplicate');
       return;
@@ -131,7 +269,6 @@ const AppNavigator = () => {
     isShowingToast.current = true;
     showToast(message, type, duration);
     
-    // Reset the flag after the toast duration
     toastTimeoutRef.current = setTimeout(() => {
       isShowingToast.current = false;
       console.log('✅ Toast flag reset');
@@ -165,30 +302,25 @@ const AppNavigator = () => {
     console.log(`Checking permissions - Camera: ${cameraGranted}, Location: ${locationGranted}, All: ${hasAllPermissions}`);
     
     if (hasAllPermissions) {
-      // All permissions are granted - clear the flag
       await AsyncStorage.removeItem('toast_shown_for_missing_permissions');
       console.log('✅ All permissions granted, cleared toast flag');
       return;
     }
     
-    // Some permissions are missing
     const missingPermissions = [];
     if (!cameraGranted) missingPermissions.push('Camera');
     if (!locationGranted) missingPermissions.push('Location');
     
     console.log(`Missing permissions: ${missingPermissions.join(', ')}`);
     
-    // Check if we've shown toast before for missing permissions
     const toastShown = await AsyncStorage.getItem('toast_shown_for_missing_permissions');
     console.log('Toast shown flag from storage:', toastShown);
     
     if (!toastShown) {
-      // Show toast and save flag
       const message = missingPermissions.length === 2 
         ? '⚠️ Camera & Location permissions are missing. Please enable in settings.'
         : `⚠️ ${missingPermissions[0]} permission is missing. Please enable in settings.`;
       
-      // Use the single toast function
       showToastOnce(message, 'warning', 4000);
       await AsyncStorage.setItem('toast_shown_for_missing_permissions', 'true');
     } else {
@@ -201,12 +333,10 @@ const AppNavigator = () => {
     console.log('🔐 Initializing permissions...');
 
     try {
-      // Request permissions (this will show the popup)
       const { cameraGranted, locationGranted } = await requestPermissions();
       
       console.log(`Permissions result - Camera: ${cameraGranted}, Location: ${locationGranted}`);
 
-      // Check and show toast if needed
       await checkAndShowToast(cameraGranted, locationGranted);
 
       setPermissionsInitialized(true);
@@ -219,7 +349,7 @@ const AppNavigator = () => {
   };
 
   // ============================================================
-  // 🚨 SECURITY - COMMENTED FOR EMULATOR TESTING
+  // 🚨 SECURITY
   // ============================================================
   const initializeSecurity = async () => {
     console.log('🔒 Initializing Security Guard...');
@@ -244,24 +374,27 @@ const AppNavigator = () => {
     try {
       console.log('📦 Checking app version...');
       
-      // Get current version from app
       const currentVersion = await VersionCheck.getCurrentVersion();
       console.log('Current version:', currentVersion);
       
-      // Get latest version from Play Store
-      const latestVersion = await VersionCheck.getLatestVersion();
-      console.log('Latest version from store:', latestVersion);
+      let latestVersion = currentVersion;
+      let storeUrl = null;
       
-      // Get store URL
-      const storeUrl = await VersionCheck.getStoreUrl();
-      console.log('Store URL:', storeUrl);
+      try {
+        latestVersion = await VersionCheck.getLatestVersion();
+        storeUrl = await VersionCheck.getStoreUrl();
+        console.log('Latest version from store:', latestVersion);
+        console.log('Store URL:', storeUrl);
+      } catch (versionError) {
+        console.log('⚠️ Skipping version check (development environment):', versionError.message);
+        setForceUpdate(false);
+        return;
+      }
       
-      // Compare versions manually (MORE RELIABLE)
       const compareResult = compareVersions(currentVersion, latestVersion);
       const needsUpdate = compareResult < 0;
       
-      // Check minimum version support
-      const MIN_SUPPORTED_VERSION = '1.0.0'; // Set your minimum supported version
+      const MIN_SUPPORTED_VERSION = '1.0.0';
       const isBelowMinimum = compareVersions(currentVersion, MIN_SUPPORTED_VERSION) < 0;
       
       if (needsUpdate || isBelowMinimum) {
@@ -276,7 +409,6 @@ const AppNavigator = () => {
       }
     } catch (e) {
       console.log('❌ Version check error:', e);
-      // Don't block the app if version check fails
       setForceUpdate(false);
     }
   };
@@ -297,16 +429,29 @@ const AppNavigator = () => {
     }
   };
 
+  // ================= CHECK AUTH STATE =================
+  useEffect(() => {
+    if (!authCheckedRef.current) {
+      console.log('🔍 Running auth check...');
+      authCheckedRef.current = true;
+      dispatch(checkAuthState());
+    }
+  }, [dispatch]);
+
   // ================= INITIALIZE EVERYTHING ON APP START =================
   useEffect(() => {
     console.log('🚀 App initializing');
+
+    // ✅ Only perform health check after internet check is complete
+    if (isInitialCheckComplete && !healthCheckDoneRef.current) {
+      performHealthCheck();
+    }
 
     initializePermissions().then(() => {
       initializeSecurity();
       console.log('🚀 App initialization complete');
     });
 
-    dispatch(checkAuthState());
     checkAppVersion();
     debugStorage();
 
@@ -317,7 +462,7 @@ const AppNavigator = () => {
         clearTimeout(toastTimeoutRef.current);
       }
     };
-  }, [dispatch]);
+  }, [isInitialCheckComplete]);
 
   // ================= CHECK PERMISSIONS ON FOREGROUND =================
   const checkPermissionsOnForeground = async () => {
@@ -338,14 +483,11 @@ const AppNavigator = () => {
       const hasAllPermissions = cameraGranted && locationGranted;
       
       if (hasAllPermissions) {
-        // All permissions are granted - clear the flag
         await AsyncStorage.removeItem('toast_shown_for_missing_permissions');
         console.log('✅ All permissions granted on foreground, cleared toast flag');
       } else {
-        // Some permissions are still missing
         const toastShown = await AsyncStorage.getItem('toast_shown_for_missing_permissions');
         
-        // Only show toast if we haven't shown it before AND permissions are not all granted
         if (!toastShown) {
           const missingPermissions = [];
           if (!cameraGranted) missingPermissions.push('Camera');
@@ -357,7 +499,6 @@ const AppNavigator = () => {
           
           console.log(`🔔 Showing toast for missing permissions on foreground: ${missingPermissions.join(', ')}`);
           
-          // Use the single toast function
           showToastOnce(message, 'warning', 4000);
           await AsyncStorage.setItem('toast_shown_for_missing_permissions', 'true');
         } else {
@@ -388,19 +529,16 @@ const AppNavigator = () => {
   const handleAppStateChange = async nextAppState => {
     console.log(`📱 App state changed: ${appStateRef.current} → ${nextAppState}`);
 
-    // ========== APP COMING TO FOREGROUND ==========
     if (
       appStateRef.current.match(/inactive|background/) &&
       nextAppState === 'active'
     ) {
       console.log('🔄 APP FOREGROUND - Checking permissions');
       
-      // Wait for app to be fully active
       setTimeout(async () => {
         await checkPermissionsOnForeground();
       }, 1000);
 
-      // Security checks
       try {
         await onAppStateChange(nextAppState);
         await resetSecurityGuard();
@@ -432,11 +570,58 @@ const AppNavigator = () => {
     });
   }, [permissionsStatus]);
 
-  // ================= LOADING STATES =================
+  // ================= RENDER STATES - CORRECT ORDER =================
+
+  // 1. ✅ SHOW LOADING ONLY ON INITIAL APP START (before internet check completes)
+  if (!isInitialCheckComplete) {
+    return (
+      <View style={[styles.initContainer, { backgroundColor: '#0A1128' }]}>
+        <ActivityIndicator size="large" color="#FACC15" />
+        <Text style={[styles.initText, { color: '#9CA3AF' }]}>
+          Loading...
+        </Text>
+      </View>
+    );
+  }
+
+  // 2. ✅ SHOW NO INTERNET SCREEN - When internet is disconnected
+  if (!isInternetConnected) {
+    return (
+      <NoInternetScreen
+        onRetry={performHealthCheck}
+        isChecking={isCheckingHealth || isCheckingInternet}
+      />
+    );
+  }
+
+  // 3. ✅ SHOW MAINTENANCE SCREEN - Only when internet is connected AND API is down
+  if (isApiHealthy === false && isInternetConnected === true) {
+    return (
+      <MaintenanceScreen
+        onRetry={performHealthCheck}
+        isChecking={isCheckingHealth}
+      />
+    );
+  }
+
+  // 4. ✅ Show loading while health check is in progress (only on initial check)
+  if (isApiHealthy === null && isCheckingHealth) {
+    return (
+      <View style={[styles.initContainer, { backgroundColor: '#0A1128' }]}>
+        <ActivityIndicator size="large" color="#FACC15" />
+        <Text style={[styles.initText, { color: '#9CA3AF' }]}>
+          Checking system status...
+        </Text>
+      </View>
+    );
+  }
+
+  // 5. Show loading state
   if (loading || !permissionsInitialized) {
     return <AppLoader />;
   }
 
+  // 6. Show normal app
   return (
     <View style={styles.container}>
       {/* 🔴 FULL BLOCK SCREEN (SECURITY VIOLATION) */}

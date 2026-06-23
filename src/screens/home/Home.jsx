@@ -456,112 +456,262 @@ const HomeScreen = ({ navigation }) => {
     setImagePopupVisible(true);
   };
 
-  const handleQuickActionPress = label => {
-    if (isProcessing || breakLoading) return;
+  // const handleQuickActionPress = label => {
+  //   if (isProcessing || breakLoading) return;
 
-    if (label === t.home.dailyPunch) {
-      if (isPunchedIn) {
-        Alert.alert(
-          t.attendance.punchOut || 'Punch Out',
-          t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
-          [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesPunchOut || 'Yes, Punch Out',
-              style: 'destructive',
-              onPress: () => checkInternetAndProceed(handlePunchOut),
-            },
-          ],
-        );
-        return;
-      }
-      checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
-      return;
-    }
+  //   if (label === t.home.dailyPunch) {
+  //     if (isPunchedIn) {
+  //       Alert.alert(
+  //         t.attendance.punchOut || 'Punch Out',
+  //         t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
+  //         [
+  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+  //           {
+  //             text: t.alerts.yesPunchOut || 'Yes, Punch Out',
+  //             style: 'destructive',
+  //             onPress: () => checkInternetAndProceed(handlePunchOut),
+  //           },
+  //         ],
+  //       );
+  //       return;
+  //     }
+  //     checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
+  //     return;
+  //   }
 
-    if (label === t.home.idleTracking) {
-      if (!isPunchedIn) {
-        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-        return;
-      }
-      if (isOnBreak) {
-        Alert.alert(
-          t.breaks.endBreak || 'End Break',
-          t.alerts.endBreakConfirm ||
-            'Are you sure you want to end your break?',
-          [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesEndBreak || 'Yes, End Break',
-              style: 'destructive',
-              onPress: () => checkInternetAndProceed(handleBreakOut),
-            },
-          ],
-        );
-        return;
-      }
-      setBreakModalVisible(true);
-      return;
-    }
+  //   if (label === t.home.idleTracking) {
+  //     if (!isPunchedIn) {
+  //       showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+  //       return;
+  //     }
+  //     if (isOnBreak) {
+  //       Alert.alert(
+  //         t.breaks.endBreak || 'End Break',
+  //         t.alerts.endBreakConfirm ||
+  //           'Are you sure you want to end your break?',
+  //         [
+  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+  //           {
+  //             text: t.alerts.yesEndBreak || 'Yes, End Break',
+  //             style: 'destructive',
+  //             onPress: () => checkInternetAndProceed(handleBreakOut),
+  //           },
+  //         ],
+  //       );
+  //       return;
+  //     }
+  //     setBreakModalVisible(true);
+  //     return;
+  //   }
 
-    if (label === 'Visit') {
-      if (!isPunchedIn) {
-        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-        return;
-      }
-      if (isOnBreak) {
-        Alert.alert(
-          t.breaks.endBreak || 'End Break',
-          t.alerts.endBreakConfirm ||
-            'Are you sure you want to end your break?',
-          [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesEndBreak || 'Yes, End Break',
-              style: 'destructive',
-              onPress: () => checkInternetAndProceed(handleBreakOut),
-            },
-          ],
-        );
-        return;
-      }
-      setVisitModalVisible(true);
-      return;
-    }
+  //   if (label === 'Visit') {
+  //     if (!isPunchedIn) {
+  //       showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+  //       return;
+  //     }
+  //     if (isOnBreak) {
+  //       Alert.alert(
+  //         t.breaks.endBreak || 'End Break',
+  //         t.alerts.endBreakConfirm ||
+  //           'Are you sure you want to end your break?',
+  //         [
+  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+  //           {
+  //             text: t.alerts.yesEndBreak || 'Yes, End Break',
+  //             style: 'destructive',
+  //             onPress: () => checkInternetAndProceed(handleBreakOut),
+  //           },
+  //         ],
+  //       );
+  //       return;
+  //     }
+  //     setVisitModalVisible(true);
+  //     return;
+  //   }
 
-    if (label === t.home.reports) {
-      checkInternetAndProceed(() => navigation.navigate('Reports'));
-      return;
-    }
+  //   if (label === t.home.reports) {
+  //     checkInternetAndProceed(() => navigation.navigate('Reports'));
+  //     return;
+  //   }
 
-    if (label === t.home.leaveManagement) {
-      checkInternetAndProceed(() => navigation.navigate('Leave'));
-      return;
-    }
+  //   if (label === t.home.leaveManagement) {
+  //     checkInternetAndProceed(() => navigation.navigate('Leave'));
+  //     return;
+  //   }
 
-    if (label === t.home.reimbursement) {
-      checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
-      return;
-    }
+  //   if (label === t.home.reimbursement) {
+  //     checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
+  //     return;
+  //   }
 
-    if (label === t.home.salarySlip) {
-      // navigation.navigate('SalarySlip');
-      // return;
-    }
+  //   if (label === t.home.salarySlip) {
+  //     // navigation.navigate('SalarySlip');
+  //     // return;
+  //   }
 
-    if (label === t.home.meetings) {
-      checkInternetAndProceed(() => navigation.navigate('Meetings'));
-      return;
-    }
-    if (label === t.home.kra) {
-      checkInternetAndProceed(() => navigation.navigate('KRA'));
-      return;
-    }
-    showToast(
-      '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
-      'info',
+  //   if (label === t.home.meetings) {
+  //     checkInternetAndProceed(() => navigation.navigate('Meetings'));
+  //     return;
+  //   }
+  //   if (label === t.home.kra) {
+  //     checkInternetAndProceed(() => navigation.navigate('KRA'));
+  //     return;
+  //   }
+  //   showToast(
+  //     '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
+  //     'info',
+  //   );
+  // };
+// 🔥 NEW: Direct break out function (no alert) - used when alert is already shown
+const handleBreakOutDirect = async () => {
+  if (isProcessing || breakLoading) return;
+
+  const state = await NetInfo.fetch();
+  const connected = state.isConnected === true && state.isInternetReachable !== false;
+  
+  if (!connected) {
+    showNoInternetMessage();
+    return;
+  }
+
+  try {
+    setIsProcessing(true);
+    const result = await dispatch(
+      breakOut(currentBreak?.breakType || 'LUNCH', 'Break ended'),
     );
-  };
+    if (result?.success) {
+      await loadAttendanceHistory();
+    }
+  } catch (error) {
+    console.log('Break out error:', error);
+  } finally {
+    setIsProcessing(false);
+  }
+};
+  const handleQuickActionPress = label => {
+  if (isProcessing || breakLoading) return;
+
+  if (label === t.home.dailyPunch) {
+    if (isPunchedIn) {
+      Alert.alert(
+        t.attendance.punchOut || 'Punch Out',
+        t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
+        [
+          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+          {
+            text: t.alerts.yesPunchOut || 'Yes, Punch Out',
+            style: 'destructive',
+            onPress: () => checkInternetAndProceed(handlePunchOut),
+          },
+        ],
+      );
+      return;
+    }
+    checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
+    return;
+  }
+
+  if (label === t.home.idleTracking) {
+    if (!isPunchedIn) {
+      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+      return;
+    }
+    // 🔥 FIX: If user is on break, show break end popup
+    if (isOnBreak) {
+      // Show break end popup
+      Alert.alert(
+        t.breaks.endBreak || 'End Break',
+        t.alerts.endBreakConfirm ||
+          'Are you sure you want to end your break?',
+        [
+          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+          {
+            text: t.alerts.yesEndBreak || 'Yes, End Break',
+            style: 'destructive',
+            onPress: () => {
+              // 🔥 FIX: Call checkInternetAndProceed with handleBreakOut
+              // but ONLY if not already in progress
+              if (!isProcessing && !breakLoading) {
+                checkInternetAndProceed(() => {
+                  // Call handleBreakOut directly without its own Alert
+                  handleBreakOutDirect();
+                });
+              }
+            },
+          },
+        ],
+      );
+      return;
+    }
+    setBreakModalVisible(true);
+    return;
+  }
+
+  if (label === 'Visit') {
+    if (!isPunchedIn) {
+      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+      return;
+    }
+    if (isOnBreak) {
+      // 🔥 FIX: Same fix for Visit - show break end popup first
+      Alert.alert(
+        t.breaks.endBreak || 'End Break',
+        t.alerts.endBreakConfirm ||
+          'Are you sure you want to end your break before starting a visit?',
+        [
+          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+          {
+            text: t.alerts.yesEndBreak || 'Yes, End Break',
+            style: 'destructive',
+            onPress: () => {
+              if (!isProcessing && !breakLoading) {
+                checkInternetAndProceed(() => {
+                  handleBreakOutDirect();
+                });
+              }
+            },
+          },
+        ],
+      );
+      return;
+    }
+    setVisitModalVisible(true);
+    return;
+  }
+
+  if (label === t.home.reports) {
+    checkInternetAndProceed(() => navigation.navigate('Reports'));
+    return;
+  }
+
+  if (label === t.home.leaveManagement) {
+    checkInternetAndProceed(() => navigation.navigate('Leave'));
+    return;
+  }
+
+  if (label === t.home.reimbursement) {
+    checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
+    return;
+  }
+
+  if (label === t.home.salarySlip) {
+    // navigation.navigate('SalarySlip');
+    // return;
+  }
+
+  if (label === t.home.meetings) {
+    checkInternetAndProceed(() => navigation.navigate('Meetings'));
+    return;
+  }
+  if (label === t.home.kra) {
+    checkInternetAndProceed(() => navigation.navigate('KRA'));
+    return;
+  }
+  showToast(
+    '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
+    'info',
+  );
+};
 
   const handleBreakIn = async (breakType, remarks) => {
     const state = await NetInfo.fetch();

@@ -101,49 +101,52 @@ export const MeetingsScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const outerListRef = useRef(null);
   const calendarRef = useRef(null); // Ref for calendar position
-  
+
   // ========== REFS FOR PREVENTING MULTIPLE TOASTS ==========
   const lastClickTimeRef = useRef(0);
   const isValidationInProgress = useRef(false);
   const lastToastTimeRef = useRef(0);
   const isShowingToastRef = useRef(false);
   const globalToastLockRef = useRef(false);
-  
+  const isCopyingRef = useRef(false); // ✅ Track copy in progress
+
   const { user } = useSelector(state => state.auth);
+
+  const [copyCooldown, setCopyCooldown] = useState(false);
 
   // ========== TOAST DEDUPLICATION FUNCTION ==========
   const showUniqueToast = useCallback((message, type = 'warning') => {
     const now = Date.now();
-    
+
     // GLOBAL LOCK - Most aggressive prevention
     if (globalToastLockRef.current) {
       console.log('🚫 Toast blocked - Global lock active');
       return;
     }
-    
+
     // Block ANY toast within 3 seconds of the last one
     if (now - lastToastTimeRef.current < 3000) {
       console.log('🚫 Toast blocked - Too soon (within 3 seconds)');
       return;
     }
-    
+
     // Block if a toast is currently being shown
     if (isShowingToastRef.current) {
       console.log('🚫 Toast blocked - Another toast is already showing');
       return;
     }
-    
+
     // Set global lock
     globalToastLockRef.current = true;
-    
+
     // Set flags
     lastToastTimeRef.current = now;
     isShowingToastRef.current = true;
-    
+
     // Show the toast
     console.log('✅ Showing toast:', message);
     showToast(message, type);
-    
+
     // Reset flags after toast duration (3 seconds)
     setTimeout(() => {
       isShowingToastRef.current = false;
@@ -311,10 +314,10 @@ export const MeetingsScreen = ({ navigation }) => {
       console.log('🚫 handleScheduleMeeting blocked - Toast/Validation in progress');
       return;
     }
-    
+
     // Set validation flag immediately
     isValidationInProgress.current = true;
-    
+
     // Debounce clicks - prevent multiple clicks within 1.5 seconds
     const now = Date.now();
     if (now - lastClickTimeRef.current < 1500) {
@@ -323,14 +326,14 @@ export const MeetingsScreen = ({ navigation }) => {
       return;
     }
     lastClickTimeRef.current = now;
-    
+
     // Prevent submission if already creating meeting
     if (creatingMeeting) {
       console.log('🚫 handleScheduleMeeting blocked - Already creating meeting');
       isValidationInProgress.current = false;
       return;
     }
-    
+
     try {
       const {
         meetingTitle,
@@ -377,7 +380,7 @@ export const MeetingsScreen = ({ navigation }) => {
         showUniqueToast('End time must be after start time', 'warning');
         return;
       }
-      
+
       // All validations passed - proceed with API call
       const meetingData = {
         title: meetingTitle,
@@ -389,11 +392,11 @@ export const MeetingsScreen = ({ navigation }) => {
         location: meetingLocation,
         attendees: filteredAttendees,
       };
-      
+
       const result = await dispatch(createMeeting(meetingData));
-      
+
       if (result.success) {
-        showToast(result.message || 'Meeting scheduled successfully!', 'success');
+        showUniqueToast(result.message || 'Meeting scheduled successfully!', 'success');
         resetForm();
         setShowCreateForm(false);
         await loadMeetings();
@@ -469,13 +472,42 @@ export const MeetingsScreen = ({ navigation }) => {
     }, 150);
   }, []);
 
+  // ✅ UPDATED copyToClipboard function with single toast
   const copyToClipboard = text => {
+    // ✅ Prevent multiple copies while already copying
+    if (isCopyingRef.current) {
+      console.log('⏳ Copy already in progress, skipping');
+      return;
+    }
+    
+    // ✅ Prevent multiple copies while cooldown is active
+    if (copyCooldown) {
+      console.log('⏳ Copy cooldown active, skipping');
+      return;
+    }
+
+    // ✅ Set copying flag immediately
+    isCopyingRef.current = true;
+
     try {
       Clipboard.setString(text);
-      showToast('Meeting link copied!', 'success');
+      
+      // ✅ Use showUniqueToast instead of showToast to prevent duplicates
+      showUniqueToast('Meeting link copied!', 'success');
+      
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch {
+
+      // ✅ Set cooldown to prevent multiple toasts
+      setCopyCooldown(true);
+
+      setTimeout(() => {
+        setCopiedLink(false);
+        setCopyCooldown(false);
+        isCopyingRef.current = false; // ✅ Reset copying flag
+      }, 2500);
+    } catch (error) {
+      console.log('Copy error:', error);
+      isCopyingRef.current = false;
       showUniqueToast('Failed to copy link', 'warning');
     }
   };
@@ -483,7 +515,7 @@ export const MeetingsScreen = ({ navigation }) => {
   const joinMeeting = async meeting => {
     if (meeting.type === 'VIRTUAL') {
       const result = await openMeetingLink(meeting.location);
-      if (result.success) showToast(`Opening ${meeting.title}...`, 'success');
+      if (result.success) showUniqueToast(`Opening ${meeting.title}...`, 'success');
       else showUniqueToast(result.error, 'error');
     } else {
       showUniqueToast(`📍 Location: ${meeting.location}`, 'info');
@@ -827,8 +859,8 @@ export const MeetingsScreen = ({ navigation }) => {
                 <Text style={[styles.statValue, { color: C.textPrimary }]}>
                   {inPersonMeetings}
                 </Text>
-                <Text style={[styles.statLabel, { color: C.textSecondary,}]}>
-                 In-person Meetings
+                <Text style={[styles.statLabel, { color: C.textSecondary, }]}>
+                  In-person Meetings
                 </Text>
               </View>
               <View
@@ -1243,7 +1275,7 @@ export const MeetingsScreen = ({ navigation }) => {
                       {formData.meetingAgenda?.length || 0}/200 characters
                     </Text>
                   </View>
-                  
+
                   <TextInput
                     style={[
                       styles.formTextArea,
@@ -1654,10 +1686,9 @@ export const MeetingsScreen = ({ navigation }) => {
                       </Text>
                       {meetingDetailModal.type === 'VIRTUAL' && (
                         <TouchableOpacity
-                          onPress={() =>
-                            copyToClipboard(meetingDetailModal.location)
-                          }
+                          onPress={() => copyToClipboard(meetingDetailModal.location)}
                           style={styles.copyBtn}
+                          disabled={copyCooldown || isCopyingRef.current} // ✅ Disable button during cooldown
                         >
                           {copiedLink ? (
                             <Check size={wp('3%')} color={C.success} />

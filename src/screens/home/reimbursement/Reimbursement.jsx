@@ -629,44 +629,91 @@ const Reimbursement = ({ navigation }) => {
     );
   };
 
+  // const handlePDFPick = async () => {
+  //   if (selectedFiles.length >= 1) {
+  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
+  //     return;
+  //   }
+
+  //   try {
+  //     const result = await pick({
+  //       type: ['application/pdf'],
+  //       allowMultiSelection: false,
+  //       mode: 'import',
+  //     });
+
+  //     if (result && result.length > 0) {
+  //       const file = result[0];
+
+  //       if (!validateFileSize(file.size)) {
+  //         return;
+  //       }
+
+  //       const pdfFile = {
+  //         id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  //         uri: file.uri,
+  //         type: 'pdf',
+  //         name: file.name || `document_${Date.now()}.pdf`,
+  //         size: file.size,
+  //         mimeType: 'application/pdf',
+  //       };
+
+  //       setSelectedFiles(prev => [...prev, pdfFile]);
+  //       Alert.alert('Success', 'PDF selected');
+  //     }
+  //   } catch (error) {
+  //     if (error.code !== 'DOCUMENT_PICKER_CANCELED') {
+  //       Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
+  //     }
+  //   }
+  // };
+
   const handlePDFPick = async () => {
-    if (selectedFiles.length >= 1) {
-      Alert.alert('Limit Reached', 'You can only upload 1 file');
+  if (selectedFiles.length >= 1) {
+    Alert.alert('Limit Reached', 'You can only upload 1 file');
+    return;
+  }
+
+  try {
+    const result = await pick({
+      type: ['application/pdf'],
+      allowMultiSelection: false,
+      mode: 'import',
+    });
+
+    if (result && result.length > 0) {
+      const file = result[0];
+
+      if (!validateFileSize(file.size)) {
+        return;
+      }
+
+      const pdfFile = {
+        id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        uri: file.uri,
+        type: 'pdf',
+        name: file.name || `document_${Date.now()}.pdf`,
+        size: file.size,
+        mimeType: 'application/pdf',
+      };
+
+      setSelectedFiles(prev => [...prev, pdfFile]);
+      Alert.alert('Success', 'PDF selected');
+    }
+  } catch (error) {
+    // ✅ FIX: Check for both cancellation types
+    if (error.code === 'DOCUMENT_PICKER_CANCELED' || 
+        error.code === 3072 || 
+        error.message?.includes('canceled')) {
+      // User canceled - do nothing
+      console.log('User canceled PDF picker');
       return;
     }
-
-    try {
-      const result = await pick({
-        type: ['application/pdf'],
-        allowMultiSelection: false,
-        mode: 'import',
-      });
-
-      if (result && result.length > 0) {
-        const file = result[0];
-
-        if (!validateFileSize(file.size)) {
-          return;
-        }
-
-        const pdfFile = {
-          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          uri: file.uri,
-          type: 'pdf',
-          name: file.name || `document_${Date.now()}.pdf`,
-          size: file.size,
-          mimeType: 'application/pdf',
-        };
-
-        setSelectedFiles(prev => [...prev, pdfFile]);
-        Alert.alert('Success', 'PDF selected');
-      }
-    } catch (error) {
-      if (error.code !== 'DOCUMENT_PICKER_CANCELED') {
-        Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
-      }
-    }
-  };
+    
+    // Only show error for actual failures
+    Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
+  }
+};
 
   // ;const handleCameraCapture = () => {
   //   if (selectedFiles.length >= 1) {
@@ -2340,6 +2387,8 @@ const Reimbursement = ({ navigation }) => {
             <Text style={[styles.emptySubText, { color: C.textTertiary }]}>
               {activeFilter === 'pending'
                 ? 'Tap + button to create a new request'
+                : activeFilter === 'approved'
+                ? 'Approved requests will appear here'
                 : 'Rejected requests will appear here'}
             </Text>
           </View>

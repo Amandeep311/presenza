@@ -376,7 +376,7 @@ export const translations = {
       otpVerified: 'OTP verified successfully!',
       otpError: 'Invalid OTP. Please try again.',
       networkError: 'Network error. Please check your connection.',
-      serverError: 'Server error. Please try again later.',
+      serverError: 'Server error. Please try again later. ',
       sessionExpired: 'Session expired. Please login again.',
       logoutConfirm: 'Are you sure you want to logout?',
       logoutSuccess: 'Logged out successfully',
@@ -2873,13 +2873,24 @@ export const translations = {
       salesMapSubtitle:
         'रउआ एह रिमोट स्थान से पंच इन कर सकतानी। राउर स्थान रिकॉर्ड होई।',
     },
+    maintenance: {
+      title: 'Under Maintenance',
+      message: 'The app is currently undergoing scheduled maintenance. We\'ll be back shortly.',
+      version: 'Version 1.0.0',
+    },
+    common: {
+      checkingStatus: 'Checking system status...',
+    },
+    buttons: {
+      retry: 'Retry',
+    },
   },
 };
 
 const LanguageContext = createContext({
   language: 'en',
   t: translations.en,
-  setLanguage: () => {},
+  setLanguage: () => { },
   availableLanguages: [],
 });
 
