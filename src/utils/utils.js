@@ -75,19 +75,21 @@ export const formatAttendanceDuration = (minutes) => {
  * Get address from coordinates using Google Maps API
  */
 export const getAddressFromCoords = async (lat, lng) => {
-  // const GOOGLE_API_KEY = 'AIzaSyDNY5oQOOYz1dtYXZUn4WNbJPwiOE9OENE';
+  const GOOGLE_API_KEY = 'AIzaSyA2aty_E8JFBJIIDS4hN2tIAvQCwy_yskk';
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`;
 
     const response = await fetch(url);
     const data = await response.json();
+    console.log("data=======",data);
+    
+    return data.results[0].formatted_address;
 
     if (data.status !== 'OK' || !data.results.length) {
       return 'Address unavailable';
     }
 
-    return data.results[0].formatted_address;
   } catch (error) {
     console.log('Geocode error:', error);
     return 'Address unavailable';

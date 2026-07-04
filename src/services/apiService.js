@@ -331,6 +331,16 @@ class ApiService {
     });
   }
 
+  // ✅ ADDED: PATCH method
+  async patch(endpoint, body, options = {}) {
+    return this.request({
+      url: endpoint,
+      method: 'PATCH',
+      data: body,
+      ...options,
+    });
+  }
+
   async delete(endpoint, options = {}) {
     return this.request({
       url: endpoint,

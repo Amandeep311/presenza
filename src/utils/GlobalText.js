@@ -3,7 +3,9 @@
 // Language strings are driven by LanguageContext — import useLanguage() in components
 
 export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1';
-export const GOOGLE_API_KEY = 'AIzaSyDNY5oQOOYz1dtYXZUn4WNbJPwiOE9OENE';
+// export const GOOGLE_API_KEY = 'AIzaSyDNY5oQOOYz1dtYXZUn4WNbJPwiOE9OENE';   //old key
+export const GOOGLE_API_KEY = 'AIzaSyA2aty_E8JFBJIIDS4hN2tIAvQCwy_yskk';
+
 
 // ══════════════════════════════════════════════════════════
 // STATIC FONTS (unchanged regardless of theme)

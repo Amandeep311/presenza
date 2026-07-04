@@ -85,9 +85,7 @@ if (
 }
 
 // ============ ATTENDANCE STATUS HELPER ============
-// Use API-provided status instead of recalculating
 const getAttendanceStatusConfig = (todayRecord, C, t) => {
-  // If no record at all
   if (todayRecord && todayRecord.sessions.length === 0) {
     return {
       status: 'NOT_MARKED',
@@ -110,12 +108,10 @@ const getAttendanceStatusConfig = (todayRecord, C, t) => {
       if (isLate) {
         return {
           status: 'LATE',
-          label:"",
           label: `Late Login (${Math.floor(lateMinutes / 60)}h ${
             lateMinutes % 60
           }m)`,
           type: 'late',
-          // color: C.warning,
           icon: CheckCircle2,
           lateMinutes: lateMinutes,
         };
@@ -198,17 +194,14 @@ const HomeScreen = ({ navigation }) => {
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [imagePopupVisible, setImagePopupVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
-  // ✅ ADDED - Network state variables
   const [isConnected, setIsConnected] = useState(true);
   const [noInternetToastVisible, setNoInternetToastVisible] = useState(false);
-  const [lastNoInternetToastTime, setLastNoInternetToastTime] = useState(0); // ✅ ADDED - Track last toast time
-  // Expand/Collapse states
+  const [lastNoInternetToastTime, setLastNoInternetToastTime] = useState(0);
   const [expandedSections, setExpandedSections] = useState({
     breaks: false,
     sessions: false,
   });
 
-  // ✅ Track if data has been loaded on mount to prevent infinite loops
   const dataLoadedRef = useRef(false);
   const isInitialMountRef = useRef(true);
 
@@ -233,16 +226,33 @@ const HomeScreen = ({ navigation }) => {
   const todaysPunchOut = lastSession?.punchOut;
   const lastImage = lastSession?.punchInLocation?.imageUrl;
 
-  // Get first punch in time for today
   const firstPunchIn = todayRecord?.firstPunchIn || sessions[0]?.punchIn;
 
-  // 🔥 USE API STATUS instead of recalculating
   const calculatedAttendance = getAttendanceStatusConfig(todayRecord, C, t);
 
   const isPunchedIn = todayRecord?.isPunchedIn === true;
   const hasAnySessionToday = sessions.length > 0;
 
-  // 🔥 Use API-provided values
+  // ✅ FIX: Get isVisitActive from the latest session's visits
+  const getIsVisitActive = () => {
+    if (!todayRecord || !todayRecord.sessions) return false;
+    
+    // Check all sessions for any active visit
+    for (const session of todayRecord.sessions) {
+      if (session.visits && session.visits.length > 0) {
+        // Get the latest visit
+        const latestVisit = session.visits[session.visits.length - 1];
+        if (latestVisit && latestVisit.status === 'IN_PROGRESS') {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const isVisitActive = getIsVisitActive();
+
+  // Use API-provided values
   const isAbsent = calculatedAttendance.type === 'absent';
   const isUserLate = calculatedAttendance.type === 'late';
   const isHalfDay = calculatedAttendance.type === 'halfDay';
@@ -275,23 +285,20 @@ const HomeScreen = ({ navigation }) => {
       (s.breaks || []).reduce((bt, b) => bt + (b.durationMinutes || 0), 0),
     0,
   );
-  
 
-  // ✅ Timer effect - runs every second to update current time
+  // Timer effect
   useEffect(() => {
     timerRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timerRef.current);
   }, []);
 
-  // ✅ ADDED - Network monitoring effect (silent, no UI banner)
+  // Network monitoring effect
   useEffect(() => {
-    // Subscribe to network state updates
     const unsubscribe = NetInfo.addEventListener(state => {
       const connected = state.isConnected === true && state.isInternetReachable !== false;
       setIsConnected(connected);
     });
 
-    // Initial check
     NetInfo.fetch().then(state => {
       const connected = state.isConnected === true && state.isInternetReachable !== false;
       setIsConnected(connected);
@@ -300,10 +307,8 @@ const HomeScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // ✅ ADDED - Function to show no internet message with throttling (prevents multiple toasts)
   const showNoInternetMessage = useCallback(() => {
     const now = Date.now();
-    // Only show toast if 3 seconds have passed since the last one
     if (!noInternetToastVisible && (now - lastNoInternetToastTime) >= 3000) {
       setNoInternetToastVisible(true);
       setLastNoInternetToastTime(now);
@@ -314,7 +319,6 @@ const HomeScreen = ({ navigation }) => {
     }
   }, [noInternetToastVisible, lastNoInternetToastTime]);
 
-  // ✅ ADDED - Check internet before any action
   const checkInternetAndProceed = useCallback(async (action, ...args) => {
     const state = await NetInfo.fetch();
     const connected = state.isConnected === true && state.isInternetReachable !== false;
@@ -330,7 +334,7 @@ const HomeScreen = ({ navigation }) => {
     return true;
   }, [showNoInternetMessage]);
 
-  // ✅ INITIAL LOAD - Called ONCE when component mounts
+  // Initial load
   useEffect(() => {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
@@ -339,7 +343,7 @@ const HomeScreen = ({ navigation }) => {
     }
   }, []);
 
-  // ✅ FOCUS EFFECT - Called when user navigates back to this screen
+  // Focus effect
   useFocusEffect(
     useCallback(() => {
       if (!isInitialMountRef.current && dataLoadedRef.current) {
@@ -350,7 +354,6 @@ const HomeScreen = ({ navigation }) => {
     }, []),
   );
 
-  // ✅ Helper: Load all data on initial mount
   const loadInitialData = async () => {
     const state = await NetInfo.fetch();
     const connected = state.isConnected === true && state.isInternetReachable !== false;
@@ -375,7 +378,6 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // ✅ Helper: Load attendance history only
   const loadAttendanceHistory = async () => {
     const state = await NetInfo.fetch();
     const connected = state.isConnected === true && state.isInternetReachable !== false;
@@ -394,7 +396,6 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // ✅ Helper: Load employee profile only
   const loadEmployeeProfile = async () => {
     const state = await NetInfo.fetch();
     const connected = state.isConnected === true && state.isInternetReachable !== false;
@@ -413,9 +414,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  // ✅ Pull-to-refresh handler - Fixed to prevent multiple toasts
   const onRefresh = useCallback(async () => {
-    // Don't show multiple toasts for rapid refresh attempts
     if (refreshing) return;
     
     setRefreshing(true);
@@ -456,262 +455,187 @@ const HomeScreen = ({ navigation }) => {
     setImagePopupVisible(true);
   };
 
-  // const handleQuickActionPress = label => {
-  //   if (isProcessing || breakLoading) return;
+  const handleBreakOutDirect = async () => {
+    if (isProcessing || breakLoading) return;
 
-  //   if (label === t.home.dailyPunch) {
-  //     if (isPunchedIn) {
-  //       Alert.alert(
-  //         t.attendance.punchOut || 'Punch Out',
-  //         t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
-  //         [
-  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-  //           {
-  //             text: t.alerts.yesPunchOut || 'Yes, Punch Out',
-  //             style: 'destructive',
-  //             onPress: () => checkInternetAndProceed(handlePunchOut),
-  //           },
-  //         ],
-  //       );
-  //       return;
-  //     }
-  //     checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
-  //     return;
-  //   }
-
-  //   if (label === t.home.idleTracking) {
-  //     if (!isPunchedIn) {
-  //       showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-  //       return;
-  //     }
-  //     if (isOnBreak) {
-  //       Alert.alert(
-  //         t.breaks.endBreak || 'End Break',
-  //         t.alerts.endBreakConfirm ||
-  //           'Are you sure you want to end your break?',
-  //         [
-  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-  //           {
-  //             text: t.alerts.yesEndBreak || 'Yes, End Break',
-  //             style: 'destructive',
-  //             onPress: () => checkInternetAndProceed(handleBreakOut),
-  //           },
-  //         ],
-  //       );
-  //       return;
-  //     }
-  //     setBreakModalVisible(true);
-  //     return;
-  //   }
-
-  //   if (label === 'Visit') {
-  //     if (!isPunchedIn) {
-  //       showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-  //       return;
-  //     }
-  //     if (isOnBreak) {
-  //       Alert.alert(
-  //         t.breaks.endBreak || 'End Break',
-  //         t.alerts.endBreakConfirm ||
-  //           'Are you sure you want to end your break?',
-  //         [
-  //           { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-  //           {
-  //             text: t.alerts.yesEndBreak || 'Yes, End Break',
-  //             style: 'destructive',
-  //             onPress: () => checkInternetAndProceed(handleBreakOut),
-  //           },
-  //         ],
-  //       );
-  //       return;
-  //     }
-  //     setVisitModalVisible(true);
-  //     return;
-  //   }
-
-  //   if (label === t.home.reports) {
-  //     checkInternetAndProceed(() => navigation.navigate('Reports'));
-  //     return;
-  //   }
-
-  //   if (label === t.home.leaveManagement) {
-  //     checkInternetAndProceed(() => navigation.navigate('Leave'));
-  //     return;
-  //   }
-
-  //   if (label === t.home.reimbursement) {
-  //     checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
-  //     return;
-  //   }
-
-  //   if (label === t.home.salarySlip) {
-  //     // navigation.navigate('SalarySlip');
-  //     // return;
-  //   }
-
-  //   if (label === t.home.meetings) {
-  //     checkInternetAndProceed(() => navigation.navigate('Meetings'));
-  //     return;
-  //   }
-  //   if (label === t.home.kra) {
-  //     checkInternetAndProceed(() => navigation.navigate('KRA'));
-  //     return;
-  //   }
-  //   showToast(
-  //     '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
-  //     'info',
-  //   );
-  // };
-// 🔥 NEW: Direct break out function (no alert) - used when alert is already shown
-const handleBreakOutDirect = async () => {
-  if (isProcessing || breakLoading) return;
-
-  const state = await NetInfo.fetch();
-  const connected = state.isConnected === true && state.isInternetReachable !== false;
-  
-  if (!connected) {
-    showNoInternetMessage();
-    return;
-  }
-
-  try {
-    setIsProcessing(true);
-    const result = await dispatch(
-      breakOut(currentBreak?.breakType || 'LUNCH', 'Break ended'),
-    );
-    if (result?.success) {
-      await loadAttendanceHistory();
+    const state = await NetInfo.fetch();
+    const connected = state.isConnected === true && state.isInternetReachable !== false;
+    
+    if (!connected) {
+      showNoInternetMessage();
+      return;
     }
-  } catch (error) {
-    console.log('Break out error:', error);
-  } finally {
-    setIsProcessing(false);
-  }
-};
+
+    try {
+      setIsProcessing(true);
+      const result = await dispatch(
+        breakOut(currentBreak?.breakType || 'LUNCH', 'Break ended'),
+      );
+      if (result?.success) {
+        await loadAttendanceHistory();
+      }
+    } catch (error) {
+      console.log('Break out error:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleQuickActionPress = label => {
-  if (isProcessing || breakLoading) return;
+    if (isProcessing || breakLoading) return;
 
-  if (label === t.home.dailyPunch) {
-    if (isPunchedIn) {
-      Alert.alert(
-        t.attendance.punchOut || 'Punch Out',
-        t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
-        [
-          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-          {
-            text: t.alerts.yesPunchOut || 'Yes, Punch Out',
-            style: 'destructive',
-            onPress: () => checkInternetAndProceed(handlePunchOut),
-          },
-        ],
-      );
-      return;
-    }
-    checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
-    return;
-  }
-
-  if (label === t.home.idleTracking) {
-    if (!isPunchedIn) {
-      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-      return;
-    }
-    // 🔥 FIX: If user is on break, show break end popup
-    if (isOnBreak) {
-      // Show break end popup
-      Alert.alert(
-        t.breaks.endBreak || 'End Break',
-        t.alerts.endBreakConfirm ||
-          'Are you sure you want to end your break?',
-        [
-          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-          {
-            text: t.alerts.yesEndBreak || 'Yes, End Break',
-            style: 'destructive',
-            onPress: () => {
-              // 🔥 FIX: Call checkInternetAndProceed with handleBreakOut
-              // but ONLY if not already in progress
-              if (!isProcessing && !breakLoading) {
-                checkInternetAndProceed(() => {
-                  // Call handleBreakOut directly without its own Alert
-                  handleBreakOutDirect();
-                });
-              }
+    if (label === t.home.dailyPunch) {
+      if (isPunchedIn) {
+        Alert.alert(
+          t.attendance.punchOut || 'Punch Out',
+          t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
+          [
+            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+            {
+              text: t.alerts.yesPunchOut || 'Yes, Punch Out',
+              style: 'destructive',
+              onPress: () => checkInternetAndProceed(handlePunchOut),
             },
-          },
-        ],
-      );
+          ],
+        );
+        return;
+      }
+      checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
       return;
     }
-    setBreakModalVisible(true);
-    return;
-  }
 
-  if (label === 'Visit') {
-    if (!isPunchedIn) {
-      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-      return;
-    }
-    if (isOnBreak) {
-      // 🔥 FIX: Same fix for Visit - show break end popup first
-      Alert.alert(
-        t.breaks.endBreak || 'End Break',
-        t.alerts.endBreakConfirm ||
-          'Are you sure you want to end your break before starting a visit?',
-        [
-          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-          {
-            text: t.alerts.yesEndBreak || 'Yes, End Break',
-            style: 'destructive',
-            onPress: () => {
-              if (!isProcessing && !breakLoading) {
-                checkInternetAndProceed(() => {
-                  handleBreakOutDirect();
-                });
-              }
+    if (label === t.home.idleTracking) {
+      if (!isPunchedIn) {
+        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+        return;
+      }
+      if (isOnBreak) {
+        Alert.alert(
+          t.breaks.endBreak || 'End Break',
+          t.alerts.endBreakConfirm ||
+            'Are you sure you want to end your break?',
+          [
+            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+            {
+              text: t.alerts.yesEndBreak || 'Yes, End Break',
+              style: 'destructive',
+              onPress: () => {
+                if (!isProcessing && !breakLoading) {
+                  checkInternetAndProceed(() => {
+                    handleBreakOutDirect();
+                  });
+                }
+              },
             },
-          },
-        ],
-      );
+          ],
+        );
+        return;
+      }
+      setBreakModalVisible(true);
       return;
     }
-    setVisitModalVisible(true);
-    return;
-  }
 
-  if (label === t.home.reports) {
-    checkInternetAndProceed(() => navigation.navigate('Reports'));
-    return;
-  }
+    // ✅ Visit button handler - FIXED
+    if (label === 'Visit') {
+      if (!isSalesTeam) {
+        showToast('Visit feature is only for sales team', 'error');
+        return;
+      }
+      
+      if (!isPunchedIn) {
+        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+        return;
+      }
 
-  if (label === t.home.leaveManagement) {
-    checkInternetAndProceed(() => navigation.navigate('Leave'));
-    return;
-  }
+      // Check if visit is already active
+      if (isVisitActive) {
+        // Navigate to VisitScreen and let it handle active visit
+        navigation.navigate('VisitScreen', { 
+          hasActiveVisit: true,
+          visitData: getActiveVisitData()
+        });
+        return;
+      }
 
-  if (label === t.home.reimbursement) {
-    checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
-    return;
-  }
+      // If on break, need to end break first
+      if (isOnBreak) {
+        Alert.alert(
+          t.breaks.endBreak || 'End Break',
+          t.alerts.endBreakConfirm ||
+            'Are you sure you want to end your break before starting a visit?',
+          [
+            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+            {
+              text: t.alerts.yesEndBreak || 'Yes, End Break',
+              style: 'destructive',
+              onPress: () => {
+                if (!isProcessing && !breakLoading) {
+                  checkInternetAndProceed(() => {
+                    handleBreakOutDirect();
+                  });
+                }
+              },
+            },
+          ],
+        );
+        return;
+      }
+      
+      // Navigate to Visit screen without active visit
+      navigation.navigate('VisitScreen', { hasActiveVisit: false });
+      return;
+    }
 
-  if (label === t.home.salarySlip) {
-    // navigation.navigate('SalarySlip');
-    // return;
-  }
+    if (label === t.home.reports) {
+      checkInternetAndProceed(() => navigation.navigate('Reports'));
+      return;
+    }
 
-  if (label === t.home.meetings) {
-    checkInternetAndProceed(() => navigation.navigate('Meetings'));
-    return;
-  }
-  if (label === t.home.kra) {
-    checkInternetAndProceed(() => navigation.navigate('KRA'));
-    return;
-  }
-  showToast(
-    '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
-    'info',
-  );
-};
+    if (label === t.home.leaveManagement) {
+      checkInternetAndProceed(() => navigation.navigate('Leave'));
+      return;
+    }
+
+    if (label === t.home.reimbursement) {
+      checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
+      return;
+    }
+
+    if (label === t.home.meetings) {
+      checkInternetAndProceed(() => navigation.navigate('Meetings'));
+      return;
+    }
+    if (label === t.home.kra) {
+      checkInternetAndProceed(() => navigation.navigate('KRA'));
+      return;
+    }
+    showToast(
+      '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
+      'info',
+    );
+  };
+
+  // Helper to get active visit data
+  const getActiveVisitData = () => {
+    if (!todayRecord || !todayRecord.sessions) return null;
+    
+    for (const session of todayRecord.sessions) {
+      if (session.visits && session.visits.length > 0) {
+        const latestVisit = session.visits[session.visits.length - 1];
+        if (latestVisit && latestVisit.status === 'IN_PROGRESS') {
+          return {
+            visitType: latestVisit.visitType || 'CLIENT_VISIT',
+            customerName: latestVisit.customerName || '',
+            purpose: latestVisit.purpose || '',
+            address: latestVisit.punchInLocation?.address || '',
+            visitIn: latestVisit.visitIn,
+            visitId: latestVisit.id
+          };
+        }
+      }
+    }
+    return null;
+  };
 
   const handleBreakIn = async (breakType, remarks) => {
     const state = await NetInfo.fetch();
@@ -871,7 +795,6 @@ const handleBreakOutDirect = async () => {
     return t.greeting.evening;
   };
 
-  // 🔥 Use API status for display
   const getStatusConfig = () => {
     if (isOnBreak && isPunchedIn) {
       return {
@@ -900,6 +823,9 @@ const handleBreakOutDirect = async () => {
     isProcessing ||
     refreshing;
 
+  // Quick Actions
+  const visitButtonColor = C.blue || C.primary || '#3B82F6';
+  
   const quickActions = [
     { label: t.home.dailyPunch, icon: Timer, color: C.primary },
     { label: t.home.idleTracking, icon: Coffee, color: C.warning },
@@ -909,6 +835,15 @@ const handleBreakOutDirect = async () => {
     { label: t.home.meetings, icon: CalendarClock, color: C.pink },
     { label: t.home.kra, icon: Key, color: C.rose },
   ];
+
+  if (isSalesTeam) {
+    quickActions.push({ 
+      label: 'Visit', 
+      icon: MapPin, 
+      color: visitButtonColor,
+      isVisitButton: true
+    });
+  }
 
   const formatOptions = [
     { label: t.attendance.auto || 'Auto', value: 'auto' },
@@ -1089,6 +1024,7 @@ const handleBreakOutDirect = async () => {
             {quickActions.map((item, index) => {
               const isBreakAction = item.label === t.home.idleTracking;
               const isPunchAction = item.label === t.home.dailyPunch;
+              const isVisitAction = item.label === 'Visit';
               const showGreenDot = isBreakAction && isOnBreak;
 
               let disabled = isLoading;
@@ -1101,6 +1037,9 @@ const handleBreakOutDirect = async () => {
                 disabled = true;
               }
 
+              // ✅ For Visit button - show green dot if visit is active
+              const showVisitGreenDot = isVisitAction && isVisitActive;
+
               let hint = undefined;
               if (isPunchAction && isPunchedIn) {
                 hint = 'Already punched in';
@@ -1108,11 +1047,15 @@ const handleBreakOutDirect = async () => {
                 hint = 'Cannot take break when absent';
               } else if (isBreakAction && !isPunchedIn && !showGreenDot) {
                 hint = t.attendance.needCheckIn || 'Need check-in';
+              } else if (isVisitAction && isVisitActive) {
+                hint = 'Visit in progress';
+              } else if (isVisitAction && !isPunchedIn) {
+                hint = 'Please punch in first';
               }
 
               return (
                 <View key={index} style={styles.actionCardWrapper}>
-                  {showGreenDot && (
+                  {(showGreenDot || showVisitGreenDot) && (
                     <View
                       style={[styles.greenDot, { backgroundColor: C.success }]}
                     />
@@ -1332,7 +1275,7 @@ const handleBreakOutDirect = async () => {
                 )}
               </View>
 
-              {/* Late / Short Leave / Early Leave / Half Day - Show based on API values */}
+              {/* Late / Short Leave / Early Leave / Half Day */}
               {(isUserLate || isEarlyLeave || isHalfDay || isShortLeave) && (
                 <View
                   style={[
@@ -1372,7 +1315,7 @@ const handleBreakOutDirect = async () => {
                 </View>
               )}
 
-              {/* BREAKS SECTION - Expand/Collapse */}
+              {/* BREAKS SECTION */}
               {hasBreaks && (
                 <View
                   style={[
@@ -1423,7 +1366,7 @@ const handleBreakOutDirect = async () => {
                 </View>
               )}
 
-              {/* SESSIONS SECTION - Expand/Collapse */}
+              {/* SESSIONS SECTION */}
               {hasSessions && (
                 <View
                   style={[
@@ -1524,7 +1467,7 @@ const handleBreakOutDirect = async () => {
               ) : null}
             </View>
           ) : (
-            /* Empty state - No attendance today */
+            /* Empty state */
             <View
               style={[
                 styles.emptyCard,

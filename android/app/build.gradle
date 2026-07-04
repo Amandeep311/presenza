@@ -18,8 +18,8 @@ android {
         applicationId "com.presenza"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 27
-        versionName "1.1.13"
+        versionCode 28
+        versionName "1.1.14"
     }
 
     signingConfigs {

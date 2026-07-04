@@ -1,3 +1,5 @@
+// store/actions/kraActions.js
+
 import apiService from "../../services/apiService";
 import {
   FETCH_KRA_REQUEST,
@@ -9,6 +11,9 @@ import {
   UPDATE_KRA_METRIC_REQUEST,
   UPDATE_KRA_METRIC_SUCCESS,
   UPDATE_KRA_METRIC_FAIL,
+  UPDATE_KRA_STATUS_REQUEST,
+  UPDATE_KRA_STATUS_SUCCESS,
+  UPDATE_KRA_STATUS_FAIL,
 } from "./types";
 
 // Fetch all KRA for logged-in employee
@@ -23,31 +28,39 @@ export const fetchKRA = () => async dispatch => {
     console.log('📡 Response status:', response.status);
     console.log('📡 Response data:', response.data);
 
-    // Check for successful response
     if (response.status >= 200 && response.status < 300) {
-      let kraData = [];
+      const responseData = response.data;
       
-      // Handle different response structures
-      if (response.data?.data && Array.isArray(response.data.data)) {
-        kraData = response.data.data;
-      } else if (Array.isArray(response.data)) {
-        kraData = response.data;
-      } else if (response.data?.success === true && response.data?.data) {
-        kraData = response.data.data;
+      if (responseData?.success && responseData?.data) {
+        dispatch({
+          type: FETCH_KRA_SUCCESS,
+          payload: responseData.data,
+        });
+
+        return { 
+          success: true, 
+          data: responseData.data,
+          message: responseData.message 
+        };
+      } else {
+        let kraData = [];
+        if (Array.isArray(responseData)) {
+          kraData = responseData;
+        } else if (responseData?.kras) {
+          kraData = responseData.kras;
+        }
+
+        dispatch({
+          type: FETCH_KRA_SUCCESS,
+          payload: { kras: kraData, total: kraData.length },
+        });
+
+        return { 
+          success: true, 
+          data: { kras: kraData },
+          message: 'KRA fetched successfully' 
+        };
       }
-
-      console.log("✅ Fetched KRA data:", kraData.length, "KRA entries");
-
-      dispatch({
-        type: FETCH_KRA_SUCCESS,
-        payload: kraData,
-      });
-
-      return { 
-        success: true, 
-        data: kraData,
-        message: response.data?.message 
-      };
     } else {
       throw new Error(response.data?.message || 'Failed to fetch KRA');
     }
@@ -109,44 +122,150 @@ export const fetchKRAById = (kraId) => async dispatch => {
   }
 };
 
-// Update KRA metric (achieved value)
+// Update KRA metric (achieved value) - FIXED
 export const updateKRAMetric = (kraId, metricId, achievedValue) => async dispatch => {
   try {
     console.log('📝 Updating KRA metric:', { kraId, metricId, achievedValue });
     
     dispatch({ type: UPDATE_KRA_METRIC_REQUEST });
 
-    const response = await apiService.put(`/kra/${kraId}/metrics/${metricId}`, {
-      achieved: achievedValue
+    // Use the correct endpoint and method as per your API
+    const response = await apiService.patch(`/kra/${kraId}/metrics`, {
+      metrics: [
+        {
+          id: metricId,
+          achieved: achievedValue
+        }
+      ]
     });
 
     console.log('📡 Response status:', response.status);
+    console.log('📡 Response data:', response.data);
 
     if (response.status >= 200 && response.status < 300) {
-      const updatedMetric = response.data?.data || response.data;
+      const responseData = response.data;
+      
+      if (responseData?.success && responseData?.data) {
+        // Extract the updated metric data
+        const updatedData = responseData.data;
+        let updatedMetric = null;
+        
+        // Find the updated metric in the response
+        if (updatedData.metrics && Array.isArray(updatedData.metrics)) {
+          updatedMetric = updatedData.metrics.find(m => 
+            (m._id === metricId || m.id === metricId)
+          );
+        }
+        
+        // If metric not found in response, use the data we sent
+        if (!updatedMetric) {
+          updatedMetric = { 
+            achieved: achievedValue,
+            _id: metricId,
+            id: metricId
+          };
+        }
 
-      dispatch({
-        type: UPDATE_KRA_METRIC_SUCCESS,
-        payload: {
-          kraId,
-          metricId,
-          data: updatedMetric
-        },
-      });
+        dispatch({
+          type: UPDATE_KRA_METRIC_SUCCESS,
+          payload: {
+            kraId,
+            metricId,
+            data: updatedMetric
+          },
+        });
 
-      return { 
-        success: true, 
-        data: updatedMetric 
-      };
+        return { 
+          success: true, 
+          data: updatedData,
+          message: responseData.message || 'Metric updated successfully' 
+        };
+      } else {
+        // If the response doesn't have the expected structure, but was successful
+        dispatch({
+          type: UPDATE_KRA_METRIC_SUCCESS,
+          payload: {
+            kraId,
+            metricId,
+            data: { 
+              achieved: achievedValue,
+              _id: metricId,
+              id: metricId
+            }
+          },
+        });
+
+        return { 
+          success: true, 
+          data: { achieved: achievedValue },
+          message: 'Metric updated successfully' 
+        };
+      }
     } else {
       throw new Error(response.data?.message || 'Failed to update KRA metric');
     }
     
   } catch (error) {
     console.log('❌ Update KRA metric error:', error.message);
+    console.log('Error details:', error.response?.data);
     
     dispatch({
       type: UPDATE_KRA_METRIC_FAIL,
+      payload: error.response?.data?.message || error.message,
+    });
+    
+    return { 
+      success: false, 
+      error: error.response?.data?.message || error.message 
+    };
+  }
+};
+
+// Update KRA Status
+export const updateKRAStatus = (kraId, status) => async dispatch => {
+  try {
+    console.log('📝 Updating KRA status:', { kraId, status });
+    
+    dispatch({ type: UPDATE_KRA_STATUS_REQUEST });
+
+    const response = await apiService.patch(`/kra/${kraId}/status`, {
+      status: status
+    });
+
+    console.log('📡 Response status:', response.status);
+    console.log('📡 Response data:', response.data);
+
+    if (response.status >= 200 && response.status < 300) {
+      const responseData = response.data;
+      
+      if (responseData?.success) {
+        dispatch({
+          type: UPDATE_KRA_STATUS_SUCCESS,
+          payload: {
+            kraId,
+            status: status,
+            data: responseData.data
+          },
+        });
+
+        return { 
+          success: true, 
+          data: responseData.data,
+          message: responseData.message || 'Status updated successfully' 
+        };
+      } else {
+        throw new Error(responseData?.message || 'Failed to update status');
+      }
+    } else {
+      throw new Error(response.data?.message || 'Failed to update KRA status');
+    }
+    
+  } catch (error) {
+    console.log('❌ Update KRA status error:', error.message);
+    console.log('Error details:', error.response?.data);
+    
+    dispatch({
+      type: UPDATE_KRA_STATUS_FAIL,
       payload: error.response?.data?.message || error.message,
     });
     

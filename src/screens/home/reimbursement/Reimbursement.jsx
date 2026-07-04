@@ -51,6 +51,10 @@ import {
   FilePlus,
   Loader,
   Eye,
+  Download,
+  User,
+  Check,
+  Printer,
 } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -72,8 +76,14 @@ const Reimbursement = ({ navigation }) => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [initialLoadingDone, setInitialLoadingDone] = useState(false);
   const [openingFile, setOpeningFile] = useState(false);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
 
   const { expenses, loading } = useSelector(state => state.expense);
+  const { profile } = useSelector(state => state.employeeProfile);
+  const { user } = useSelector(state => state.auth);
+
+  // Get employee name from profile
+  const employeeName = profile?.[0]?.fullName || user?.name || 'N/A';
 
   // Form state
   const [expenseType, setExpenseType] = useState('car');
@@ -153,13 +163,11 @@ const Reimbursement = ({ navigation }) => {
   };
 
   // Handle From Date confirmation
-  // Handle From Date confirmation
   const handleFromDateConfirm = () => {
     const selectedFromDate = new Date(tempFromYear, tempFromMonth - 1, tempFromDay);
     setFromDate(selectedFromDate);
     setShowFromDatePicker(false);
 
-    // If To Date exists and is earlier than From Date, show alert and reset
     if (toDate && selectedFromDate > toDate) {
       alert('To Date cannot be earlier than From Date');
       setToDate(null);
@@ -278,7 +286,6 @@ const Reimbursement = ({ navigation }) => {
   const handleToDateConfirm = () => {
     const selectedToDate = new Date(tempToYear, tempToMonth - 1, tempToDay);
 
-    // Check if To Date is before From Date
     if (fromDate && selectedToDate < fromDate) {
       alert('To Date cannot be earlier than From Date');
       return;
@@ -288,7 +295,7 @@ const Reimbursement = ({ navigation }) => {
     setShowToDatePicker(false);
   };
 
-  // Helper function to format date for display (renamed to avoid conflict)
+  // Helper function to format date for display
   const formatDateForPicker = (day, month, year) => {
     if (!day || !month || !year) return '';
     return `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
@@ -313,7 +320,6 @@ const Reimbursement = ({ navigation }) => {
     if (!value) return '';
     const numValue = value.replace(/[^0-9]/g, '');
     if (numValue === '') return '';
-    // Just return the sliced value - NO max value check
     return numValue.slice(0, AMOUNT_MAX_LENGTH);
   };
 
@@ -321,8 +327,6 @@ const Reimbursement = ({ navigation }) => {
     if (!value) return '';
     const numValue = value.replace(/[^0-9]/g, '');
     if (numValue === '') return '';
-    // const num = parseInt(numValue, 10);
-    // if (num > KM_MAX_VALUE) return KM_MAX_VALUE.toString();
     return numValue.slice(0, 6);
   };
 
@@ -510,7 +514,6 @@ const Reimbursement = ({ navigation }) => {
 
     if (field === 'description') {
       updatedValue = updatedValue.replace(/\n/g, ' ').trimStart();
-
       updatedValue = validateDescription(updatedValue);
     }
 
@@ -544,55 +547,12 @@ const Reimbursement = ({ navigation }) => {
     return true;
   };
 
-  // const handleImagePick = () => {
-  //   if (selectedFiles.length >= 1) {
-  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
-  //     return;
-  //   }
-
-  //   launchImageLibrary(
-  //     {
-  //       mediaType: 'photo',
-  //       selectionLimit: 1,
-  //       quality: 0.8,
-  //       maxHeight: 2000,
-  //       maxWidth: 2000,
-  //     },
-  //     response => {
-  //       if (response.didCancel) {
-  //         console.log('User cancelled image picker');
-  //       } else if (response.error) {
-  //         Alert.alert('Error', 'Failed to pick image: ' + response.error);
-  //       } else if (response.assets && response.assets.length > 0) {
-  //         const asset = response.assets[0];
-
-  //         if (!validateFileSize(asset.fileSize)) {
-  //           return;
-  //         }
-
-  //         const imageFile = {
-  //           id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-  //           uri: asset.uri,
-  //           type: asset.type?.includes('png') ? 'png' : 'jpg',
-  //           name: asset.fileName || `image_${Date.now()}.jpg`,
-  //           size: asset.fileSize,
-  //           mimeType: asset.type || 'image/jpeg',
-  //         };
-
-  //         setSelectedFiles(prev => [...prev, imageFile]);
-  //         Alert.alert('Success', 'Image selected');
-  //       }
-  //     },
-  //   );
-  // };
-
   const handleImagePick = async () => {
     if (selectedFiles.length >= 1) {
       Alert.alert('Limit Reached', 'You can only upload 1 file');
       return;
     }
 
-    // For image picker, we don't need camera permission, just storage
     launchImageLibrary(
       {
         mediaType: 'photo',
@@ -629,136 +589,48 @@ const Reimbursement = ({ navigation }) => {
     );
   };
 
-  // const handlePDFPick = async () => {
-  //   if (selectedFiles.length >= 1) {
-  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
-  //     return;
-  //   }
-
-  //   try {
-  //     const result = await pick({
-  //       type: ['application/pdf'],
-  //       allowMultiSelection: false,
-  //       mode: 'import',
-  //     });
-
-  //     if (result && result.length > 0) {
-  //       const file = result[0];
-
-  //       if (!validateFileSize(file.size)) {
-  //         return;
-  //       }
-
-  //       const pdfFile = {
-  //         id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-  //         uri: file.uri,
-  //         type: 'pdf',
-  //         name: file.name || `document_${Date.now()}.pdf`,
-  //         size: file.size,
-  //         mimeType: 'application/pdf',
-  //       };
-
-  //       setSelectedFiles(prev => [...prev, pdfFile]);
-  //       Alert.alert('Success', 'PDF selected');
-  //     }
-  //   } catch (error) {
-  //     if (error.code !== 'DOCUMENT_PICKER_CANCELED') {
-  //       Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
-  //     }
-  //   }
-  // };
-
   const handlePDFPick = async () => {
-  if (selectedFiles.length >= 1) {
-    Alert.alert('Limit Reached', 'You can only upload 1 file');
-    return;
-  }
-
-  try {
-    const result = await pick({
-      type: ['application/pdf'],
-      allowMultiSelection: false,
-      mode: 'import',
-    });
-
-    if (result && result.length > 0) {
-      const file = result[0];
-
-      if (!validateFileSize(file.size)) {
-        return;
-      }
-
-      const pdfFile = {
-        id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        uri: file.uri,
-        type: 'pdf',
-        name: file.name || `document_${Date.now()}.pdf`,
-        size: file.size,
-        mimeType: 'application/pdf',
-      };
-
-      setSelectedFiles(prev => [...prev, pdfFile]);
-      Alert.alert('Success', 'PDF selected');
-    }
-  } catch (error) {
-    // ✅ FIX: Check for both cancellation types
-    if (error.code === 'DOCUMENT_PICKER_CANCELED' || 
-        error.code === 3072 || 
-        error.message?.includes('canceled')) {
-      // User canceled - do nothing
-      console.log('User canceled PDF picker');
+    if (selectedFiles.length >= 1) {
+      Alert.alert('Limit Reached', 'You can only upload 1 file');
       return;
     }
-    
-    // Only show error for actual failures
-    Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
-  }
-};
 
-  // ;const handleCameraCapture = () => {
-  //   if (selectedFiles.length >= 1) {
-  //     Alert.alert('Limit Reached', 'You can only upload 1 file');
-  //     return;
-  //   }
+    try {
+      const result = await pick({
+        type: ['application/pdf'],
+        allowMultiSelection: false,
+        mode: 'import',
+      });
 
-  //   launchCamera(
-  //     {
-  //       mediaType: 'photo',
-  //       quality: 0.8,
-  //       maxHeight: 2000,
-  //       maxWidth: 2000,
-  //       saveToPhotos: false,
-  //     },
-  //     response => {
-  //       if (response.didCancel) {
-  //         console.log('User cancelled camera');
-  //       } else if (response.error) {
-  //         Alert.alert(
-  //           'Camera Error',
-  //           'Failed to capture image: ' + response.error,
-  //         );
-  //       } else if (response.assets && response.assets.length > 0) {
-  //         const asset = response.assets[0];
+      if (result && result.length > 0) {
+        const file = result[0];
 
-  //         if (!validateFileSize(asset.fileSize)) {
-  //           return;
-  //         }
+        if (!validateFileSize(file.size)) {
+          return;
+        }
 
-  //         const imageFile = {
-  //           id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-  //           uri: asset.uri,
-  //           type: 'jpg',
-  //           name: asset.fileName || `capture_${Date.now()}.jpg`,
-  //           size: asset.fileSize,
-  //           mimeType: 'image/jpeg',
-  //         };
+        const pdfFile = {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          uri: file.uri,
+          type: 'pdf',
+          name: file.name || `document_${Date.now()}.pdf`,
+          size: file.size,
+          mimeType: 'application/pdf',
+        };
 
-  //         setSelectedFiles(prev => [...prev, imageFile]);
-  //         Alert.alert('Success', 'Photo captured');
-  //       }
-  //     },
-  //   );
-  // }
+        setSelectedFiles(prev => [...prev, pdfFile]);
+        Alert.alert('Success', 'PDF selected');
+      }
+    } catch (error) {
+      if (error.code === 'DOCUMENT_PICKER_CANCELED' ||
+        error.code === 3072 ||
+        error.message?.includes('canceled')) {
+        console.log('User canceled PDF picker');
+        return;
+      }
+      Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
+    }
+  };
 
   const handleCameraCapture = async () => {
     if (selectedFiles.length >= 1) {
@@ -766,7 +638,6 @@ const Reimbursement = ({ navigation }) => {
       return;
     }
 
-    // Check camera permission first
     const cameraPermission = await requestCameraPermission(true);
 
     if (!cameraPermission.granted) {
@@ -781,7 +652,6 @@ const Reimbursement = ({ navigation }) => {
       return;
     }
 
-    // Permission granted, proceed with camera
     launchCamera(
       {
         mediaType: 'photo',
@@ -900,13 +770,219 @@ const Reimbursement = ({ navigation }) => {
     }
   };
 
+  // ============ DOWNLOAD RECEIPT ============
+  const handleDownloadReceipt = async (receiptUrl) => {
+    if (!receiptUrl) {
+      Alert.alert('Error', 'No receipt available');
+      return;
+    }
+
+    try {
+      setOpeningFile(true);
+
+      const fileName = receiptUrl.split('/').pop();
+      const extension = fileName.split('.').pop()?.toLowerCase();
+
+      // Check if extension is allowed
+      const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+      if (!allowedExtensions.includes(extension?.toLowerCase())) {
+        Alert.alert('Error', 'Unsupported file type');
+        setOpeningFile(false);
+        return;
+      }
+
+      const downloadPath = `${RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      const downloadResult = await RNFS.downloadFile({
+        fromUrl: receiptUrl,
+        toFile: downloadPath,
+        progressDivider: 10,
+      }).promise;
+
+      if (downloadResult.statusCode === 200) {
+        Alert.alert(
+          'Download Successful',
+          `File saved to: ${downloadPath}`,
+          [
+            {
+              text: 'Open File',
+              onPress: async () => {
+                try {
+                  let mimeType = '*/*';
+                  if (extension === 'pdf') mimeType = 'application/pdf';
+                  else if (['jpg', 'jpeg'].includes(extension)) mimeType = 'image/jpeg';
+                  else if (extension === 'png') mimeType = 'image/png';
+
+                  await FileViewer.open(downloadPath, {
+                    showOpenWithDialog: true,
+                    mimeType,
+                  });
+                } catch (error) {
+                  Alert.alert('Error', 'Cannot open file');
+                }
+              }
+            },
+            { text: 'OK' },
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to download file');
+      }
+    } catch (error) {
+      console.log('DOWNLOAD ERROR =>', error);
+      Alert.alert('Error', 'Failed to download receipt');
+    } finally {
+      setOpeningFile(false);
+    }
+  };
+
+  // ============ GENERATE AND DOWNLOAD PDF ============
+  const generateExpensePDF = async (request) => {
+    try {
+      setDownloadingPDF(true);
+
+      const status = (request.status || '').toUpperCase();
+      const isApproved = status === 'APPROVED';
+      const isRejected = status === 'REJECTED';
+      
+      // ✅ Get approvedBy from the request object
+      const approvedByName = request.approvedBy?.fullName || '—';
+      const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
+      
+      // Build formatted text content
+      const line = '═'.repeat(60);
+      const thinLine = '─'.repeat(60);
+      
+      let content = [];
+      content.push(line);
+      content.push('              EXPENSE REIMBURSEMENT DETAILS');
+      content.push(line);
+      content.push('');
+      content.push(`Generated on: ${new Date().toLocaleString()}`);
+      content.push('');
+      content.push(thinLine);
+      content.push('');
+      content.push(`STATUS: ${status}`);
+      content.push('');
+      content.push(thinLine);
+      content.push('');
+      content.push('📋 TRAVEL INFORMATION');
+      content.push(thinLine);
+      content.push(`Travel Type: ${getTravelTypeLabel(request.travelType)}`);
+      content.push(`From Location: ${request.fromLocation || 'N/A'}`);
+      content.push(`To Location: ${request.toLocation || 'N/A'}`);
+      content.push(`From Date: ${request.fromDate ? formatDate(request.fromDate) : 'N/A'}`);
+      content.push(`To Date: ${request.toDate ? formatDate(request.toDate) : 'N/A'}`);
+      if (request.distanceKm) {
+        content.push(`Distance: ${request.distanceKm} km`);
+      }
+      content.push('');
+      content.push(thinLine);
+      content.push('');
+      content.push('🎯 BUSINESS PURPOSE');
+      content.push(thinLine);
+      content.push(request.businessPurpose || 'N/A');
+      content.push('');
+      content.push(thinLine);
+      content.push('');
+      content.push('📊 EXPENSE BREAKDOWN');
+      content.push(thinLine);
+      
+      let totalAmount = 0;
+
+      // Travel Cost
+      if (request.expenses?.travel) {
+        const amount = request.expenses.travel.amount || 0;
+        totalAmount += amount;
+        const paidBy = request.expenses.travel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+        content.push(`Travel Cost (${paidBy}): ${formatCurrency(amount)}`);
+      }
+
+      // Hotel Cost
+      if (request.expenses?.hotel?.amount > 0) {
+        const amount = request.expenses.hotel.amount;
+        totalAmount += amount;
+        const paidBy = request.expenses.hotel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+        content.push(`Hotel Cost (${paidBy}): ${formatCurrency(amount)}`);
+      }
+
+      // Food Cost
+      if (request.expenses?.food?.amount > 0) {
+        const amount = request.expenses.food.amount;
+        totalAmount += amount;
+        const paidBy = request.expenses.food.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+        content.push(`Food Cost (${paidBy}): ${formatCurrency(amount)}`);
+      }
+
+      // Misc Expenses
+      if (request.miscItems?.length > 0) {
+        request.miscItems.forEach(item => {
+          const amount = item.amount || 0;
+          totalAmount += amount;
+          const paidBy = item.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+          const desc = item.description || 'Other Expense';
+          content.push(`${desc} (${paidBy}): ${formatCurrency(amount)}`);
+        });
+      }
+
+      content.push(thinLine);
+      content.push(`TOTAL AMOUNT: ${formatCurrency(totalAmount)}`);
+      content.push('');
+      content.push(thinLine);
+      content.push('');
+      content.push('📝 SUBMISSION DETAILS');
+      content.push(thinLine);
+      content.push(`Submitted On: ${formatDate(request.createdAt)}`);
+      content.push('');
+      content.push(`Employee Name: ${employeeName}                     Approved By: ${approvedBy}`);
+      content.push('');
+      content.push(line);
+      content.push(`Employee: ${employeeName} | Status: ${status}`);
+      content.push(line);
+
+      // Join content with newlines
+      const textContent = content.join('\n');
+
+      const fileName = `Expense_${request._id || 'report'}_${Date.now()}.txt`;
+      const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      // Write to file
+      await RNFS.writeFile(filePath, textContent, 'utf8');
+
+      Alert.alert(
+        'PDF Generated Successfully',
+        `File saved to: ${filePath}`,
+        [
+          {
+            text: 'Open File',
+            onPress: async () => {
+              try {
+                await FileViewer.open(filePath, {
+                  showOpenWithDialog: true,
+                  mimeType: 'text/plain',
+                });
+              } catch (error) {
+                Alert.alert('Error', 'Cannot open file');
+              }
+            }
+          },
+          { text: 'OK' },
+        ]
+      );
+    } catch (error) {
+      console.log('PDF GENERATION ERROR =>', error);
+      Alert.alert('Error', 'Failed to generate PDF: ' + error.message);
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
+
   // ============ SUBMIT EXPENSE ============
   const handleSubmitExpense = () => {
     if (!amount || parseFloat(amount) <= 0) {
       Alert.alert('Validation Error', 'Please enter a valid travel amount');
       return;
     }
-    // Replace date validation with fromDate and toDate validation
     if (!fromDate) {
       Alert.alert('Validation Error', 'Please select From Date');
       return;
@@ -934,7 +1010,6 @@ const Reimbursement = ({ navigation }) => {
       );
       return;
     }
-    // Attachment validation
     if (selectedFiles.length === 0) {
       Alert.alert(
         'Validation Error',
@@ -943,7 +1018,6 @@ const Reimbursement = ({ navigation }) => {
       return;
     }
 
-    // Other expenses validation
     for (const item of otherExpenses) {
       if (item.description.trim() && !item.amount) {
         Alert.alert(
@@ -952,7 +1026,6 @@ const Reimbursement = ({ navigation }) => {
         );
         return;
       }
-
       if (!item.description.trim() && item.amount) {
         Alert.alert(
           'Validation Error',
@@ -964,7 +1037,7 @@ const Reimbursement = ({ navigation }) => {
 
     submitToServer();
   };
-  // ---------------------------------------------------------
+
   const submitToServer = async () => {
     setSubmitting(true);
 
@@ -977,7 +1050,6 @@ const Reimbursement = ({ navigation }) => {
     };
 
     try {
-      // Format dates for API
       const formatDateForAPI = (date) => {
         if (!date) return null;
         const year = date.getFullYear();
@@ -985,12 +1057,6 @@ const Reimbursement = ({ navigation }) => {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       };
-
-      // Debug logs to check dates
-      console.log('fromDate state:', fromDate);
-      console.log('toDate state:', toDate);
-      console.log('formatted fromDate:', fromDate ? formatDateForAPI(fromDate) : null);
-      console.log('formatted toDate:', toDate ? formatDateForAPI(toDate) : null);
 
       const expenseData = {
         travelType: expenseType.toUpperCase(),
@@ -1001,23 +1067,19 @@ const Reimbursement = ({ navigation }) => {
         fromDate: fromDate ? formatDateForAPI(fromDate) : null,
         toDate: toDate ? formatDateForAPI(toDate) : null,
         businessPurpose: purpose.trim(),
-        distanceKm:
-          expenseType === 'car' ? parseFloat(kilometers) || 0 : undefined,
+        distanceKm: expenseType === 'car' ? parseFloat(kilometers) || 0 : undefined,
         expenses: {
           travel: {
             amount: parseFloat(amount) || 0,
-            paymentMethod:
-              travelPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: travelPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
           },
           hotel: {
             amount: parseFloat(hotelCost) || 0,
-            paymentMethod:
-              foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
           },
           food: {
             amount: parseFloat(foodCost) || 0,
-            paymentMethod:
-              foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
           },
         },
         miscItems: otherExpenses
@@ -1030,13 +1092,9 @@ const Reimbursement = ({ navigation }) => {
           .map(item => ({
             description: item.description.trim(),
             amount: parseFloat(item.amount),
-            paymentMethod:
-              item.paymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: item.paymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
           })),
       };
-
-      // Debug log the entire expenseData
-      console.log('Sending expenseData:', JSON.stringify(expenseData, null, 2));
 
       const receiptFile =
         selectedFiles.length > 0
@@ -1067,7 +1125,7 @@ const Reimbursement = ({ navigation }) => {
       setSubmitting(false);
     }
   };
-  // ----------------------serve data end--------------------------
+
   const resetForm = () => {
     setExpenseType('car');
     setAmount('');
@@ -1083,8 +1141,8 @@ const Reimbursement = ({ navigation }) => {
     setOtherExpenses([]);
     setKilometers('');
     setSelectedFiles([]);
-    setFromDate(null);  // Add this
-    setToDate(null);    // Add this
+    setFromDate(null);
+    setToDate(null);
 
     const now = new Date();
 
@@ -1102,22 +1160,14 @@ const Reimbursement = ({ navigation }) => {
   const getFilteredRequests = () => {
     if (!expenses || !Array.isArray(expenses)) return [];
 
-    // Debug: Log all status values
-    console.log('All status values:', expenses.map(r => r.status));
-    console.log('Active filter:', activeFilter);
-
     if (activeFilter === 'pending') {
       const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'PENDING');
-      console.log('Pending filtered count:', filtered.length);
       return filtered.reverse();
     } else if (activeFilter === 'approved') {
       const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'APPROVED');
-      console.log('Approved filtered count:', filtered.length);
       return filtered.reverse();
     } else if (activeFilter === 'rejected') {
       const filtered = expenses.filter(r => (r.status || '').toUpperCase() === 'REJECTED');
-      console.log('Rejected filtered count:', filtered.length);
-      console.log('Rejected items:', filtered.map(r => ({ id: r._id, status: r.status })));
       return filtered.reverse();
     }
 
@@ -1144,8 +1194,6 @@ const Reimbursement = ({ navigation }) => {
       return status === 'REJECTED';
     }).length;
 
-    console.log('Counts - Pending:', pending, 'Approved:', approved, 'Rejected:', rejected);
-
     return { pending, approved, rejected };
   };
 
@@ -1154,6 +1202,13 @@ const Reimbursement = ({ navigation }) => {
   // ============ VIEW MODAL ============
   const renderViewModal = () => {
     if (!selectedRequest) return null;
+
+    const isApproved = selectedRequest.status?.toUpperCase() === 'APPROVED';
+    const isRejected = selectedRequest.status?.toUpperCase() === 'REJECTED';
+    
+    // ✅ Get approvedBy fullName from the selectedRequest
+    const approvedByName = selectedRequest.approvedBy?.fullName || '—';
+    const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
 
     return (
       <Modal
@@ -1277,19 +1332,6 @@ const Reimbursement = ({ navigation }) => {
                   </Text>
                 </View>
 
-                {/* <View style={styles.viewInfoRow}>
-                  <Text
-                    style={[styles.viewInfoLabel, { color: C.textSecondary }]}
-                  >
-                    Date
-                  </Text>
-                  <Text
-                    style={[styles.viewInfoValue, { color: C.textPrimary }]}
-                  >
-                    {formatDate(selectedRequest.date)}
-                  </Text>
-                </View> */}
-
                 <View style={styles.viewInfoRow}>
                   <Text
                     style={[styles.viewInfoLabel, { color: C.textSecondary }]}
@@ -1368,7 +1410,6 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Travel Cost
                       </Text>
-
                       <Text
                         style={{
                           color: C.textTertiary,
@@ -1384,7 +1425,6 @@ const Reimbursement = ({ navigation }) => {
                           : 'Self'}
                       </Text>
                     </View>
-
                     <Text
                       style={[
                         styles.viewExpenseAmount,
@@ -1414,7 +1454,6 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Hotel Cost
                       </Text>
-
                       <Text
                         style={{
                           color: C.textTertiary,
@@ -1430,7 +1469,6 @@ const Reimbursement = ({ navigation }) => {
                           : 'Self'}
                       </Text>
                     </View>
-
                     <Text
                       style={[
                         styles.viewExpenseAmount,
@@ -1458,7 +1496,6 @@ const Reimbursement = ({ navigation }) => {
                       >
                         Food Cost
                       </Text>
-
                       <Text
                         style={{
                           color: C.textTertiary,
@@ -1474,7 +1511,6 @@ const Reimbursement = ({ navigation }) => {
                           : 'Self'}
                       </Text>
                     </View>
-
                     <Text
                       style={[
                         styles.viewExpenseAmount,
@@ -1506,7 +1542,6 @@ const Reimbursement = ({ navigation }) => {
                             ? `${expense.description.slice(0, 20)}...`
                             : expense.description}
                         </Text>
-
                         <Text
                           style={{
                             color: C.textTertiary,
@@ -1521,7 +1556,6 @@ const Reimbursement = ({ navigation }) => {
                             : 'Self'}
                         </Text>
                       </View>
-
                       <Text
                         style={[
                           styles.viewExpenseAmount,
@@ -1560,32 +1594,49 @@ const Reimbursement = ({ navigation }) => {
                   >
                     Receipt
                   </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.viewFileItem,
-                      { backgroundColor: C.surface, borderColor: C.border },
-                    ]}
-                    onPress={() =>
-                      handleOpenReceipt(selectedRequest.receiptUrl)
-                    }
-                    disabled={openingFile}
-                  >
-                    <FileText size={wp('5%')} color="#E74C3C" />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[styles.viewFileName, { color: C.textPrimary }]}
-                        numberOfLines={1}
-                      >
-                        {selectedRequest.receiptUrl.split('/').pop() ||
-                          'View Receipt'}
-                      </Text>
-                    </View>
-                    {openingFile ? (
-                      <ActivityIndicator color={C.primary} />
-                    ) : (
-                      <Eye size={wp('4%')} color={C.primary} />
-                    )}
-                  </TouchableOpacity>
+                  <View style={styles.receiptActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.viewFileItem,
+                        { backgroundColor: C.surface, borderColor: C.border, flex: 1 },
+                      ]}
+                      onPress={() =>
+                        handleOpenReceipt(selectedRequest.receiptUrl)
+                      }
+                      disabled={openingFile}
+                    >
+                      <FileText size={wp('5%')} color="#E74C3C" />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[styles.viewFileName, { color: C.textPrimary }]}
+                          numberOfLines={1}
+                        >
+                          {selectedRequest.receiptUrl.split('/').pop() ||
+                            'View Receipt'}
+                        </Text>
+                      </View>
+                      {openingFile ? (
+                        <ActivityIndicator color={C.primary} />
+                      ) : (
+                        <Eye size={wp('4%')} color={C.primary} />
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.downloadReceiptBtn,
+                        { backgroundColor: C.primary },
+                      ]}
+                      onPress={() => handleDownloadReceipt(selectedRequest.receiptUrl)}
+                      disabled={openingFile}
+                    >
+                      {openingFile ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Download size={wp('4%')} color="#fff" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
 
@@ -1609,19 +1660,41 @@ const Reimbursement = ({ navigation }) => {
                   </Text>
                 </View>
 
-                <View style={styles.viewInfoRow}>
+                {/* Employee Name - Left and Approved By - Right in same row */}
+                <View style={styles.employeeApprovedRow}>
                   <Text
-                    style={[styles.viewInfoLabel, { color: C.textSecondary }]}
+                    style={[styles.employeeApprovedText, { color: C.textSecondary }]}
                   >
-                    Employee Grade
+                    Employee: <Text style={[styles.employeeApprovedValue, { color: C.textPrimary }]}>{employeeName}</Text>
                   </Text>
                   <Text
-                    style={[styles.viewInfoValue, { color: C.textPrimary }]}
+                    style={[styles.employeeApprovedText, { color: C.textSecondary }]}
                   >
-                    {selectedRequest.grade || 'N/A'}
+                    Approved By: <Text style={[styles.employeeApprovedValue, { color: C.textPrimary }]}>{approvedBy}</Text>
                   </Text>
                 </View>
               </View>
+
+              {/* Download PDF Button */}
+              <TouchableOpacity
+                style={[
+                  styles.downloadPDFBtn,
+                  { backgroundColor: C.primary + '15', borderColor: C.primary },
+                ]}
+                onPress={() => generateExpensePDF(selectedRequest)}
+                disabled={downloadingPDF}
+              >
+                {downloadingPDF ? (
+                  <ActivityIndicator color={C.primary} size="small" />
+                ) : (
+                  <>
+                    <Printer size={wp('4%')} color={C.primary} />
+                    <Text style={[styles.downloadPDFText, { color: C.primary }]}>
+                      Download(PDF)
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.closeViewBtn, { backgroundColor: C.primary }]}
@@ -1671,7 +1744,6 @@ const Reimbursement = ({ navigation }) => {
             </View>
 
             <View style={styles.datePickerColumns}>
-              {/* Day Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Day
@@ -1709,7 +1781,6 @@ const Reimbursement = ({ navigation }) => {
                 </ScrollView>
               </View>
 
-              {/* Month Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Month
@@ -1753,7 +1824,6 @@ const Reimbursement = ({ navigation }) => {
                 </ScrollView>
               </View>
 
-              {/* Year Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Year
@@ -1862,7 +1932,6 @@ const Reimbursement = ({ navigation }) => {
             </View>
 
             <View style={styles.datePickerColumns}>
-              {/* Day Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Day
@@ -1900,7 +1969,6 @@ const Reimbursement = ({ navigation }) => {
                 </ScrollView>
               </View>
 
-              {/* Month Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Month
@@ -1944,7 +2012,6 @@ const Reimbursement = ({ navigation }) => {
                 </ScrollView>
               </View>
 
-              {/* Year Column */}
               <View style={styles.datePickerColumn}>
                 <Text style={[styles.datePickerColumnLabel, { color: C.textSecondary }]}>
                   Year
@@ -2277,14 +2344,12 @@ const Reimbursement = ({ navigation }) => {
       </View>
 
       <View style={[styles.filterContainer, { borderBottomColor: C.border }]}>
-        {/* Pending Tab */}
         <TouchableOpacity
           style={[
             styles.filterTab,
             activeFilter === 'pending' && styles.activeFilterTab,
             activeFilter === 'pending' && { borderBottomColor: C.primary },
-            { marginLeft: wp('5%') }, // Add this line
-
+            { marginLeft: wp('5%') },
           ]}
           onPress={() => setActiveFilter('pending')}
         >
@@ -2304,7 +2369,6 @@ const Reimbursement = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
 
-        {/* Approved Tab */}
         <TouchableOpacity
           style={[
             styles.filterTab,
@@ -2329,7 +2393,6 @@ const Reimbursement = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
 
-        {/* Rejected Tab - Only shows REJECTED status requests */}
         <TouchableOpacity
           style={[
             styles.filterTab,
@@ -2388,8 +2451,8 @@ const Reimbursement = ({ navigation }) => {
               {activeFilter === 'pending'
                 ? 'Tap + button to create a new request'
                 : activeFilter === 'approved'
-                ? 'Approved requests will appear here'
-                : 'Rejected requests will appear here'}
+                  ? 'Approved requests will appear here'
+                  : 'Rejected requests will appear here'}
             </Text>
           </View>
         ) : (
@@ -2415,20 +2478,13 @@ const Reimbursement = ({ navigation }) => {
                       numberOfLines={1}
                     >
                       {getTravelTypeLabel(item.travelType)} Travel
-                    </Text>.
+                    </Text>
                     <Text
                       style={[styles.requestDate, { color: C.textSecondary }]}
                     >
-                      {/* {formatDate(item.date)} •{' '} */}
-                      <Text
-                        style={[styles.requestDate, { color: C.textSecondary }]}
-                      >
-                        {item.fromDate ? formatDate(item.fromDate) : 'N/A'} - {item.toDate ? formatDate(item.toDate) : 'N/A'} •{' '}
-                        {truncateText(item.fromLocation, 20)} →{' '}
-                        {truncateText(item.toLocation, 20)}
-                      </Text>
-                      {/* {truncateText(item.fromLocation, 20)} →{' '}
-                      {truncateText(item.toLocation, 20)} */}
+                      {item.fromDate ? formatDate(item.fromDate) : 'N/A'} - {item.toDate ? formatDate(item.toDate) : 'N/A'} •{' '}
+                      {truncateText(item.fromLocation, 20)} →{' '}
+                      {truncateText(item.toLocation, 20)}
                     </Text>
                   </View>
                   <View style={styles.cardRightActions}>
@@ -2516,11 +2572,10 @@ const Reimbursement = ({ navigation }) => {
             >
               <ScrollView
                 contentContainerStyle={{
-                  paddingBottom: Platform.OS === 'ios' ? 40 : 20, // Extra bottom padding
-                  paddingHorizontal: wp('4%'), // Add horizontal padding if needed
+                  paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+                  paddingHorizontal: wp('4%'),
                 }}
                 keyboardShouldPersistTaps="handled"
-
                 showsVerticalScrollIndicator={false}>
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                   Travel Type *
@@ -2921,7 +2976,6 @@ const Reimbursement = ({ navigation }) => {
                 )}
 
                 <>
-                  {/* From Date Field */}
                   <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                     From Date *
                   </Text>
@@ -2948,7 +3002,6 @@ const Reimbursement = ({ navigation }) => {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* To Date Field */}
                   <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
                     To Date *
                   </Text>
@@ -2975,7 +3028,6 @@ const Reimbursement = ({ navigation }) => {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Render both date picker modals */}
                   {renderFromDatePickerModal()}
                   {renderToDatePickerModal()}
                 </>
@@ -3497,16 +3549,6 @@ const styles = StyleSheet.create({
     paddingTop: hp('1%'),
     borderBottomWidth: 0,
   },
-  viewPaymentBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('2%'),
-    paddingVertical: hp('1%'),
-  },
-  viewPaymentText: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.medium,
-  },
   viewFileItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3639,85 +3681,48 @@ const styles = StyleSheet.create({
   viewModalScroll: {
     paddingBottom: hp('2%'),
   },
-  datePickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  // ✅ NEW STYLES FOR ADDED FEATURES
+  receiptActionsRow: {
+    flexDirection: 'row',
+    gap: wp('2%'),
+    alignItems: 'center',
+  },
+  downloadReceiptBtn: {
+    width: wp('12%'),
+    height: wp('12%'),
+    borderRadius: wp('2%'),
     justifyContent: 'center',
     alignItems: 'center',
   },
-  datePickerContainer: {
-    width: wp('85%'),
-    maxHeight: hp('60%'),
-    borderRadius: wp('4%'),
-    overflow: 'hidden',
+  downloadPDFBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.2%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    gap: wp('2%'),
+    marginTop: hp('1%'),
+    marginBottom: hp('1%'),
   },
-  datePickerHeader: {
+  downloadPDFText: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.medium,
+  },
+  employeeApprovedRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: wp('4%'),
+    paddingVertical: hp('0.8%'),
     borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
   },
-  datePickerTitle: {
-    fontSize: wp('4.5%'),
-    fontFamily: Fonts.bold,
-  },
-  datePickerColumns: {
-    flexDirection: 'row',
-    padding: wp('2%'),
-  },
-  datePickerColumn: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  datePickerColumnLabel: {
+  employeeApprovedText: {
     fontSize: wp('3%'),
-    marginBottom: wp('2%'),
-    fontFamily: Fonts.medium,
-  },
-  datePickerScroll: {
-    height: hp('30%'),
-  },
-  datePickerScrollContent: {
-    alignItems: 'center',
-  },
-  datePickerItem: {
-    width: wp('20%'),
-    paddingVertical: hp('1.5%'),
-    alignItems: 'center',
-    marginVertical: hp('0.3%'),
-    borderRadius: wp('2%'),
-  },
-  datePickerItemText: {
-    fontSize: wp('3.5%'),
     fontFamily: Fonts.regular,
   },
-  datePickerButtons: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    padding: wp('3%'),
-    gap: wp('2%'),
-  },
-  datePickerCancelBtn: {
-    flex: 1,
-    paddingVertical: hp('1.2%'),
-    alignItems: 'center',
-    borderRadius: wp('2%'),
-    borderWidth: 1,
-  },
-  datePickerCancelText: {
-    fontSize: wp('3.5%'),
-    fontFamily: Fonts.medium,
-  },
-  datePickerConfirmBtn: {
-    flex: 1,
-    paddingVertical: hp('1.2%'),
-    alignItems: 'center',
-    borderRadius: wp('2%'),
-  },
-  datePickerConfirmText: {
-    fontSize: wp('3.5%'),
-    color: '#FFFFFF',
+  employeeApprovedValue: {
+    fontSize: wp('3%'),
     fontFamily: Fonts.medium,
   },
 });

@@ -1,3 +1,5 @@
+// kraReducer.js
+
 import {
   FETCH_KRA_REQUEST,
   FETCH_KRA_SUCCESS,
@@ -8,6 +10,9 @@ import {
   UPDATE_KRA_METRIC_REQUEST,
   UPDATE_KRA_METRIC_SUCCESS,
   UPDATE_KRA_METRIC_FAIL,
+  UPDATE_KRA_STATUS_REQUEST,
+  UPDATE_KRA_STATUS_SUCCESS,
+  UPDATE_KRA_STATUS_FAIL,
 } from "../actions/types";
 
 const initialState = {
@@ -15,7 +20,13 @@ const initialState = {
   kraList: [],
   currentKRA: null,
   updatingMetric: false,
+  updatingStatus: false,
   error: null,
+  // Additional stats
+  total: 0,
+  active: 0,
+  completed: 0,
+  pending: 0,
 };
 
 const kraReducer = (state = initialState, action) => {
@@ -28,13 +39,58 @@ const kraReducer = (state = initialState, action) => {
         error: null,
       };
 
-    case FETCH_KRA_SUCCESS:
+    case FETCH_KRA_SUCCESS: {
+      // Handle different response structures
+      let kraData = [];
+      let stats = {
+        total: 0,
+        active: 0,
+        completed: 0,
+        pending: 0,
+      };
+
+      // If action.payload is the full API response with data object
+      if (action.payload && action.payload.data && action.payload.data.kras) {
+        kraData = action.payload.data.kras;
+        stats = {
+          total: action.payload.data.total || kraData.length,
+          active: action.payload.data.active || 0,
+          completed: action.payload.data.completed || 0,
+          pending: action.payload.data.pending || 0,
+        };
+      } 
+      // If action.payload is the data object directly
+      else if (action.payload && action.payload.kras) {
+        kraData = action.payload.kras;
+        stats = {
+          total: action.payload.total || kraData.length,
+          active: action.payload.active || 0,
+          completed: action.payload.completed || 0,
+          pending: action.payload.pending || 0,
+        };
+      }
+      // If action.payload is an array
+      else if (Array.isArray(action.payload)) {
+        kraData = action.payload;
+        stats = {
+          total: kraData.length,
+          active: kraData.filter(k => k.status === 'active').length,
+          completed: kraData.filter(k => k.status === 'completed').length,
+          pending: kraData.filter(k => k.status === 'pending').length,
+        };
+      }
+
       return {
         ...state,
         loading: false,
-        kraList: action.payload,
+        kraList: kraData,
+        total: stats.total,
+        active: stats.active,
+        completed: stats.completed,
+        pending: stats.pending,
         error: null,
       };
+    }
 
     case FETCH_KRA_FAIL:
       return {
@@ -79,10 +135,12 @@ const kraReducer = (state = initialState, action) => {
       
       // Update the metric in kraList
       const updatedKraList = state.kraList.map(kra => {
-        if (kra._id === kraId) {
-          const updatedMetrics = kra.metrics.map(metric => 
-            metric._id === metricId ? { ...metric, ...data } : metric
-          );
+        const kraIdentifier = kra.kraId || kra._id;
+        if (kraIdentifier === kraId) {
+          const updatedMetrics = (kra.metrics || []).map(metric => {
+            const metricIdentifier = metric._id || metric.id;
+            return metricIdentifier === metricId ? { ...metric, ...data } : metric;
+          });
           return { ...kra, metrics: updatedMetrics };
         }
         return kra;
@@ -90,11 +148,15 @@ const kraReducer = (state = initialState, action) => {
 
       // Update currentKRA if it's the one being edited
       let updatedCurrentKRA = state.currentKRA;
-      if (state.currentKRA && state.currentKRA._id === kraId) {
-        const updatedMetrics = state.currentKRA.metrics.map(metric =>
-          metric._id === metricId ? { ...metric, ...data } : metric
-        );
-        updatedCurrentKRA = { ...state.currentKRA, metrics: updatedMetrics };
+      if (state.currentKRA) {
+        const currentKraId = state.currentKRA.kraId || state.currentKRA._id;
+        if (currentKraId === kraId) {
+          const updatedMetrics = (state.currentKRA.metrics || []).map(metric => {
+            const metricIdentifier = metric._id || metric.id;
+            return metricIdentifier === metricId ? { ...metric, ...data } : metric;
+          });
+          updatedCurrentKRA = { ...state.currentKRA, metrics: updatedMetrics };
+        }
       }
 
       return {
@@ -110,6 +172,59 @@ const kraReducer = (state = initialState, action) => {
       return {
         ...state,
         updatingMetric: false,
+        error: action.payload,
+      };
+
+    // Update KRA Status
+    case UPDATE_KRA_STATUS_REQUEST:
+      return {
+        ...state,
+        updatingStatus: true,
+        error: null,
+      };
+
+    case UPDATE_KRA_STATUS_SUCCESS: {
+      const { kraId, status } = action.payload;
+      
+      // Update status in kraList
+      const updatedKraList = state.kraList.map(kra => {
+        const kraIdentifier = kra.kraId || kra._id;
+        if (kraIdentifier === kraId) {
+          return { ...kra, status };
+        }
+        return kra;
+      });
+
+      // Update currentKRA if it's the one being edited
+      let updatedCurrentKRA = state.currentKRA;
+      if (state.currentKRA) {
+        const currentKraId = state.currentKRA.kraId || state.currentKRA._id;
+        if (currentKraId === kraId) {
+          updatedCurrentKRA = { ...state.currentKRA, status };
+        }
+      }
+
+      // Update stats
+      const newCompleted = updatedKraList.filter(k => k.status === 'completed').length;
+      const newPending = updatedKraList.filter(k => k.status === 'pending').length;
+      const newActive = updatedKraList.filter(k => k.status === 'active' || k.status === 'in_progress').length;
+
+      return {
+        ...state,
+        updatingStatus: false,
+        kraList: updatedKraList,
+        currentKRA: updatedCurrentKRA,
+        completed: newCompleted,
+        pending: newPending,
+        active: newActive,
+        error: null,
+      };
+    }
+
+    case UPDATE_KRA_STATUS_FAIL:
+      return {
+        ...state,
+        updatingStatus: false,
         error: action.payload,
       };
 

@@ -31,6 +31,7 @@ import SettingsScreen from '../screens/settings/SettingsScreen';
 import Reimbursement from '../screens/home/reimbursement/Reimbursement';
 import Meetings from '../screens/home/meetings/Meetings';
 import KRA from '../screens/home/kra/KRA';
+import VisitScreen from '../screens/home/VisitScreen/VisitScreen';
 
 // ✅ Screens
 import MaintenanceScreen from '../screens/MaintenanceScreen';
@@ -96,6 +97,7 @@ const AppStack = () => (
     <Stack.Screen name="Reimbursement" component={Reimbursement} />
     <Stack.Screen name="Meetings" component={Meetings} />
     <Stack.Screen name="KRA" component={KRA} />
+    <Stack.Screen name="VisitScreen" component={VisitScreen} />
   </Stack.Navigator>
 );
 
