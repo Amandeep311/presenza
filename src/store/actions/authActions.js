@@ -4,6 +4,7 @@ import DeviceInfo from 'react-native-device-info';
 import { BASE_URL } from '../../utils/GlobalText';
 import apiSevice from '../../services/apiService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import {
   saveTokens,
@@ -39,6 +40,26 @@ import { UI_SET_ALERT, UI_HIDE_ALERT } from '../reducers/uiReducer';
 import { showToast } from '../../components/common/ToastProvider';
 
 const rnBiometrics = new ReactNativeBiometrics();
+
+// ==================== DEVICE INFO HELPERS ====================
+const getDeviceInfo = async () => {
+  try {
+    return {
+      deviceId: await DeviceInfo.getUniqueId(),
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      appVersion: DeviceInfo.getVersion(),
+      osVersion: DeviceInfo.getSystemVersion(),
+    };
+  } catch (error) {
+    console.log('❌ Error getting device info:', error);
+    return {
+      deviceId: 'unknown',
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      appVersion: '1.0',
+      osVersion: '1.0',
+    };
+  }
+};
 
 // ==================== UI ACTIONS ====================
 export const setAlert = (message, type = 'success') => ({
@@ -89,18 +110,46 @@ export const sendOtp = emp => async dispatch => {
     dispatch({ type: SEND_OTP_REQUEST });
 
     const cleanEmployeeId = emp.trim().toUpperCase();
+    const deviceInfo = await getDeviceInfo();
+
+    // Get FCM token from AsyncStorage (saved during app initialization)
+    let fcmToken = await AsyncStorage.getItem('fcm_token');
+    
+    // If not found in AsyncStorage, try to get it from device
+    if (!fcmToken) {
+      try {
+        // Import messaging dynamically to avoid issues
+        const messaging = require('@react-native-firebase/messaging').default;
+        fcmToken = await messaging().getToken();
+        // Save for future use
+        await AsyncStorage.setItem('fcm_token', fcmToken);
+      } catch (error) {
+        console.log('⚠️ Could not get FCM token:', error);
+        fcmToken = '';
+      }
+    }
 
     const payload = {
       employeeCode: cleanEmployeeId,
       device: {
-        deviceId: await DeviceInfo.getUniqueId(),
+        deviceId: deviceInfo.deviceId,
         deviceType: 'MOBILE',
+        fcmToken: fcmToken || '', // Add FCM token
       },
     };
 
+    console.log('📤 Send OTP Payload:', payload);
+
     const response = await fetch(`${BASE_URL}/auth/send-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-device-id': deviceInfo.deviceId,
+        'x-platform': deviceInfo.platform,
+        'x-app-version': deviceInfo.appVersion,
+        'x-os-version': deviceInfo.osVersion,
+        'x-fcmToken': fcmToken || '',
+      },
       body: JSON.stringify(payload),
     });
 
@@ -141,24 +190,51 @@ export const sendOtp = emp => async dispatch => {
 };
 
 // ==================== RESEND OTP ACTIONS ====================
-export const resendOtp = emp => async dispatch => {
+export const resendOtp = (emp, fcmToken) => async dispatch => {
   try {
     dispatch({ type: SEND_OTP_REQUEST });
 
     // ✅ FIX: Use the emp parameter passed from VerifyOTP screen, not from state
     const cleanEmployeeId = emp.trim().toUpperCase();
+    const deviceInfo = await getDeviceInfo();
+
+    // If fcmToken is not provided, try to get it from AsyncStorage
+    let token = fcmToken;
+    if (!token) {
+      token = await AsyncStorage.getItem('fcm_token');
+      if (!token) {
+        try {
+          const messaging = require('@react-native-firebase/messaging').default;
+          token = await messaging().getToken();
+          await AsyncStorage.setItem('fcm_token', token);
+        } catch (error) {
+          console.log('⚠️ Could not get FCM token for resend:', error);
+          token = '';
+        }
+      }
+    }
 
     const payload = {
       employeeCode: cleanEmployeeId,
       device: {
-        deviceId: await DeviceInfo.getUniqueId(),
+        deviceId: deviceInfo.deviceId,
         deviceType: 'MOBILE',
+        fcmToken: token || '', // Add FCM token
       },
     };
 
+    console.log('📤 Resend OTP Payload:', payload);
+
     const response = await fetch(`${BASE_URL}/auth/send-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-device-id': deviceInfo.deviceId,
+        'x-platform': deviceInfo.platform,
+        'x-app-version': deviceInfo.appVersion,
+        'x-os-version': deviceInfo.osVersion,
+        'x-fcmToken': token || '',
+      },
       body: JSON.stringify(payload),
     });
 
@@ -191,14 +267,51 @@ export const resendOtp = emp => async dispatch => {
 };
 
 // ==================== VERIFY OTP ACTIONS ====================
-export const verifyOtp = (employeeCode, otp) => async dispatch => {
+export const verifyOtp = (employeeCode, otp, fcmToken) => async dispatch => {
   try {
     dispatch({ type: VERIFY_OTP_REQUEST });
 
+    const deviceInfo = await getDeviceInfo();
+
+    // If fcmToken is not provided, try to get it from AsyncStorage
+    let token = fcmToken;
+    if (!token) {
+      token = await AsyncStorage.getItem('fcm_token');
+      if (!token) {
+        try {
+          const messaging = require('@react-native-firebase/messaging').default;
+          token = await messaging().getToken();
+          await AsyncStorage.setItem('fcm_token', token);
+        } catch (error) {
+          console.log('⚠️ Could not get FCM token for verification:', error);
+          token = '';
+        }
+      }
+    }
+
+    const payload = {
+      employeeCode,
+      otp,
+      device: {
+        deviceId: deviceInfo.deviceId,
+        deviceType: 'MOBILE',
+        fcmToken: token || '', // Add FCM token
+      },
+    };
+
+    console.log('📤 Verify OTP Payload:', payload);
+
     const response = await fetch(`${BASE_URL}/auth/verify-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeCode, otp }),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-device-id': deviceInfo.deviceId,
+        'x-platform': deviceInfo.platform,
+        'x-app-version': deviceInfo.appVersion,
+        'x-os-version': deviceInfo.osVersion,
+        'x-fcmToken': token || '',
+      },
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
@@ -214,6 +327,11 @@ export const verifyOtp = (employeeCode, otp) => async dispatch => {
 
     const { access, refresh } = data.data.tokens;
     const user = data.data.user;
+
+    // Save FCM token to AsyncStorage for future use
+    if (token) {
+      await AsyncStorage.setItem('fcm_token', token);
+    }
 
     await saveTokens(access.token, refresh.token, user);
     await AsyncStorage.setItem('user', JSON.stringify(user));
@@ -312,9 +430,17 @@ export const refreshToken = refreshToken => async dispatch => {
   try {
     dispatch({ type: REFRESH_TOKEN_REQUEST });
 
+    const deviceInfo = await getDeviceInfo();
+
     const response = await fetch(`${BASE_URL}/auth/refresh-tokens`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-device-id': deviceInfo.deviceId,
+        'x-platform': deviceInfo.platform,
+        'x-app-version': deviceInfo.appVersion,
+        'x-os-version': deviceInfo.osVersion,
+      },
       body: JSON.stringify({ refreshToken }),
     });
 
@@ -365,6 +491,8 @@ export const logout =
       const user = await getUser();
       const wasLoggedIn = !!(accessToken || refreshToken || user);
 
+      const deviceInfo = await getDeviceInfo();
+
       if (accessToken) {
         try {
           await fetch(`${BASE_URL}/auth/logout`, {
@@ -372,6 +500,10 @@ export const logout =
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${accessToken}`,
+              'x-device-id': deviceInfo.deviceId,
+              'x-platform': deviceInfo.platform,
+              'x-app-version': deviceInfo.appVersion,
+              'x-os-version': deviceInfo.osVersion,
             },
           }).catch(e => console.log('Logout API call failed:', e));
         } catch (e) {
@@ -381,6 +513,9 @@ export const logout =
 
       // Clear ONLY our specific keys, NOT everything
       await clearTokens();
+
+      // Clear FCM token on logout
+      await AsyncStorage.removeItem('fcm_token');
 
       // Dispatch logout action to clear Redux state
       dispatch({ type: LOGOUT });
@@ -446,6 +581,50 @@ export const checkAuthState = () => async dispatch => {
   } catch (error) {
     console.log('❌ Check auth error:', error);
     dispatch({ type: AUTH_LOADING, payload: false });
+    return { success: false };
+  }
+};
+
+// ==================== UPDATE FCM TOKEN ====================
+export const updateFCMToken = (fcmToken) => async dispatch => {
+  try {
+    if (!fcmToken) {
+      console.log('⚠️ No FCM token provided to update');
+      return { success: false };
+    }
+
+    // Save token to AsyncStorage
+    await AsyncStorage.setItem('fcm_token', fcmToken);
+
+    // If user is logged in, send token to server
+    const accessToken = await getAccessToken();
+    if (accessToken) {
+      const deviceInfo = await getDeviceInfo();
+      
+      const response = await fetch(`${BASE_URL}/auth/update-fcm-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'x-device-id': deviceInfo.deviceId,
+          'x-platform': deviceInfo.platform,
+          'x-app-version': deviceInfo.appVersion,
+          'x-os-version': deviceInfo.osVersion,
+          'x-fcmToken': fcmToken,
+        },
+        body: JSON.stringify({ fcmToken }),
+      });
+
+      if (response.ok) {
+        console.log('✅ FCM token updated on server');
+      } else {
+        console.log('⚠️ Failed to update FCM token on server');
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.log('❌ Error updating FCM token:', error);
     return { success: false };
   }
 };

@@ -14,7 +14,8 @@ import {
   SafeAreaView,
   TextInput,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,Keyboard
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -43,10 +44,10 @@ import { Fonts } from '../../../utils/GlobalText';
 import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useDispatch, useSelector } from 'react-redux';
-import { 
-  fetchKRA, 
-  updateKRAMetric, 
-  updateKRAStatus 
+import {
+  fetchKRA,
+  updateKRAMetric,
+  updateKRAStatus,
 } from '../../../store/actions/kraActions';
 import { showToast } from '../../../components/common/ToastProvider';
 
@@ -179,20 +180,16 @@ const getRecommendation = (
 };
 
 // ============================================================================
-// EDIT MODAL COMPONENT
+// EDIT MODAL COMPONENT - FIXED UI
 // ============================================================================
 
-// ============================================================================
-// EDIT MODAL COMPONENT - WITH KEYBOARD HANDLING
-// ============================================================================
-
-const MetricEditModal = ({ 
-  visible, 
-  metric, 
+const MetricEditModal = ({
+  visible,
+  metric,
   kraId,
-  onClose, 
+  onClose,
   onUpdate,
-  theme 
+  theme,
 }) => {
   const C = theme.colors;
   const [achievedValue, setAchievedValue] = useState('');
@@ -204,8 +201,7 @@ const MetricEditModal = ({
       const initialValue = metric.achieved || metric.achievedValue || 0;
       setAchievedValue(String(initialValue));
       console.log('📝 Edit modal opened for metric:', metric.name, 'Current value:', initialValue);
-      
-      // Focus the input after a short delay when modal opens
+
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -220,7 +216,7 @@ const MetricEditModal = ({
       showToast('Missing metric or KRA ID', 'error');
       return;
     }
-    
+
     const achieved = parseFloat(achievedValue);
     if (isNaN(achieved) || achieved < 0) {
       showToast('Please enter a valid number', 'error');
@@ -230,10 +226,9 @@ const MetricEditModal = ({
     console.log('📤 Updating metric:', {
       kraId,
       metricId: metric._id || metric.id,
-      achieved
+      achieved,
     });
 
-    // Dismiss keyboard before updating
     Keyboard.dismiss();
 
     setIsUpdating(true);
@@ -273,16 +268,18 @@ const MetricEditModal = ({
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
           >
             <View style={[styles.editModalContainer, { backgroundColor: C.background }]}>
+              {/* Modal Header */}
               <View style={[styles.modalHeader, { borderBottomColor: C.border }]}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => {
                     Keyboard.dismiss();
                     onClose();
-                  }} 
+                  }}
                   style={styles.modalCloseBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <X size={RESPONSIVE.iconSize.lg} color={C.textSecondary} />
                 </TouchableOpacity>
@@ -293,10 +290,11 @@ const MetricEditModal = ({
               </View>
 
               <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.modalContent}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.modalContentScroll}
                 keyboardShouldPersistTaps="handled"
                 bounces={true}
+                scrollEnabled={true}
               >
                 <View style={styles.editMetricInfo}>
                   <Text style={[styles.editMetricLabel, { color: C.textSecondary }]}>
@@ -305,7 +303,7 @@ const MetricEditModal = ({
                   <Text style={[styles.editMetricName, { color: C.textPrimary }]}>
                     {metric.name || 'Untitled Metric'}
                   </Text>
-                  
+
                   <View style={styles.editMetricDetails}>
                     <View style={styles.editDetailItem}>
                       <Text style={[styles.editDetailLabel, { color: C.textSecondary }]}>
@@ -365,6 +363,9 @@ const MetricEditModal = ({
                       returnKeyType="done"
                       onSubmitEditing={handleUpdate}
                       blurOnSubmit={true}
+                      clearButtonMode="while-editing"
+                      selectTextOnFocus={true}
+                      maxLength={2}
                     />
                   </View>
                   <Text style={[styles.editInputHint, { color: C.textSecondary }]}>
@@ -380,6 +381,7 @@ const MetricEditModal = ({
                   ]}
                   onPress={handleUpdate}
                   disabled={isUpdating}
+                  activeOpacity={0.7}
                 >
                   {isUpdating ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -391,8 +393,7 @@ const MetricEditModal = ({
                   )}
                 </TouchableOpacity>
 
-                {/* Add extra bottom padding when keyboard is open */}
-                <View style={{ height: Platform.OS === 'ios' ? 20 : 10 }} />
+                <View style={{ height: Platform.OS === 'ios' ? 30 : 20 }} />
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
@@ -406,12 +407,12 @@ const MetricEditModal = ({
 // STATUS UPDATE MODAL
 // ============================================================================
 
-const StatusUpdateModal = ({ 
-  visible, 
+const StatusUpdateModal = ({
+  visible,
   kra,
-  onClose, 
+  onClose,
   onUpdate,
-  theme 
+  theme,
 }) => {
   const C = theme.colors;
   const [selectedStatus, setSelectedStatus] = useState('pending');
@@ -459,7 +460,11 @@ const StatusUpdateModal = ({
       <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
         <View style={[styles.editModalContainer, { backgroundColor: C.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: C.border }]}>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={styles.modalCloseBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <X size={RESPONSIVE.iconSize.lg} color={C.textSecondary} />
             </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
@@ -470,7 +475,7 @@ const StatusUpdateModal = ({
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.modalContent}
+            contentContainerStyle={styles.modalContentScroll}
           >
             <View style={styles.editMetricInfo}>
               <Text style={[styles.editMetricLabel, { color: C.textSecondary }]}>
@@ -503,10 +508,12 @@ const StatusUpdateModal = ({
                       },
                     ]}
                     onPress={() => setSelectedStatus(option.value)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Icon 
-                      size={RESPONSIVE.iconSize.md} 
-                      color={isSelected ? option.color : C.textSecondary} 
+                    <Icon
+                      size={RESPONSIVE.iconSize.md}
+                      color={isSelected ? option.color : C.textSecondary}
                     />
                     <Text
                       style={[
@@ -520,9 +527,9 @@ const StatusUpdateModal = ({
                       {option.label}
                     </Text>
                     {isSelected && (
-                      <Check 
-                        size={RESPONSIVE.iconSize.sm} 
-                        color={option.color} 
+                      <Check
+                        size={RESPONSIVE.iconSize.sm}
+                        color={option.color}
                       />
                     )}
                   </TouchableOpacity>
@@ -538,6 +545,7 @@ const StatusUpdateModal = ({
               ]}
               onPress={handleUpdate}
               disabled={isUpdating}
+              activeOpacity={0.7}
             >
               {isUpdating ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -556,21 +564,19 @@ const StatusUpdateModal = ({
 };
 
 // ============================================================================
-// KRA DETAIL MODAL COMPONENT
+// KRA DETAIL MODAL COMPONENT - FIXED
 // ============================================================================
 
-const KRADetailModal = ({ 
-  visible, 
-  kra, 
-  onClose, 
+const KRADetailModal = ({
+  visible,
+  kra,
+  onClose,
   onEditMetric,
   onUpdateStatus,
-  theme 
+  theme,
 }) => {
   const C = theme.colors;
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState(null);
 
   if (!kra) return null;
 
@@ -579,17 +585,14 @@ const KRADetailModal = ({
 
   const handleEditPress = (metric) => {
     console.log('🎯 Edit pressed for metric:', metric?.name);
-    setSelectedMetric(metric);
-    setShowEditModal(true);
+    onClose();
+    setTimeout(() => {
+      onEditMetric(metric, kra._id || kra.kraId);
+    }, 350);
   };
 
   const handleStatusUpdate = () => {
     setShowStatusModal(true);
-  };
-
-  const handleEditClose = () => {
-    setShowEditModal(false);
-    setSelectedMetric(null);
   };
 
   const handleStatusClose = () => {
@@ -608,23 +611,28 @@ const KRADetailModal = ({
           <View style={[styles.modalContainer, { backgroundColor: C.background }]}>
             {/* Modal Header */}
             <View style={[styles.modalHeader, { borderBottomColor: C.border }]}>
-              <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+              <TouchableOpacity 
+                onPress={onClose} 
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <X size={RESPONSIVE.iconSize.lg} color={C.textSecondary} />
               </TouchableOpacity>
               <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
                 KRA Details
               </Text>
-              <TouchableOpacity 
+              {/* <TouchableOpacity
                 onPress={handleStatusUpdate}
                 style={styles.statusUpdateBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Edit2 size={RESPONSIVE.iconSize.md} color={C.primary} />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={styles.modalContentScroll}
             >
               {/* KRA Header */}
               <View style={styles.modalKraHeader}>
@@ -647,15 +655,15 @@ const KRADetailModal = ({
                     </Text>
                   </View>
                   <View style={styles.modalKraStatusContainer}>
-                    <View style={[styles.statusBadge, { 
-                      backgroundColor: kra.status === 'completed' ? C.success + '20' : 
-                                     kra.status === 'in_progress' ? C.info + '20' : 
-                                     C.warning + '20' 
+                    <View style={[styles.statusBadge, {
+                      backgroundColor: kra.status === 'completed' ? C.success + '20' :
+                        kra.status === 'in_progress' ? C.info + '20' :
+                          C.warning + '20'
                     }]}>
-                      <Text style={[styles.statusBadgeText, { 
-                        color: kra.status === 'completed' ? C.success : 
-                               kra.status === 'in_progress' ? C.info : 
-                               C.warning 
+                      <Text style={[styles.statusBadgeText, {
+                        color: kra.status === 'completed' ? C.success :
+                          kra.status === 'in_progress' ? C.info :
+                            C.warning
                       }]}>
                         {kra.status || 'pending'}
                       </Text>
@@ -736,6 +744,7 @@ const KRADetailModal = ({
                               }}
                               style={styles.editMetricBtn}
                               activeOpacity={0.7}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             >
                               <Pencil size={RESPONSIVE.iconSize.sm} color={C.primary} />
                               <Text style={[styles.editBtnText, { color: C.primary }]}>
@@ -830,16 +839,6 @@ const KRADetailModal = ({
         </View>
       </Modal>
 
-      {/* Metric Edit Modal */}
-      <MetricEditModal
-        visible={showEditModal}
-        metric={selectedMetric}
-        kraId={kra._id || kra.kraId}
-        onClose={handleEditClose}
-        onUpdate={onEditMetric}
-        theme={theme}
-      />
-
       {/* Status Update Modal */}
       <StatusUpdateModal
         visible={showStatusModal}
@@ -891,12 +890,12 @@ export const KRA = ({ navigation }) => {
       if (result && result.success && result.data) {
         const transformedData = transformKRAData(result.data);
         setKraData(transformedData);
-        
+
         const expandedState = {};
         if (transformedData && transformedData.kras) {
           transformedData.kras.forEach(kra => {
             if (kra && kra._id) {
-              expandedState[kra._id] = true;
+              expandedState[kra._id] = false;
             }
           });
         }
@@ -913,9 +912,9 @@ export const KRA = ({ navigation }) => {
 
   const transformKRAData = (apiData) => {
     if (!apiData) return null;
-    
+
     const kras = apiData.kras || [];
-    
+
     let totalAchievement = 0;
     let completedKras = 0;
     let pendingKras = 0;
@@ -946,8 +945,8 @@ export const KRA = ({ navigation }) => {
       };
     }).filter(Boolean);
 
-    const avgAchievement = transformedKras.length > 0 
-      ? Math.round(totalAchievement / transformedKras.length) 
+    const avgAchievement = transformedKras.length > 0
+      ? Math.round(totalAchievement / transformedKras.length)
       : 0;
 
     return {
@@ -984,7 +983,7 @@ export const KRA = ({ navigation }) => {
     try {
       const result = await dispatch(updateKRAMetric(kraId, metricId, achievedValue));
       if (result && result.success) {
-        await loadKRA(); // Refresh data
+        await loadKRA();
         return result;
       } else {
         const errorMsg = result?.error || 'Failed to update metric';
@@ -1037,10 +1036,39 @@ export const KRA = ({ navigation }) => {
     setSelectedKRA(null);
   }, []);
 
-  // Direct edit handler for metrics from the main list
+  const handleEditFromDetail = useCallback((metric, kraId) => {
+    console.log('✏️ Edit from detail modal:', metric?.name);
+    console.log('📊 KRA ID:', kraId);
+    
+    if (!metric || !kraId) {
+      console.error('❌ Missing metric or kra data');
+      showToast('Unable to edit metric', 'error');
+      return;
+    }
+
+    setTimeout(() => {
+      setEditMetricData({
+        metric: metric,
+        kraId: kraId,
+      });
+      setShowEditMetricModal(true);
+    }, 100);
+  }, []);
+
   const handleDirectMetricEdit = useCallback((metric, kra) => {
     console.log('✏️ Direct edit for metric:', metric?.name);
-    setEditMetricData({ metric, kraId: kra._id || kra.kraId });
+    console.log('📊 KRA ID:', kra?._id || kra?.kraId);
+
+    if (!metric || !kra) {
+      console.error('❌ Missing metric or kra data');
+      showToast('Unable to edit metric', 'error');
+      return;
+    }
+
+    setEditMetricData({
+      metric: metric,
+      kraId: kra._id || kra.kraId,
+    });
     setShowEditMetricModal(true);
   }, []);
 
@@ -1193,7 +1221,7 @@ export const KRA = ({ navigation }) => {
         {/* KRA Sections */}
         {memoizedKRAs.map(kra => {
           if (!kra) return null;
-          
+
           const isExpanded = expandedKRAs[kra._id] || false;
           const kraAchievement = kra.achievement || 0;
           const performanceColor = getPerformanceColor(kraAchievement);
@@ -1230,6 +1258,7 @@ export const KRA = ({ navigation }) => {
                       toggleKRAExpanded(kra._id);
                     }}
                     style={styles.expandIcon}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     {isExpanded ? (
                       <ChevronUp size={RESPONSIVE.iconSize.sm} color={C.textSecondary} />
@@ -1250,7 +1279,7 @@ export const KRA = ({ navigation }) => {
 
                   {kra.metricsWithAchievement.map(metric => {
                     if (!metric) return null;
-                    
+
                     const metricPerformanceColor = getPerformanceColor(metric.achievement || 0);
                     return (
                       <View key={metric._id || Math.random().toString()} style={[styles.metricItem, { backgroundColor: C.background, borderColor: C.border }]}>
@@ -1269,10 +1298,12 @@ export const KRA = ({ navigation }) => {
                             <TouchableOpacity
                               onPress={(e) => {
                                 e.stopPropagation();
+                                console.log('✏️ Edit button pressed for metric:', metric.name);
                                 handleDirectMetricEdit(metric, kra);
                               }}
                               style={styles.editSmallBtn}
                               activeOpacity={0.7}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             >
                               <Pencil size={RESPONSIVE.iconSize.sm} color={C.primary} />
                               <Text style={[styles.editSmallText, { color: C.primary }]}>Edit</Text>
@@ -1379,22 +1410,20 @@ export const KRA = ({ navigation }) => {
         visible={showDetailModal}
         kra={selectedKRA}
         onClose={closeDetailModal}
-        onEditMetric={handleMetricUpdate}
+        onEditMetric={handleEditFromDetail}
         onUpdateStatus={handleStatusUpdate}
         theme={theme}
       />
 
-      {/* Direct Metric Edit Modal */}
-      {editMetricData && (
-        <MetricEditModal
-          visible={showEditMetricModal}
-          metric={editMetricData.metric}
-          kraId={editMetricData.kraId}
-          onClose={closeEditMetricModal}
-          onUpdate={handleMetricUpdate}
-          theme={theme}
-        />
-      )}
+      {/* Single MetricEditModal - rendered once */}
+      <MetricEditModal
+        visible={showEditMetricModal}
+        metric={editMetricData?.metric || null}
+        kraId={editMetricData?.kraId || null}
+        onClose={closeEditMetricModal}
+        onUpdate={handleMetricUpdate}
+        theme={theme}
+      />
     </View>
   );
 };
@@ -1405,7 +1434,10 @@ export const KRA = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: RESPONSIVE.lg },
+  scrollContent: { 
+    paddingBottom: RESPONSIVE.lg,
+    paddingHorizontal: RESPONSIVE.md,
+  },
 
   header: {
     flexDirection: 'row',
@@ -1449,8 +1481,7 @@ const styles = StyleSheet.create({
   },
 
   overviewCard: {
-    marginHorizontal: RESPONSIVE.md,
-    marginTop: RESPONSIVE.lg,
+    marginBottom: RESPONSIVE.md,
     borderRadius: RESPONSIVE.borderRadius.lg,
     borderWidth: 1,
     padding: RESPONSIVE.md,
@@ -1512,8 +1543,7 @@ const styles = StyleSheet.create({
   },
 
   kraSection: {
-    marginHorizontal: RESPONSIVE.md,
-    marginTop: RESPONSIVE.lg,
+    marginBottom: RESPONSIVE.md,
     borderRadius: RESPONSIVE.borderRadius.lg,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1681,8 +1711,7 @@ const styles = StyleSheet.create({
   },
 
   summaryCard: {
-    marginHorizontal: RESPONSIVE.md,
-    marginTop: RESPONSIVE.lg,
+    marginBottom: RESPONSIVE.md,
     borderRadius: RESPONSIVE.borderRadius.lg,
     borderWidth: 1,
     padding: RESPONSIVE.md,
@@ -1721,8 +1750,7 @@ const styles = StyleSheet.create({
   },
 
   recommendationsCard: {
-    marginHorizontal: RESPONSIVE.md,
-    marginTop: RESPONSIVE.lg,
+    marginBottom: RESPONSIVE.md,
     borderRadius: RESPONSIVE.borderRadius.lg,
     borderWidth: 1,
     padding: RESPONSIVE.md,
@@ -1750,6 +1778,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContainer: {
     maxHeight: SCREEN_HEIGHT * 0.9,
@@ -1762,6 +1791,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: RESPONSIVE.borderRadius.xl,
     borderTopRightRadius: RESPONSIVE.borderRadius.xl,
     overflow: 'hidden',
+    width: '100%',
+  },
+  modalContentScroll: {
+    paddingHorizontal: RESPONSIVE.md,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    paddingTop: RESPONSIVE.sm,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1770,16 +1805,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: RESPONSIVE.md,
     paddingVertical: RESPONSIVE.md,
     borderBottomWidth: 1,
+    minHeight: hp('7%'),
   },
-  modalCloseBtn: { padding: RESPONSIVE.sm },
-  statusUpdateBtn: { padding: RESPONSIVE.sm },
+  modalCloseBtn: { 
+    padding: RESPONSIVE.sm,
+    minWidth: wp('8%'),
+    minHeight: wp('8%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusUpdateBtn: { 
+    padding: RESPONSIVE.sm,
+    minWidth: wp('8%'),
+    minHeight: wp('8%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalTitle: {
     fontSize: RESPONSIVE.fontSize.lg,
     fontFamily: Fonts.bold,
-  },
-  modalContent: {
-    padding: RESPONSIVE.md,
-    paddingBottom: RESPONSIVE.lg,
+    flex: 1,
+    textAlign: 'center',
   },
   modalKraHeader: {
     flexDirection: 'row',
@@ -1976,10 +2022,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: RESPONSIVE.md,
+    marginTop: RESPONSIVE.sm,
   },
   editDetailItem: {
     flex: 1,
-    minWidth: wp('30%'),
+    minWidth: wp('28%'),
   },
   editDetailLabel: {
     fontSize: RESPONSIVE.fontSize.xs,
@@ -1992,6 +2039,7 @@ const styles = StyleSheet.create({
   },
   editInputContainer: {
     marginBottom: RESPONSIVE.lg,
+    width: '100%',
   },
   editInputLabel: {
     fontSize: RESPONSIVE.fontSize.base,
@@ -2004,6 +2052,7 @@ const styles = StyleSheet.create({
     padding: RESPONSIVE.md,
     fontSize: RESPONSIVE.fontSize.lg,
     fontFamily: Fonts.regular,
+    height: hp('6%'),
   },
   editInputHint: {
     fontSize: RESPONSIVE.fontSize.xs,
@@ -2017,6 +2066,8 @@ const styles = StyleSheet.create({
     padding: RESPONSIVE.md,
     borderRadius: RESPONSIVE.borderRadius.md,
     gap: RESPONSIVE.sm,
+    height: hp('6%'),
+    marginBottom: hp('1%'),
   },
   updateButtonDisabled: {
     opacity: 0.7,
@@ -2079,6 +2130,14 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontSize: RESPONSIVE.fontSize.lg,
     fontFamily: Fonts.bold,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  inputWrapper: {
+    width: '100%',
   },
 });
 

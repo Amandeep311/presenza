@@ -72,9 +72,14 @@
 		<string>GothamThinItalic.ttf</string>
 		<string>GothamBoldItalic.ttf</string>
 		<string>GothamXLight.ttf</string>
+    
 		<string>GothamLightItalic.ttf</string>
 		<string>GothamMedium.ttf</string>
 		<string>GothamThin.ttf</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>

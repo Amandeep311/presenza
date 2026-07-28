@@ -233,14 +233,12 @@ const HomeScreen = ({ navigation }) => {
   const isPunchedIn = todayRecord?.isPunchedIn === true;
   const hasAnySessionToday = sessions.length > 0;
 
-  // ✅ FIX: Get isVisitActive from the latest session's visits
+  // ✅ Check if visit is active (for Sales department only)
   const getIsVisitActive = () => {
     if (!todayRecord || !todayRecord.sessions) return false;
     
-    // Check all sessions for any active visit
     for (const session of todayRecord.sessions) {
       if (session.visits && session.visits.length > 0) {
-        // Get the latest visit
         const latestVisit = session.visits[session.visits.length - 1];
         if (latestVisit && latestVisit.status === 'IN_PROGRESS') {
           return true;
@@ -251,6 +249,14 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const isVisitActive = getIsVisitActive();
+
+  // ✅ Check if punch out should be disabled
+  const shouldDisablePunchOut = () => {
+    if (isSalesTeam && isVisitActive) {
+      return true;
+    }
+    return false;
+  };
 
   // Use API-provided values
   const isAbsent = calculatedAttendance.type === 'absent';
@@ -535,7 +541,7 @@ const HomeScreen = ({ navigation }) => {
       return;
     }
 
-    // ✅ Visit button handler - FIXED
+    // ✅ Visit button handler
     if (label === 'Visit') {
       if (!isSalesTeam) {
         showToast('Visit feature is only for sales team', 'error');
@@ -693,8 +699,25 @@ const HomeScreen = ({ navigation }) => {
     ]);
   };
 
+  // ✅ Updated handlePunchOut function with visit active check
   const handlePunchOut = async () => {
     if (isProcessing || punchOutLoading) return;
+
+    // ✅ Check if visit is active (Sales department only)
+    if (isSalesTeam && isVisitActive) {
+      Alert.alert(
+        'Cannot Punch Out',
+        'You have an active visit in progress. Please end your visit first before punching out.',
+        [
+          { 
+            text: 'Go to Visit', 
+            onPress: () => navigation.navigate('VisitScreen') 
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
 
     if (isOnBreak) {
       Alert.alert(t.alerts.cannotPunchOut, t.alerts.endBreakFirst, [
@@ -852,6 +875,15 @@ const HomeScreen = ({ navigation }) => {
     { label: t.attendance.weeks || 'Weeks', value: 'weeks' },
   ];
 
+  // ✅ Updated shouldShowPunchOut function
+  const shouldShowPunchOut = () => {
+    // Don't show punch out button if visit is active (Sales department only)
+    if (isSalesTeam && isVisitActive) {
+      return false;
+    }
+    return isPunchedIn && !isOnBreak;
+  };
+
   const renderShortLeaveInfo = () => {
     if (!morningShortLeave && !eveningShortLeave) return null;
     return (
@@ -886,8 +918,6 @@ const HomeScreen = ({ navigation }) => {
       Alert.alert('Info', 'Manager contact information not available');
     }
   };
-
-  const shouldShowPunchOut = () => isPunchedIn && !isOnBreak;
 
   const cardBorderColor = isAbsent
     ? C.error + '30'
@@ -1037,7 +1067,7 @@ const HomeScreen = ({ navigation }) => {
                 disabled = true;
               }
 
-              // ✅ For Visit button - show green dot if visit is active
+              // For Visit button - show green dot if visit is active
               const showVisitGreenDot = isVisitAction && isVisitActive;
 
               let hint = undefined;
@@ -1207,15 +1237,20 @@ const HomeScreen = ({ navigation }) => {
                   </View>
                 </View>
 
+                {/* ✅ Updated Punch Out Button with visit active check */}
                 {shouldShowPunchOut() && (
                   <TouchableOpacity
                     style={[
                       styles.punchOutBtn,
                       { backgroundColor: C.error },
-                      isLoading && { backgroundColor: C.disabled },
+                      (isLoading || shouldDisablePunchOut()) && { backgroundColor: C.disabled },
                     ]}
-                    onPress={() => checkInternetAndProceed(handlePunchOut)}
-                    disabled={isLoading}
+                    onPress={() => {
+                      if (!shouldDisablePunchOut()) {
+                        checkInternetAndProceed(handlePunchOut);
+                      }
+                    }}
+                    disabled={isLoading || shouldDisablePunchOut()}
                   >
                     <LogOut
                       size={wp('3.5%')}

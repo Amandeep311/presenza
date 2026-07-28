@@ -1,5 +1,5 @@
-// src/screens/home/reports/ReportsScreen.jsx - COMPLETE WITH FILTERS
-import React, { useEffect, useState, useCallback } from 'react';
+// src/screens/home/reports/ReportsScreen.jsx - WITH VISIT HISTORY & REGULARIZATION
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import {
   Modal,
   TextInput,
   Image,
+  Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -34,14 +37,49 @@ import {
   Filter,
   X,
   Calendar,
+  Briefcase,
+  User,
+  Navigation,
+  FileText,
+  LogIn,
+  LogOut,
+  Send,
+  Clock as ClockIcon,
 } from 'lucide-react-native';
 import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { Fonts } from '../../../utils/GlobalText';
 import { getAttendanceHistory } from '../../../store/actions/attendanceActions';
 import { formatMinutesToHours } from '../../../utils/utils';
+import apiService  from '../../../services/apiService';
 const arrowIcon = require('../../../assets/arrow_right.png');
 
+// ── Visit Type Icons ──
+const getVisitTypeIcon = (type, color, size) => {
+  const props = { size: size || wp('3.5%'), color: color || '#666' };
+  switch (type) {
+    case 'CLIENT_VISIT':
+      return <User {...props} />;
+    case 'SITE_VISIT':
+      return <Navigation {...props} />;
+    case 'DELIVERY':
+      return <MapPin {...props} />;
+    case 'INSPECTION':
+      return <FileText {...props} />;
+    default:
+      return <Briefcase {...props} />;
+  }
+};
+
+const getVisitTypeLabel = (type) => {
+  switch (type) {
+    case 'CLIENT_VISIT': return 'Client Visit';
+    case 'SITE_VISIT': return 'Site Visit';
+    case 'DELIVERY': return 'Delivery';
+    case 'INSPECTION': return 'Inspection';
+    default: return type || 'Visit';
+  }
+};
 
 // ── Date Filter Helpers ───────────────────────────────────────
 const getDateRange = (filter, customDate = null) => {
@@ -136,9 +174,22 @@ const formatMinutes = minutes => {
   return `${minutes} min`;
 };
 
-// ── Get API Status Config (Original - UNCHANGED) ──
-const getApiStatusConfig = (status, C, t) => {
-  // Check for Week Off (Sunday or weekly off)
+// ── Get API Status Config ──
+const getApiStatusConfig = (status, C, t, isLate) => {
+  // Check if it's a late record (status is PRESENT but isLate is true)
+  if (status === 'PRESENT' && isLate === true) {
+    return {
+      label: 'Present / Late',
+      color: C.warning,
+      icon: ClockIcon,
+      isLate: true,
+      primaryLabel: 'Present',
+      primaryColor: C.success,
+      secondaryLabel: '/Late',
+      secondaryColor: C.warning,
+    };
+  }
+  
   if (status === 'WEEK_OFF') {
     return {
       label: 'Week Off',
@@ -159,6 +210,17 @@ const getApiStatusConfig = (status, C, t) => {
         label: t.reports?.present || 'Present',
         color: C.success,
         icon: CheckCircle2,
+      };
+    case 'LATE':
+      return {
+        label: 'Present / Late',
+        color: C.warning,
+        icon: ClockIcon,
+        isLate: true,
+        primaryLabel: 'Present',
+        primaryColor: C.success,
+        secondaryLabel: '/Late',
+        secondaryColor: C.warning,
       };
     case 'ABSENT':
       return {
@@ -187,7 +249,7 @@ const getApiStatusConfig = (status, C, t) => {
   }
 };
 
-// ── Get Extra Details (Late, Early, Short Leave) - EXTRA, NOT OVERRIDING ──
+// ── Get Extra Details ──
 const getExtraDetails = (record, C) => {
   const details = [];
 
@@ -232,23 +294,838 @@ const getExtraDetails = (record, C) => {
   return details;
 };
 
-// ── Single Record Card ────────────────────────────
-const RecordCard = ({ record }) => {
+// ── Visit Record Card ────────────────────────────
+const VisitRecordCard = ({ visit, sessionIndex, visitIndex }) => {
+  const [expanded, setExpanded] = useState(false);
+  const { theme } = useTheme();
+  const { t } = useLanguage();
+  const C = theme.colors;
 
+  const isCompleted = visit.status === 'COMPLETED';
+  const isInProgress = visit.status === 'IN_PROGRESS';
+  const statusColor = isCompleted ? C.success : isInProgress ? C.primary : C.textSecondary;
+  const statusLabel = isCompleted ? 'Completed' : isInProgress ? 'In Progress' : visit.status;
+
+  const visitInTime = visit.visitIn ? formatTime(visit.visitIn) : '--:--';
+  const visitOutTime = visit.visitOut ? formatTime(visit.visitOut) : isInProgress ? 'Ongoing' : '--:--';
+  const duration = visit.durationMinutes || 0;
+
+  return (
+    <View
+      style={[
+        visitStyles.wrapper,
+        { backgroundColor: C.surface, borderColor: C.border },
+      ]}
+    >
+      <TouchableOpacity
+        style={visitStyles.cardHeader}
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.7}
+      >
+        <View style={visitStyles.leftBlock}>
+          <View style={visitStyles.iconContainer}>
+            {getVisitTypeIcon(visit.visitType, C.primary, wp('4.5%'))}
+          </View>
+          <View style={visitStyles.infoBlock}>
+            <Text style={[visitStyles.customerName, { color: C.textPrimary }]}>
+              {visit.customerName || 'Unknown Customer'}
+            </Text>
+            <Text style={[visitStyles.visitTypeText, { color: C.textSecondary }]}>
+              {getVisitTypeLabel(visit.visitType)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={visitStyles.rightBlock}>
+          <View
+            style={[
+              visitStyles.statusBadge,
+              { backgroundColor: statusColor + '20' },
+            ]}
+          >
+            <Text style={[visitStyles.statusText, { color: statusColor }]}>
+              {statusLabel}
+            </Text>
+          </View>
+          {expanded ? (
+            <ChevronUp size={wp('3.5%')} color={C.textSecondary} />
+          ) : (
+            <ChevronDown size={wp('3.5%')} color={C.textSecondary} />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View
+          style={[
+            visitStyles.detail,
+            { borderTopColor: C.border, backgroundColor: C.background },
+          ]}
+        >
+          <View style={visitStyles.timeRow}>
+            <View style={visitStyles.timeItem}>
+              <View style={[visitStyles.timeDot, { backgroundColor: C.success }]} />
+              <Text style={[visitStyles.timeLabel, { color: C.textSecondary }]}>
+                Visit In
+              </Text>
+              <Text style={[visitStyles.timeValue, { color: C.success }]}>
+                {visitInTime}
+              </Text>
+            </View>
+
+            <View style={visitStyles.timeArrow}>
+              <Image
+                source={arrowIcon}
+                style={{
+                  width: 8,
+                  height: 14,
+                  tintColor: C.textSecondary,
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            <View style={visitStyles.timeItem}>
+              <View style={[visitStyles.timeDot, { backgroundColor: isCompleted ? C.error : C.primary }]} />
+              <Text style={[visitStyles.timeLabel, { color: C.textSecondary }]}>
+                Visit Out
+              </Text>
+              <Text style={[visitStyles.timeValue, { color: isCompleted ? C.error : C.primary }]}>
+                {visitOutTime}
+              </Text>
+            </View>
+          </View>
+
+          {duration > 0 && (
+            <View style={visitStyles.durationRow}>
+              <Clock size={wp('3.5%')} color={C.primary} />
+              <Text style={[visitStyles.durationText, { color: C.primary }]}>
+                Duration: {fmtDur(duration)}
+              </Text>
+            </View>
+          )}
+
+          {visit.purpose && (
+            <View style={visitStyles.purposeRow}>
+              <Text style={[visitStyles.purposeLabel, { color: C.textSecondary }]}>
+                Purpose:
+              </Text>
+              <Text style={[visitStyles.purposeText, { color: C.textPrimary }]}>
+                {visit.purpose}
+              </Text>
+            </View>
+          )}
+
+          {visit.remarks && (
+            <View style={visitStyles.remarksRow}>
+              <Text style={[visitStyles.remarksLabel, { color: C.textSecondary }]}>
+                Remarks:
+              </Text>
+              <Text style={[visitStyles.remarksText, { color: C.textPrimary }]}>
+                {visit.remarks}
+              </Text>
+            </View>
+          )}
+
+          {visit.punchInLocation?.address && (
+            <View style={visitStyles.locationRow}>
+              <MapPin size={wp('3%')} color={C.textSecondary} />
+              <Text
+                style={[visitStyles.locationText, { color: C.textSecondary }]}
+                numberOfLines={2}
+              >
+                {visit.punchInLocation.address}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ── Visit Card Styles ───────────────────────────────────
+const visitStyles = StyleSheet.create({
+  wrapper: {
+    borderRadius: wp('3%'),
+    marginBottom: hp('0.8%'),
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp('3%'),
+  },
+  leftBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: wp('2.5%'),
+  },
+  iconContainer: {
+    width: wp('8%'),
+    height: wp('8%'),
+    borderRadius: wp('2%'),
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoBlock: {
+    flex: 1,
+  },
+  customerName: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
+  },
+  visitTypeText: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+    marginTop: 1,
+  },
+  rightBlock: {
+    alignItems: 'flex-end',
+    gap: hp('0.3%'),
+  },
+  statusBadge: {
+    paddingHorizontal: wp('2.5%'),
+    paddingVertical: hp('0.3%'),
+    borderRadius: wp('2%'),
+  },
+  statusText: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.medium,
+  },
+  detail: {
+    padding: wp('3%'),
+    borderTopWidth: 1,
+    gap: hp('0.8%'),
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: hp('0.5%'),
+  },
+  timeItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeDot: {
+    width: wp('1.5%'),
+    height: wp('1.5%'),
+    borderRadius: wp('0.75%'),
+    marginBottom: 2,
+  },
+  timeLabel: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.regular,
+  },
+  timeValue: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.bold,
+  },
+  timeArrow: {
+    paddingHorizontal: wp('2%'),
+  },
+  durationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    paddingVertical: hp('0.3%'),
+  },
+  durationText: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+  },
+  purposeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: wp('2%'),
+    paddingVertical: hp('0.2%'),
+  },
+  purposeLabel: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.medium,
+    minWidth: wp('12%'),
+  },
+  purposeText: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+  },
+  remarksRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: wp('2%'),
+    paddingVertical: hp('0.2%'),
+  },
+  remarksLabel: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.medium,
+    minWidth: wp('12%'),
+  },
+  remarksText: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('1.5%'),
+    paddingTop: hp('0.5%'),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  locationText: {
+    flex: 1,
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+  },
+});
+
+// ── Regularization Modal ──────────────────────────
+const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => {
+  const C = theme.colors;
+  const { t } = useLanguage();
+  const [loading, setLoading] = useState(false);
+  const [requestType, setRequestType] = useState('ABSENT_MARKED');
+  const [punchInTime, setPunchInTime] = useState('');
+  const [punchOutTime, setPunchOutTime] = useState('');
+  const [reason, setReason] = useState('');
+  const scrollViewRef = useRef();
+
+  // Get status from record
+  const status = record?.attendanceStatus || 'UNKNOWN';
+  
+  // Check if it's a late record
+  const isLateRecord = status === 'PRESENT' && record?.isLate === true;
+  const effectiveStatus = isLateRecord ? 'LATE' : status;
+
+  // ✅ DYNAMIC REQUEST TYPES BASED ON STATUS
+  const getRequestTypes = () => {
+    switch (effectiveStatus) {
+      case 'ABSENT':
+        return [
+          { id: 'MISSING_BOTH', label: 'Missing Both Punches' },
+          { id: 'MISSING_PUNCH_OUT', label: 'Missing Punch Out' },
+          { id: 'ABSENT_MARKED', label: 'Absent Marked Incorrectly' },
+        ];
+      case 'HALF_DAY':
+        return [
+          { id: 'WRONG_PUNCH_TIME', label: 'Wrong Punch Time' },
+        ];
+      case 'SHORT_LEAVE':
+        return [
+          { id: 'WRONG_PUNCH_TIME', label: 'Wrong Punch Time' },
+        ];
+      case 'LATE':
+        return [
+          { id: 'WRONG_PUNCH_TIME', label: 'Wrong Punch Time' },
+          { id: 'MISSING_PUNCH_IN', label: 'Missing Punch In' },
+        ];
+      default:
+        return [
+          { id: 'ABSENT_MARKED', label: 'Absent Marked Incorrectly' },
+          { id: 'MISSING_PUNCH_IN', label: 'Missing Punch In' },
+          { id: 'MISSING_PUNCH_OUT', label: 'Missing Punch Out' },
+          { id: 'MISSING_BOTH', label: 'Missing Both Punches' },
+          { id: 'WRONG_PUNCH_TIME', label: 'Wrong Punch Time' },
+        ];
+    }
+  };
+
+  // Set initial request type based on status
+  useEffect(() => {
+    const types = getRequestTypes();
+    if (types.length > 0) {
+      setRequestType(types[0].id);
+    }
+  }, [effectiveStatus]);
+
+  const requestTypes = getRequestTypes();
+
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
+  // Get the status display
+  const getStatusDisplay = () => {
+    if (isLateRecord) {
+      return 'Present / Late';
+    }
+    const statusMap = {
+      'ABSENT': 'Absent',
+      'HALF_DAY': 'Half Day',
+      'SHORT_LEAVE': 'Short Leave',
+      'LATE': 'Present / Late',
+      'PRESENT': 'Present',
+      'WEEK_OFF': 'Week Off',
+      'ON_LEAVE': 'On Leave',
+    };
+    return statusMap[status] || status;
+  };
+
+  // Get status color
+  const getStatusColor = () => {
+    if (isLateRecord) {
+      return C.warning;
+    }
+    const colorMap = {
+      'ABSENT': C.error,
+      'HALF_DAY': C.warning,
+      'SHORT_LEAVE': C.warning,
+      'LATE': C.warning,
+      'PRESENT': C.success,
+      'WEEK_OFF': C.textSecondary,
+      'ON_LEAVE': C.textSecondary,
+    };
+    return colorMap[status] || C.textSecondary;
+  };
+
+  // Get required fields based on request type
+  const getRequiredFields = (type) => {
+    switch (type) {
+      case 'MISSING_PUNCH_IN':
+        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'reason'];
+      case 'MISSING_PUNCH_OUT':
+        return ['attendanceId', 'attendanceDate', 'requestedPunchOut', 'reason'];
+      case 'MISSING_BOTH':
+        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
+      case 'WRONG_PUNCH_TIME':
+        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
+      case 'ABSENT_MARKED':
+        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
+      default:
+        return [];
+    }
+  };
+
+  const handleSubmit = async () => {
+    dismissKeyboard();
+
+    if (!record?._id) {
+      Alert.alert('Error', 'Attendance record not found');
+      return;
+    }
+
+    // Validate based on request type
+    const requiredFields = getRequiredFields(requestType);
+    
+    if (requiredFields.includes('reason') && !reason.trim()) {
+      Alert.alert('Error', 'Please provide a reason for regularization');
+      return;
+    }
+
+    // Validate time inputs based on request type
+    const needsPunchIn = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+    const needsPunchOut = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+
+    if (needsPunchIn && !punchInTime) {
+      Alert.alert('Error', 'Please enter punch in time');
+      return;
+    }
+
+    if (needsPunchOut && !punchOutTime) {
+      Alert.alert('Error', 'Please enter punch out time');
+      return;
+    }
+
+    // Validate time format (HH:MM)
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (needsPunchIn && !timeRegex.test(punchInTime)) {
+      Alert.alert('Error', 'Please enter valid punch in time (HH:MM)');
+      return;
+    }
+    if (needsPunchOut && !timeRegex.test(punchOutTime)) {
+      Alert.alert('Error', 'Please enter valid punch out time (HH:MM)');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Prepare payload
+      const payload = {
+        attendanceId: record._id,
+        requestType: requestType,
+        attendanceDate: new Date(record.date).toISOString(),
+        reason: reason.trim() || 'Requesting attendance regularization',
+      };
+
+      // Add punch times based on request type
+      const needsPunchInForPayload = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+      const needsPunchOutForPayload = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+
+      if (needsPunchInForPayload) {
+        const date = new Date(record.date).toISOString().split('T')[0];
+        const punchInDateTime = new Date(`${date}T${punchInTime}:00.000Z`);
+        payload.requestedPunchIn = punchInDateTime.toISOString();
+      }
+
+      if (needsPunchOutForPayload) {
+        const date = new Date(record.date).toISOString().split('T')[0];
+        const punchOutDateTime = new Date(`${date}T${punchOutTime}:00.000Z`);
+        payload.requestedPunchOut = punchOutDateTime.toISOString();
+      }
+
+      console.log('Regularization Payload:', payload);
+
+      const response = await apiService.post('/attendance/regularize-attendance', payload);
+      
+      if (response.data?.success) {
+        Alert.alert(
+          'Success',
+          'Regularization request submitted successfully!',
+          [{ text: 'OK', onPress: onSuccess }]
+        );
+      } else {
+        throw new Error(response.data?.message || 'Failed to submit request');
+      }
+    } catch (error) {
+      console.error('Regularization error:', error);
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || error.message || 'Failed to submit regularization request'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderTimeInputs = () => {
+    const needsPunchIn = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+    const needsPunchOut = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
+
+    if (!needsPunchIn && !needsPunchOut) {
+      return null;
+    }
+
+    return (
+      <View style={regStyles.timeInputs}>
+        {needsPunchIn && (
+          <View style={regStyles.timeInputGroup}>
+            <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
+              Punch In Time (HH:MM) *
+            </Text>
+            <TextInput
+              style={[
+                regStyles.timeInput,
+                {
+                  backgroundColor: C.background,
+                  borderColor: C.border,
+                  color: C.textPrimary,
+                },
+              ]}
+              placeholder="09:30"
+              placeholderTextColor={C.textSecondary}
+              value={punchInTime}
+              onChangeText={setPunchInTime}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+              returnKeyType="done"
+              onSubmitEditing={dismissKeyboard}
+            />
+          </View>
+        )}
+
+        {needsPunchOut && (
+          <View style={regStyles.timeInputGroup}>
+            <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
+              Punch Out Time (HH:MM) *
+            </Text>
+            <TextInput
+              style={[
+                regStyles.timeInput,
+                {
+                  backgroundColor: C.background,
+                  borderColor: C.border,
+                  color: C.textPrimary,
+                },
+              ]}
+              placeholder="18:30"
+              placeholderTextColor={C.textSecondary}
+              value={punchOutTime}
+              onChangeText={setPunchOutTime}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+              returnKeyType="done"
+              onSubmitEditing={dismissKeyboard}
+            />
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <View style={[regStyles.modalOverlay, { backgroundColor: C.overlayBg }]}>
+          <TouchableWithoutFeedback>
+            <View
+              style={[
+                regStyles.modalContent,
+                { backgroundColor: C.surface, borderColor: C.border },
+              ]}
+            >
+              <View style={regStyles.modalHeader}>
+                <Text style={[regStyles.modalTitle, { color: C.textPrimary }]}>
+                  Regularize Attendance
+                </Text>
+                <TouchableOpacity onPress={onClose} disabled={loading}>
+                  <X size={wp('5%')} color={C.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView 
+                ref={scrollViewRef}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={regStyles.recordInfo}>
+                  <Text style={[regStyles.recordDate, { color: C.textSecondary }]}>
+                    Date: {formatFullDate(record?.date)}
+                  </Text>
+                  <Text style={[regStyles.recordStatus, { color: getStatusColor() }]}>
+                    Status: {getStatusDisplay()}
+                  </Text>
+                </View>
+
+                <Text style={[regStyles.sectionLabel, { color: C.textSecondary }]}>
+                  Request Type
+                </Text>
+                {requestTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type.id}
+                    style={[
+                      regStyles.requestTypeOption,
+                      { borderBottomColor: C.border },
+                      requestType === type.id && {
+                        backgroundColor: C.primary + '20',
+                        borderColor: C.primary,
+                      },
+                    ]}
+                    onPress={() => {
+                      dismissKeyboard();
+                      setRequestType(type.id);
+                      // Reset time fields when switching types
+                      setPunchInTime('');
+                      setPunchOutTime('');
+                    }}
+                  >
+                    <Text
+                      style={[
+                        regStyles.requestTypeText,
+                        {
+                          color: requestType === type.id ? C.primary : C.textPrimary,
+                        },
+                      ]}
+                    >
+                      {type.label}
+                    </Text>
+                    {requestType === type.id && (
+                      <CheckCircle2 size={wp('4%')} color={C.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+
+                {renderTimeInputs()}
+
+                <View style={regStyles.reasonGroup}>
+                  <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
+                    Reason for Regularization *
+                  </Text>
+                  <TextInput
+                    style={[
+                      regStyles.reasonInput,
+                      {
+                        backgroundColor: C.background,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                      },
+                    ]}
+                    placeholder="Please provide a detailed reason..."
+                    placeholderTextColor={C.textSecondary}
+                    value={reason}
+                    onChangeText={setReason}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                    returnKeyType="done"
+                    onSubmitEditing={dismissKeyboard}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    regStyles.submitBtn,
+                    { backgroundColor: C.primary },
+                    loading && { opacity: 0.7 },
+                  ]}
+                  onPress={handleSubmit}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color={C.textDark} />
+                  ) : (
+                    <>
+                      <Send size={wp('4%')} color={C.textDark} />
+                      <Text style={[regStyles.submitText, { color: C.textDark }]}>
+                        Submit Request
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <View style={{ height: hp('2%') }} />
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+
+// ── Regularization Styles ──────────────────────────
+const regStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: hp('85%'),
+    borderTopLeftRadius: wp('5%'),
+    borderTopRightRadius: wp('5%'),
+    borderWidth: 1,
+    overflow: 'hidden',
+    paddingBottom: hp('3%'),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp('4%'),
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
+  },
+  modalTitle: {
+    fontSize: wp('4.5%'),
+    fontFamily: Fonts.bold,
+  },
+  recordInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: wp('4%'),
+    paddingBottom: hp('1%'),
+  },
+  recordDate: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
+  },
+  recordStatus: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.bold,
+  },
+  sectionLabel: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
+    paddingHorizontal: wp('4%'),
+    paddingTop: hp('1%'),
+    paddingBottom: hp('0.5%'),
+  },
+  requestTypeOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('1.2%'),
+    borderBottomWidth: 1,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+  },
+  requestTypeText: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.regular,
+  },
+  timeInputs: {
+    paddingHorizontal: wp('4%'),
+    paddingTop: hp('1%'),
+  },
+  timeInputGroup: {
+    marginBottom: hp('1%'),
+  },
+  inputLabel: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.regular,
+    marginBottom: hp('0.3%'),
+  },
+  timeInput: {
+    borderWidth: 1,
+    borderRadius: wp('2%'),
+    padding: wp('3%'),
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.regular,
+  },
+  reasonGroup: {
+    paddingHorizontal: wp('4%'),
+    paddingTop: hp('1%'),
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderRadius: wp('2%'),
+    padding: wp('3%'),
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.regular,
+    minHeight: hp('10%'),
+  },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    marginHorizontal: wp('4%'),
+    marginTop: hp('2%'),
+    padding: wp('3.5%'),
+    borderRadius: wp('3%'),
+  },
+  submitText: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.bold,
+  },
+});
+
+// ── Single Record Card ────────────────────────────
+const RecordCard = ({ record, onRegularize }) => {
   const [expanded, setExpanded] = useState(false);
   const { theme } = useTheme();
   const { t } = useLanguage();
   const C = theme.colors;
 
   const sessions = record.sessions || [];
-  console.log("sessions=======>", sessions);
+  const isSalesTeam = record.employee?.departmentName?.toLowerCase().includes('sales') || false;
 
-
-  // ✅ ORIGINAL API STATUS - Jaise ka taise
-  const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t);
+  // Check if this is a late record
+  const isLateRecord = record.attendanceStatus === 'PRESENT' && record.isLate === true;
+  const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t, record.isLate);
   const ApiStatusIcon = apiStatusConfig.icon;
+  
+  // ✅ Show Regularize button for ABSENT, HALF_DAY, SHORT_LEAVE, and LATE (including late records)
+  const shouldShowRegularize = 
+    record.attendanceStatus === 'ABSENT' ||
+    record.attendanceStatus === 'HALF_DAY' ||
+    record.attendanceStatus === 'SHORT_LEAVE' ||
+    record.attendanceStatus === 'LATE' ||
+    (record.attendanceStatus === 'PRESENT' && record.isLate === true);
 
-  // ✅ EXTRA DETAILS - Alag se
   const extraDetails = getExtraDetails(record, C);
 
   const totalMinutes = sessions.reduce(
@@ -263,7 +1140,7 @@ const RecordCard = ({ record }) => {
   );
 
   const firstPunchIn = sessions[0]?.punchIn;
-  const autoPunch = sessions[0]?.autoPunchedOut
+  const autoPunch = sessions[0]?.autoPunchedOut;
   const lastPunchOut = sessions[sessions.length - 1]?.punchOut;
 
   return (
@@ -282,7 +1159,7 @@ const RecordCard = ({ record }) => {
           <View
             style={[
               cardStyles.statusDot,
-              { backgroundColor: apiStatusConfig.color },
+              { backgroundColor: isLateRecord ? C.warning : apiStatusConfig.color },
             ]}
           />
           <View>
@@ -292,18 +1169,34 @@ const RecordCard = ({ record }) => {
             <View
               style={[
                 cardStyles.statusBadge,
-                { backgroundColor: apiStatusConfig.color + '22' },
+                { backgroundColor: isLateRecord ? C.warning + '15' : apiStatusConfig.color + '22' },
               ]}
             >
-              <ApiStatusIcon size={wp('2.8%')} color={apiStatusConfig.color} />
-              <Text
-                style={[
-                  cardStyles.statusText,
-                  { color: apiStatusConfig.color },
-                ]}
-              >
-                {apiStatusConfig.label}
-              </Text>
+              <ApiStatusIcon size={wp('2.8%')} color={isLateRecord ? C.warning : apiStatusConfig.color} />
+              
+              {isLateRecord ? (
+                // ✅ Dual color status: Present (green) / Late (orange)
+                <Text style={cardStyles.dualStatusText}>
+                  <Text style={[cardStyles.statusText, { color: C.success }]}>
+                    Present
+                  </Text>
+                  <Text style={[cardStyles.statusText, { color: C.textSecondary }]}>
+                    {' '}/ 
+                  </Text>
+                  <Text style={[cardStyles.statusText, { color: C.warning }]}>
+                    Late
+                  </Text>
+                </Text>
+              ) : (
+                <Text
+                  style={[
+                    cardStyles.statusText,
+                    { color: apiStatusConfig.color },
+                  ]}
+                >
+                  {apiStatusConfig.label}
+                </Text>
+              )}
             </View>
           </View>
         </View>
@@ -319,13 +1212,10 @@ const RecordCard = ({ record }) => {
                 width: 8,
                 height: 14,
                 marginHorizontal: 2,
-                tintColor: C.textSecondary,  // Remove the > here
+                tintColor: C.textSecondary,
               }}
               resizeMode="contain"
             />
-            {/* <Text style={[cardStyles.timeSep, { color: C.textSecondary }]}>
-              →
-            </Text> */}
             <Text
               style={[
                 cardStyles.timeOut,
@@ -333,7 +1223,6 @@ const RecordCard = ({ record }) => {
               ]}
             >
               {autoPunch ? '---' : lastPunchOut ? formatTime(lastPunchOut) : '---'}
-              {/* {lastPunchOut ? formatTime(lastPunchOut) : '---'} */}
             </Text>
           </View>
           <Text style={[cardStyles.durText, { color: C.textSecondary }]}>
@@ -362,7 +1251,23 @@ const RecordCard = ({ record }) => {
             { borderTopColor: C.border, backgroundColor: C.background },
           ]}
         >
-          {/* 🔥 EXTRA DETAILS - Late Login, Early Logout, Short Leave */}
+          {/* ✅ Regularization Button for Absent, Half Day, Short Leave, and Late */}
+          {shouldShowRegularize && (
+            <TouchableOpacity
+              style={[
+                cardStyles.regularizeBtn,
+                { backgroundColor: C.primary + '15', borderColor: C.primary },
+              ]}
+              onPress={() => onRegularize(record)}
+            >
+              <Send size={wp('4%')} color={C.primary} />
+              <Text style={[cardStyles.regularizeBtnText, { color: C.primary }]}>
+                Regularize Your Attendance
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Extra Details */}
           {extraDetails.length > 0 && (
             <View
               style={[
@@ -422,6 +1327,7 @@ const RecordCard = ({ record }) => {
             </View>
           </View>
 
+          {/* Sessions */}
           {sessions.map((session, si) => (
             <View
               key={si}
@@ -460,16 +1366,11 @@ const RecordCard = ({ record }) => {
                       { color: session.punchOut ? C.error : C.textSecondary },
                     ]}
                   >
-                    {/* {session.punchOut
-                      ? formatTime(session.punchOut)
-                      : t.reports?.ongoing || 'Ongoing'} */}
-                    {
-                      autoPunch
-                        ? '---'
-                        : session.punchOut
-                          ? formatTime(session.punchOut)
-                          : t.reports?.ongoing || 'Ongoing'
-                    }
+                    {autoPunch
+                      ? '---'
+                      : session.punchOut
+                        ? formatTime(session.punchOut)
+                        : t.reports?.ongoing || 'Ongoing'}
                   </Text>
                 </View>
                 <View
@@ -484,6 +1385,27 @@ const RecordCard = ({ record }) => {
                 </View>
               </View>
 
+              {/* ✅ Visits Section - Only show for Sales department */}
+              {isSalesTeam && session.visits && session.visits.length > 0 && (
+                <View style={cardStyles.visitsSection}>
+                  <View style={cardStyles.visitsHeader}>
+                    <Briefcase size={wp('3.5%')} color={C.primary} />
+                    <Text style={[cardStyles.visitsTitle, { color: C.primary }]}>
+                      Visits ({session.visits.length})
+                    </Text>
+                  </View>
+                  {session.visits.map((visit, vi) => (
+                    <VisitRecordCard
+                      key={vi}
+                      visit={visit}
+                      sessionIndex={si}
+                      visitIndex={vi}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {/* Breaks */}
               {session.breaks?.length > 0 && (
                 <View style={cardStyles.breaksBlock}>
                   {session.breaks.map((b, bi) => (
@@ -534,6 +1456,7 @@ const RecordCard = ({ record }) => {
                 </View>
               )}
 
+              {/* Location */}
               {session.punchInLocation?.address && (
                 <View
                   style={[cardStyles.locationRow, { borderTopColor: C.border }]}
@@ -601,6 +1524,10 @@ const cardStyles = StyleSheet.create({
     fontSize: wp('2.4%'),
     fontFamily: Fonts.medium,
   },
+  dualStatusText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   rightBlock: {
     alignItems: 'flex-end',
   },
@@ -613,9 +1540,6 @@ const cardStyles = StyleSheet.create({
     fontSize: wp('2.8%'),
     fontFamily: Fonts.medium,
   },
-  timeSep: {
-    fontSize: wp('2.4%'),
-  },
   timeOut: {
     fontSize: wp('2.8%'),
     fontFamily: Fonts.medium,
@@ -627,6 +1551,21 @@ const cardStyles = StyleSheet.create({
   },
   detail: {
     borderTopWidth: 1,
+  },
+  regularizeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    margin: wp('4%'),
+    marginBottom: 0,
+    padding: wp('3%'),
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+  },
+  regularizeBtnText: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
   },
   extraDetailsContainer: {
     margin: wp('4%'),
@@ -706,6 +1645,22 @@ const cardStyles = StyleSheet.create({
     fontSize: wp('2.6%'),
     fontFamily: Fonts.medium,
   },
+  visitsSection: {
+    marginTop: hp('1%'),
+    paddingTop: hp('1%'),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  visitsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    marginBottom: hp('0.8%'),
+  },
+  visitsTitle: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+  },
   breaksBlock: {
     marginTop: hp('0.5%'),
     gap: hp('0.5%'),
@@ -747,7 +1702,12 @@ const CustomDateModal = ({ visible, onClose, onApply, theme }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
   const handleApply = () => {
+    dismissKeyboard();
     if (startDate && endDate) {
       onApply({ start: new Date(startDate), end: new Date(endDate) });
     }
@@ -761,70 +1721,78 @@ const CustomDateModal = ({ visible, onClose, onApply, theme }) => {
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
-        <View
-          style={[
-            styles.modalContent,
-            { backgroundColor: C.surface, borderColor: C.border },
-          ]}
-        >
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
-              Custom Date Range
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={wp('5%')} color={C.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.modalLabel, { color: C.textSecondary }]}>
-            Start Date (YYYY-MM-DD)
-          </Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                backgroundColor: C.background,
-                borderColor: C.border,
-                color: C.textPrimary,
-              },
-            ]}
-            placeholder="2024-01-01"
-            placeholderTextColor={C.textSecondary}
-            value={startDate}
-            onChangeText={setStartDate}
-          />
-          <Text
-            style={[
-              styles.modalLabel,
-              { color: C.textSecondary, marginTop: hp('2%') },
-            ]}
-          >
-            End Date (YYYY-MM-DD)
-          </Text>
-          <TextInput
-            style={[
-              styles.modalInput,
-              {
-                backgroundColor: C.background,
-                borderColor: C.border,
-                color: C.textPrimary,
-              },
-            ]}
-            placeholder="2024-01-31"
-            placeholderTextColor={C.textSecondary}
-            value={endDate}
-            onChangeText={setEndDate}
-          />
-          <TouchableOpacity
-            style={[styles.modalApplyBtn, { backgroundColor: C.primary }]}
-            onPress={handleApply}
-          >
-            <Text style={[styles.modalApplyText, { color: C.textDark }]}>
-              Apply
-            </Text>
-          </TouchableOpacity>
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
+          <TouchableWithoutFeedback>
+            <View
+              style={[
+                styles.modalContent,
+                { backgroundColor: C.surface, borderColor: C.border },
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
+                  Custom Date Range
+                </Text>
+                <TouchableOpacity onPress={onClose}>
+                  <X size={wp('5%')} color={C.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.modalLabel, { color: C.textSecondary }]}>
+                Start Date (YYYY-MM-DD)
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.border,
+                    color: C.textPrimary,
+                  },
+                ]}
+                placeholder="2024-01-01"
+                placeholderTextColor={C.textSecondary}
+                value={startDate}
+                onChangeText={setStartDate}
+                returnKeyType="done"
+                onSubmitEditing={dismissKeyboard}
+              />
+              <Text
+                style={[
+                  styles.modalLabel,
+                  { color: C.textSecondary, marginTop: hp('2%') },
+                ]}
+              >
+                End Date (YYYY-MM-DD)
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.border,
+                    color: C.textPrimary,
+                  },
+                ]}
+                placeholder="2024-01-31"
+                placeholderTextColor={C.textSecondary}
+                value={endDate}
+                onChangeText={setEndDate}
+                returnKeyType="done"
+                onSubmitEditing={dismissKeyboard}
+              />
+              <TouchableOpacity
+                style={[styles.modalApplyBtn, { backgroundColor: C.primary }]}
+                onPress={handleApply}
+              >
+                <Text style={[styles.modalApplyText, { color: C.textDark }]}>
+                  Apply
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
@@ -843,6 +1811,8 @@ const ReportsScreen = ({ navigation }) => {
   const [customDate, setCustomDate] = useState(null);
   const [showDateFilterModal, setShowDateFilterModal] = useState(false);
   const [showCustomDateModal, setShowCustomDateModal] = useState(false);
+  const [showRegularizeModal, setShowRegularizeModal] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   useEffect(() => {
     dispatch(getAttendanceHistory());
@@ -862,7 +1832,6 @@ const ReportsScreen = ({ navigation }) => {
     setShowDateFilterModal(false);
   };
 
-  // Apply both filters: Date + Status
   const getFilteredHistory = () => {
     if (!history || history.length === 0) return [];
 
@@ -870,17 +1839,22 @@ const ReportsScreen = ({ navigation }) => {
 
     let filtered = [...history];
 
-    // Apply date filter
     if (start && end) {
       filtered = filtered.filter(record =>
         isDateInRange(record.date, start, end),
       );
     }
 
-    // Apply status filter
     if (activeStatusFilter !== 'ALL') {
       filtered = filtered.filter(
-        record => record.attendanceStatus === activeStatusFilter,
+        record => {
+          // For LATE filter, also include records that are PRESENT but isLate is true
+          if (activeStatusFilter === 'LATE') {
+            return record.attendanceStatus === 'LATE' || 
+                   (record.attendanceStatus === 'PRESENT' && record.isLate === true);
+          }
+          return record.attendanceStatus === activeStatusFilter;
+        }
       );
     }
 
@@ -889,16 +1863,23 @@ const ReportsScreen = ({ navigation }) => {
 
   const filteredHistory = getFilteredHistory();
 
-  // Stats from FILTERED history
+  // Count records including late ones
+  const countByStatus = (status) => {
+    if (status === 'LATE') {
+      return filteredHistory.filter(r => 
+        r.attendanceStatus === 'LATE' || 
+        (r.attendanceStatus === 'PRESENT' && r.isLate === true)
+      ).length;
+    }
+    return filteredHistory.filter(r => r.attendanceStatus === status).length;
+  };
+
   const stats = {
-    present: filteredHistory.filter(r => r.attendanceStatus === 'PRESENT')
-      .length,
-    absent: filteredHistory.filter(r => r.attendanceStatus === 'ABSENT').length,
-    halfDay: filteredHistory.filter(r => r.attendanceStatus === 'HALF_DAY')
-      .length,
-    shortLeave: filteredHistory.filter(
-      r => r.attendanceStatus === 'SHORT_LEAVE',
-    ).length,
+    present: countByStatus('PRESENT'),
+    late: countByStatus('LATE'),
+    absent: countByStatus('ABSENT'),
+    halfDay: countByStatus('HALF_DAY'),
+    shortLeave: countByStatus('SHORT_LEAVE'),
     totalWorked: filteredHistory.reduce(
       (sum, r) => sum + (r.totalWorkingMinutes || 0),
       0,
@@ -909,7 +1890,7 @@ const ReportsScreen = ({ navigation }) => {
     ),
   };
 
-  const statusFilters = ['ALL', 'PRESENT', 'ABSENT', 'HALF_DAY', 'SHORT_LEAVE'];
+  const statusFilters = ['ALL', 'PRESENT', 'LATE', 'ABSENT', 'HALF_DAY', 'SHORT_LEAVE'];
   const dateFilters = [
     { id: 'TODAY', label: 'Today' },
     { id: 'THIS_WEEK', label: 'This Week' },
@@ -930,16 +1911,28 @@ const ReportsScreen = ({ navigation }) => {
   const statusLabels = {
     ALL: t.reports?.all || 'All',
     PRESENT: t.reports?.present || 'Present',
+    LATE: 'Present / Late',
     ABSENT: t.reports?.absent || 'Absent',
     HALF_DAY: t.reports?.halfDay || 'Half Day',
     SHORT_LEAVE: t.reports?.shortLeave || 'Short Leave',
+  };
+
+  const handleRegularize = (record) => {
+    setSelectedRecord(record);
+    setShowRegularizeModal(true);
+  };
+
+  const handleRegularizeSuccess = () => {
+    setShowRegularizeModal(false);
+    setSelectedRecord(null);
+    // Refresh the history
+    dispatch(getAttendanceHistory());
   };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <StatusBar barStyle={C.statusBar} backgroundColor={C.background} />
 
-      {/* Header */}
       <View
         style={[
           styles.header,
@@ -974,7 +1967,6 @@ const ReportsScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Date Filter Bar */}
       <TouchableOpacity
         style={[
           styles.dateFilterBar,
@@ -1001,7 +1993,6 @@ const ReportsScreen = ({ navigation }) => {
           />
         }
       >
-        {/* Summary Cards */}
         <View style={styles.summaryGrid}>
           <View
             style={[
@@ -1014,7 +2005,21 @@ const ReportsScreen = ({ navigation }) => {
               {stats.present}
             </Text>
             <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
-              {t.reports?.present || 'Present'}
+              Present
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.summaryCard,
+              { backgroundColor: C.surface, borderColor: C.warning + '50' },
+            ]}
+          >
+            <ClockIcon size={wp('5%')} color={C.warning} />
+            <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
+              {stats.late}
+            </Text>
+            <Text style={[styles.summaryLbl, { color: C.textSecondary }]}>
+              Present / Late
             </Text>
           </View>
           <View
@@ -1061,7 +2066,6 @@ const ReportsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Work Summary */}
         <View
           style={[
             styles.workStrip,
@@ -1093,7 +2097,6 @@ const ReportsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Status Filter Pills */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1127,7 +2130,6 @@ const ReportsScreen = ({ navigation }) => {
           ))}
         </ScrollView>
 
-        {/* Records List */}
         {historyLoading && !refreshing ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={C.primary} />
@@ -1153,6 +2155,7 @@ const ReportsScreen = ({ navigation }) => {
               <RecordCard
                 key={record._id || record.date || i}
                 record={record}
+                onRegularize={handleRegularize}
               />
             ))}
           </View>
@@ -1160,72 +2163,85 @@ const ReportsScreen = ({ navigation }) => {
         <View style={{ height: hp('4%') }} />
       </ScrollView>
 
-      {/* Date Filter Modal */}
       <Modal
         visible={showDateFilterModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowDateFilterModal(false)}
       >
-        <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
-          <View
-            style={[
-              styles.dateFilterModal,
-              { backgroundColor: C.surface, borderColor: C.border },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
-                Select Date Range
-              </Text>
-              <TouchableOpacity onPress={() => setShowDateFilterModal(false)}>
-                <X size={wp('5%')} color={C.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            {dateFilters.map(filter => (
-              <TouchableOpacity
-                key={filter.id}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={[styles.modalOverlay, { backgroundColor: C.overlayBg }]}>
+            <TouchableWithoutFeedback>
+              <View
                 style={[
-                  styles.dateFilterOption,
-                  { borderBottomColor: C.border },
-                  dateFilter === filter.id && {
-                    backgroundColor: C.primary + '20',
-                  },
+                  styles.dateFilterModal,
+                  { backgroundColor: C.surface, borderColor: C.border },
                 ]}
-                onPress={() => {
-                  if (filter.id === 'CUSTOM') {
-                    setShowDateFilterModal(false);
-                    setShowCustomDateModal(true);
-                  } else {
-                    applyDateFilter(filter.id);
-                  }
-                }}
               >
-                <Text
-                  style={[
-                    styles.dateFilterOptionText,
-                    {
-                      color:
-                        dateFilter === filter.id ? C.primary : C.textPrimary,
-                    },
-                  ]}
-                >
-                  {filter.label}
-                </Text>
-                {dateFilter === filter.id && filter.id !== 'CUSTOM' && (
-                  <CheckCircle2 size={wp('4%')} color={C.primary} />
-                )}
-              </TouchableOpacity>
-            ))}
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: C.textPrimary }]}>
+                    Select Date Range
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowDateFilterModal(false)}>
+                    <X size={wp('5%')} color={C.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {dateFilters.map(filter => (
+                  <TouchableOpacity
+                    key={filter.id}
+                    style={[
+                      styles.dateFilterOption,
+                      { borderBottomColor: C.border },
+                      dateFilter === filter.id && {
+                        backgroundColor: C.primary + '20',
+                      },
+                    ]}
+                    onPress={() => {
+                      if (filter.id === 'CUSTOM') {
+                        setShowDateFilterModal(false);
+                        setShowCustomDateModal(true);
+                      } else {
+                        applyDateFilter(filter.id);
+                      }
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dateFilterOptionText,
+                        {
+                          color:
+                            dateFilter === filter.id ? C.primary : C.textPrimary,
+                        },
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                    {dateFilter === filter.id && filter.id !== 'CUSTOM' && (
+                      <CheckCircle2 size={wp('4%')} color={C.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Custom Date Modal */}
       <CustomDateModal
         visible={showCustomDateModal}
         onClose={() => setShowCustomDateModal(false)}
         onApply={dateRange => applyDateFilter('CUSTOM', dateRange)}
+        theme={theme}
+      />
+
+      <RegularizationModal
+        visible={showRegularizeModal}
+        onClose={() => {
+          setShowRegularizeModal(false);
+          setSelectedRecord(null);
+        }}
+        onSuccess={handleRegularizeSuccess}
+        record={selectedRecord}
         theme={theme}
       />
     </View>
@@ -1285,12 +2301,14 @@ const styles = StyleSheet.create({
   },
   summaryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: wp('4%'),
     paddingTop: hp('2%'),
     gap: wp('2.5%'),
   },
   summaryCard: {
     flex: 1,
+    minWidth: '18%',
     borderRadius: wp('3.5%'),
     padding: wp('3%'),
     alignItems: 'center',

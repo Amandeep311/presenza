@@ -15,9 +15,21 @@
     <!-- Camera (for selfie punch-in) -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- ==================== OPTIONAL FEATURES ==================== -->
+    <!-- ==================== FCM / NOTIFICATION PERMISSIONS ==================== -->
     
-    <!-- Camera Hardware Feature -->
+    <!-- For Android 13+ (API 33+) - Required for push notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- For notification vibration -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- For receiving push notifications when device boots -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ==================== OPTIONAL FEATURES ==================== -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    
     <uses-feature 
         android:name="android.hardware.camera" 
         android:required="false" />
@@ -37,9 +49,12 @@
         android:usesCleartextTraffic="true" 
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        tools:targetApi="31">
+        tools:targetApi="31"
+        android:requestLegacyExternalStorage="true"
+>
 
-        <!-- Main Activity -->
+        <!-- ==================== MAIN ACTIVITY ==================== -->
+
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
@@ -55,7 +70,8 @@
             </intent-filter>
         </activity>
 
-        <!-- File Provider for camera photos -->
+        <!-- ==================== FILE PROVIDER ==================== -->
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -65,12 +81,60 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- ==================== FCM / FIREBASE CONFIG ==================== -->
+        
+        <!-- Firebase Init Provider (Auto-handled by @react-native-firebase) -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:exported="false"
+            android:initOrder="100" />
+
+        <!-- Default notification channel for Android 8+ -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="presenza_general"
+            tools:replace="android:value" />
+
+        <!-- Notification icon for FCM messages -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+
+        <!-- ==================== PUSH NOTIFICATION RECEIVERS ==================== -->
+        
+        <!-- Push Notification Receiver - Handles notifications when app is in foreground -->
+        <receiver
+            android:name="com.dieam.reactnativepushnotification.modules.RNPushNotificationReceiver"
+            android:exported="true" />
+
+        <!-- Push Notification Boot Receiver - Restarts notifications after device reboot -->
+        <receiver
+            android:name="com.dieam.reactnativepushnotification.modules.RNPushNotificationBootEventReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Push Notification Listener Service - Handles incoming notifications -->
+        <service
+            android:name="com.dieam.reactnativepushnotification.modules.RNPushNotificationListenerService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
     </application>
 
-    <!-- ==================== QUERIES (Optional) ==================== -->
+    <!-- ==================== QUERIES ==================== -->
     
     <queries>
-        <!-- PDF viewing intent (optional) -->
+        <!-- PDF viewing intent -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/pdf" />

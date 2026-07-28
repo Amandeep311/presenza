@@ -23,91 +23,154 @@ target 'Presenza' do
     'PhotoLibrary',
   ])
 
-post_install do |installer|
-  # Standard React Native post-install
-  react_native_post_install(
-    installer,
-    config[:reactNativePath],
-    :mac_catalyst_enabled => false,
-  )
-
-  # Apply settings to all Pods
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      # React Native 0.83.x requires C++20
-      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
-      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-      config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'  # Changed from c99 to gnu99
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
-      config.build_settings['COMPILER_INDEX_STORE_ENABLE'] = 'NO'
-      config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
-      config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
-      config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
-      config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
-      config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
-      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-      
-      # Remove excluded architectures
-      config.build_settings.delete 'EXCLUDED_ARCHS'
-    end
-  end
-
-  # FIX 1: Override C++ standard for fmt pod to C++17
-  fmt_target = installer.pods_project.targets.find { |t| t.name == 'fmt' }
-  if fmt_target
-    fmt_target.build_configurations.each do |config|
-      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
-    end
-    puts "✅ Fixed fmt pod"
-  end
-
-  # FIX 2: Fix SocketRocket
-  socket_target = installer.pods_project.targets.find { |t| t.name == 'SocketRocket' }
-  if socket_target
-    socket_target.build_configurations.each do |config|
-      config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'
-      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-      config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
-      config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
-      config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
-    end
-    puts "✅ Fixed SocketRocket pod"
-  end
-
-  # FIX 3: Fix glog
-  glog_target = installer.pods_project.targets.find { |t| t.name == 'glog' }
-  if glog_target
-    glog_target.build_configurations.each do |config|
-      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
-    end
-  end
-
-  # Specifically target React Native libraries
-  [
-    'React-bridging',
-    'ReactCommon',
-    'React-runtimeexecutor',
-    'React-runtimescheduler'
-  ].each do |lib|
-    installer.pods_project.targets.find { |t| t.name == lib }&.build_configurations&.each do |config|
-      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
-      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
-    end
-  end
+  pod 'RNFBApp', :path => '../node_modules/@react-native-firebase/app'
+  pod 'RNFBMessaging', :path => '../node_modules/@react-native-firebase/messaging'
   
-  # Direct patch to fmt header
-  fmt_header = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
-  if File.exist?(fmt_header)
-    content = File.read(fmt_header)
-    patched = content.gsub(/^#elif defined\(__cpp_consteval\)\s*\n\s*#\s*define FMT_USE_CONSTEVAL 1/m, 
-                           "#elif defined(__cpp_consteval)\n#  define FMT_USE_CONSTEVAL 0")
-    if content != patched
-      File.write(fmt_header, patched)
-      puts "✅ Patched fmt/base.h"
+  # ADD THESE PODS WITH MODULAR HEADERS FIX
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseMessaging', :modular_headers => true
+  pod 'GoogleUtilities', :modular_headers => true
+  
+  post_install do |installer|
+    # Standard React Native post-install
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+    )
+
+    # Apply settings to all Pods
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        # React Native 0.83.x requires C++20
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
+        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+        config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        config.build_settings['COMPILER_INDEX_STORE_ENABLE'] = 'NO'
+        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+        config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+        config.build_settings['CLANG_WARN_DOCUMENTATION_COMMENTS'] = 'NO'
+        config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
+        config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
+        config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        
+        # 🔥 CRITICAL: Disable modules for problematic targets
+        if target.name.include?('React-RuntimeHermes') || target.name.include?('React-hermes')
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+          config.build_settings['DEFINES_MODULE'] = 'NO'
+          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        end
+        
+        # Remove excluded architectures
+        config.build_settings.delete 'EXCLUDED_ARCHS'
+      end
+    end
+
+    # 🔥 ADD: Fix React-RuntimeHermes specifically
+    hermes_target = installer.pods_project.targets.find { |t| t.name == 'React-RuntimeHermes' }
+    if hermes_target
+      hermes_target.build_configurations.each do |config|
+        config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+        config.build_settings['DEFINES_MODULE'] = 'NO'
+        config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
+        config.build_settings['HEADER_SEARCH_PATHS'] << '"${PODS_ROOT}/Headers/Public"'
+        config.build_settings['HEADER_SEARCH_PATHS'] << '"${PODS_ROOT}/Headers/Private"'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        config.build_settings['USE_HEADERMAP'] = 'NO'
+      end
+      puts "✅ Fixed React-RuntimeHermes"
+    end
+
+    # 🔥 ADD: Fix React-hermes
+    hermes_target = installer.pods_project.targets.find { |t| t.name == 'React-hermes' }
+    if hermes_target
+      hermes_target.build_configurations.each do |config|
+        config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+        config.build_settings['DEFINES_MODULE'] = 'NO'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+      puts "✅ Fixed React-hermes"
+    end
+
+    # FIX 1: Override C++ standard for fmt pod to C++17
+    fmt_target = installer.pods_project.targets.find { |t| t.name == 'fmt' }
+    if fmt_target
+      fmt_target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
+      end
+      puts "✅ Fixed fmt pod"
+    end
+
+    # FIX 2: Fix SocketRocket
+    socket_target = installer.pods_project.targets.find { |t| t.name == 'SocketRocket' }
+    if socket_target
+      socket_target.build_configurations.each do |config|
+        config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu99'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        config.build_settings['GCC_WARN_STRICT_PROTOTYPES'] = 'NO'
+        config.build_settings['GCC_WARN_ABOUT_MISSING_PROTOTYPES'] = 'NO'
+        config.build_settings['CLANG_WARN_IMPLICIT_FUNCTION_DECLARATION'] = 'NO'
+      end
+      puts "✅ Fixed SocketRocket pod"
+    end
+
+    # FIX 3: Fix glog
+    glog_target = installer.pods_project.targets.find { |t| t.name == 'glog' }
+    if glog_target
+      glog_target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+      end
+    end
+
+    # Specifically target React Native libraries
+    [
+      'React-bridging',
+      'ReactCommon',
+      'React-runtimeexecutor',
+      'React-runtimescheduler'
+    ].each do |lib|
+      installer.pods_project.targets.find { |t| t.name == lib }&.build_configurations&.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++20'
+        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+    end
+    
+    # Direct patch to fmt header
+    fmt_header = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_header)
+      content = File.read(fmt_header)
+      patched = content.gsub(/^#elif defined\(__cpp_consteval\)\s*\n\s*#\s*define FMT_USE_CONSTEVAL 1/m, 
+                             "#elif defined(__cpp_consteval)\n#  define FMT_USE_CONSTEVAL 0")
+      if content != patched
+        File.write(fmt_header, patched)
+        puts "✅ Patched fmt/base.h"
+      end
+    end
+    
+    # Firebase Fix - Fix GoogleUtilities module map issue
+    installer.pods_project.targets.each do |target|
+      if target.name == "GoogleUtilities"
+        target.build_configurations.each do |config|
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'MODULE_MAP=YES'
+          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        end
+        puts "✅ Fixed GoogleUtilities"
+      end
+      
+      # Fix Firebase pods
+      if target.name.start_with?("Firebase")
+        target.build_configurations.each do |config|
+          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FIRMessaging_USE_MODULAR_HEADERS=1'
+        end
+      end
     end
   end
-end
 end

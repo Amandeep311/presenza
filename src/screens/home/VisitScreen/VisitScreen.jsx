@@ -91,10 +91,10 @@ const VisitScreen = ({ navigation, route }) => {
   const todayRecord = history?.find(r => r.date?.split('T')[0] === today);
   const hasActiveSession = todayRecord?.isPunchedIn === true;
   
-  // ✅ Get isVisitActive from Redux - THIS IS THE SOURCE OF TRUTH
+  // Get isVisitActive from Redux - THIS IS THE SOURCE OF TRUTH
   const isVisitActive = todayRecord?.isVisitActive === true;
 
-  // ✅ visitStatus - Only two states: 'idle' or 'punched_in'
+  // visitStatus - Only two states: 'idle' or 'punched_in'
   // When isVisitActive is true -> punched_in (END VISIT)
   // When isVisitActive is false -> idle (START VISIT)
   const visitStatus = isVisitActive ? 'punched_in' : 'idle';
@@ -135,6 +135,9 @@ const VisitScreen = ({ navigation, route }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [userCoords, setUserCoords] = useState(null);
   const [isGettingAddress, setIsGettingAddress] = useState(false);
+  
+  // ✅ Location toast control
+  const [initialLocationLoaded, setInitialLocationLoaded] = useState(false);
 
   // ── Animations ─────────────────────────────────
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -147,7 +150,7 @@ const VisitScreen = ({ navigation, route }) => {
   const isLocationFetchingRef = useRef(false);
   const rotationLoopRef = useRef(null);
 
-  // ── ✅ Load visit data from history ──
+  // ── Load visit data from history ──
   const loadVisitData = useCallback(() => {
     console.log('🔍 Loading visit data...');
     console.log('📊 isVisitActive:', isVisitActive);
@@ -161,7 +164,7 @@ const VisitScreen = ({ navigation, route }) => {
     const allVisits = todayRecord.sessions?.flatMap(s => s.visits || []) || [];
     
     if (isVisitActive) {
-      // ✅ Active visit - Load visit data for display
+      // Active visit - Load visit data for display
       console.log('✅ Active visit found - showing END VISIT');
       const activeVisit = allVisits.find(v => v.status === 'IN_PROGRESS');
       
@@ -170,7 +173,13 @@ const VisitScreen = ({ navigation, route }) => {
         setCustomerName(activeVisit.customerName || '');
         setVisitPurpose(activeVisit.purpose || '');
         if (activeVisit.visitIn) {
-          setVisitPunchInTime(new Date(activeVisit.visitIn));
+          const punchInTime = new Date(activeVisit.visitIn);
+          setVisitPunchInTime(punchInTime);
+          
+          // ✅ Calculate duration from punch in time to now
+          const now = new Date();
+          const diffSeconds = Math.floor((now - punchInTime) / 1000);
+          setVisitDuration(diffSeconds > 0 ? diffSeconds : 0);
         }
         if (activeVisit.punchInLocation?.address) {
           setVisitAddress(activeVisit.punchInLocation.address);
@@ -181,7 +190,7 @@ const VisitScreen = ({ navigation, route }) => {
         }
       }
     } else {
-      // ✅ No active visit - Reset everything for START VISIT
+      // No active visit - Reset everything for START VISIT
       console.log('ℹ️ No active visit - showing START VISIT');
       setVisitPunchInTime(null);
       setVisitPunchOutTime(null);
@@ -200,14 +209,14 @@ const VisitScreen = ({ navigation, route }) => {
     setIsLoadingState(false);
   }, [todayRecord, isVisitActive]);
 
-  // ── ✅ Load data when component mounts or history changes ──
+  // ── Load data when component mounts or history changes ──
   useEffect(() => {
     if (history) {
       loadVisitData();
     }
   }, [history, loadVisitData]);
 
-  // ── ✅ Force refresh on focus ──
+  // ── Force refresh on focus ──
   useFocusEffect(
     useCallback(() => {
       console.log('🔄 Visit screen focused - refreshing history');
@@ -323,8 +332,8 @@ const VisitScreen = ({ navigation, route }) => {
     }
   }, []);
 
-  // ── Update location automatically ──
-  const updateLocation = useCallback(async () => {
+  // ── Update location with toast control ──
+  const updateLocation = useCallback(async (isUserInitiated = false) => {
     if (isLocationFetchingRef.current) return;
 
     isLocationFetchingRef.current = true;
@@ -345,25 +354,38 @@ const VisitScreen = ({ navigation, route }) => {
           locationData.longitude
         );
 
+        // ✅ Only show toast on user-initiated refresh or first successful load
+        const shouldShowToast = isUserInitiated || !initialLocationLoaded;
+
         if (address) {
           setVisitAddress(address);
-          showToast('Location updated successfully', 'success');
+          if (shouldShowToast) {
+            showToast('Location updated successfully', 'success');
+          }
         } else {
           setVisitAddress(
             `${locationData.latitude.toFixed(6)}, ${locationData.longitude.toFixed(6)}`
           );
-          showToast('Location coordinates captured', 'info');
+          if (shouldShowToast) {
+            showToast('Location coordinates captured', 'info');
+          }
+        }
+
+        if (!initialLocationLoaded) {
+          setInitialLocationLoaded(true);
         }
       }
     } catch (error) {
       console.log('Location error:', error);
-      showToast('Failed to get location', 'error');
+      if (isUserInitiated || !initialLocationLoaded) {
+        showToast('Failed to get location', 'error');
+      }
     } finally {
       setIsCheckingLocation(false);
       setLocationCheckDone(true);
       isLocationFetchingRef.current = false;
     }
-  }, [getCurrentLocationData, getAddressFromCoordsAPI]);
+  }, [getCurrentLocationData, getAddressFromCoordsAPI, initialLocationLoaded]);
 
   // ── Initialize animations and location ──
   useEffect(() => {
@@ -385,8 +407,9 @@ const VisitScreen = ({ navigation, route }) => {
       }),
     ]).start();
 
+    // Initial load - no toast
     const timer = setTimeout(() => {
-      updateLocation();
+      updateLocation(false);
     }, 500);
 
     const timeInterval = setInterval(() => {
@@ -407,33 +430,46 @@ const VisitScreen = ({ navigation, route }) => {
       const now = Date.now();
       if (nextAppState === 'active' && now - lastCheckRef.current > 5000) {
         lastCheckRef.current = now;
-        updateLocation();
+        // Silent background refresh - no toast
+        updateLocation(false);
       }
     });
     return () => subscription.remove();
   }, [updateLocation]);
 
   // ── Duration timer ──
+  // ✅ Fixed: Timer now works with visitPunchInTime
   useEffect(() => {
-    if (visitStatus === 'punched_in') {
+    // Clear existing timer
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+
+    if (visitStatus === 'punched_in' && visitPunchInTime) {
+      // ✅ Calculate initial duration from punch in time
+      const now = new Date();
+      const initialDuration = Math.floor((now - visitPunchInTime) / 1000);
+      setVisitDuration(initialDuration > 0 ? initialDuration : 0);
+
+      // ✅ Start timer to update duration every second
       durationTimerRef.current = setInterval(() => {
         setVisitDuration(prev => prev + 1);
       }, 1000);
     } else {
-      if (durationTimerRef.current) {
-        clearInterval(durationTimerRef.current);
-        durationTimerRef.current = null;
+      // Reset duration when visit is not active
+      if (visitStatus !== 'punched_in') {
+        setVisitDuration(0);
       }
-      // ✅ Reset duration when visit ends
-      setVisitDuration(0);
     }
 
     return () => {
       if (durationTimerRef.current) {
         clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
       }
     };
-  }, [visitStatus]);
+  }, [visitStatus, visitPunchInTime]);
 
   // ── Manage rotation animation ──
   useEffect(() => {
@@ -1046,7 +1082,7 @@ const VisitScreen = ({ navigation, route }) => {
           style: 'destructive',
           onPress: async () => {
             if (!userCoords) {
-              await updateLocation();
+              await updateLocation(true);
             }
 
             const hasPermissions = await quickCheckPermissions();
@@ -1092,10 +1128,10 @@ const VisitScreen = ({ navigation, route }) => {
                 });
                 showToast('Visit completed successfully', 'success');
                 
-                // ✅ Refresh history - This will update isVisitActive to false
+                // Refresh history - This will update isVisitActive to false
                 await dispatch(getAttendanceHistory());
                 
-                // ✅ Navigate back after successful completion
+                // Navigate back after successful completion
                 setTimeout(() => {
                   navigation.goBack();
                 }, 1500);
@@ -1139,7 +1175,7 @@ const VisitScreen = ({ navigation, route }) => {
 
     if (!userCoords) {
       showToast('Getting current location...', 'info');
-      await updateLocation();
+      await updateLocation(true);
       if (!userCoords) {
         showToast('Unable to get location. Please try again.', 'error');
         return;
@@ -1169,7 +1205,9 @@ const VisitScreen = ({ navigation, route }) => {
     console.log('✅ Visit In photo captured successfully');
 
     // ✅ Set punch in time
-    setVisitPunchInTime(new Date());
+    const punchInTime = new Date();
+    setVisitPunchInTime(punchInTime);
+    setVisitDuration(0);
 
     setIsProcessing(true);
     setUiState('loading');
@@ -1191,11 +1229,12 @@ const VisitScreen = ({ navigation, route }) => {
         });
         showToast('Visit started successfully', 'success');
         
-        // ✅ Refresh history to get updated isVisitActive
+        // Refresh history to get updated isVisitActive
         await dispatch(getAttendanceHistory());
         console.log('✅ Visit started, refreshing history...');
       } else {
         setVisitPunchInTime(null);
+        setVisitDuration(0);
         setUiState('error');
         setStepStatuses({
           location: 'success',
@@ -1206,6 +1245,7 @@ const VisitScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       setVisitPunchInTime(null);
+      setVisitDuration(0);
       setUiState('error');
       showToast('Failed to start visit', 'error');
     } finally {
@@ -1214,61 +1254,61 @@ const VisitScreen = ({ navigation, route }) => {
   };
 
   // ── Visit Punch Out ──
-const handleVisitPunchOut = async () => {
-  console.log('🔄 handleVisitPunchOut called');
-  console.log('📊 visitStatus:', visitStatus);
-  
-  if (visitStatus !== 'punched_in') {
-    showToast('No active visit to end', 'error');
-    return;
-  }
+  const handleVisitPunchOut = async () => {
+    console.log('🔄 handleVisitPunchOut called');
+    console.log('📊 visitStatus:', visitStatus);
+    
+    if (visitStatus !== 'punched_in') {
+      showToast('No active visit to end', 'error');
+      return;
+    }
 
-  console.log('✅ Showing remarks modal');
-  setShowRemarksModal(true);
-};
+    console.log('✅ Showing remarks modal');
+    setShowRemarksModal(true);
+  };
 
-// ── Main punch handler ──
-const handlePunch = async () => {
-  console.log('🔄 handlePunch called');
-  console.log('📊 visitStatus:', visitStatus);
-  console.log('📊 isSalesTeam:', isSalesTeam);
-  console.log('📊 hasActiveSession:', hasActiveSession);
-  
-  if (!isSalesTeam) {
-    showToast('Visit feature is only available for sales team', 'error');
-    return;
-  }
+  // ── Main punch handler ──
+  const handlePunch = async () => {
+    console.log('🔄 handlePunch called');
+    console.log('📊 visitStatus:', visitStatus);
+    console.log('📊 isSalesTeam:', isSalesTeam);
+    console.log('📊 hasActiveSession:', hasActiveSession);
+    
+    if (!isSalesTeam) {
+      showToast('Visit feature is only available for sales team', 'error');
+      return;
+    }
 
-  if (visitStatus === 'punched_in') {
-    console.log('✅ Visit is active, calling handleVisitPunchOut');
-    await handleVisitPunchOut();
-    return;
-  }
+    if (visitStatus === 'punched_in') {
+      console.log('✅ Visit is active, calling handleVisitPunchOut');
+      await handleVisitPunchOut();
+      return;
+    }
 
-  if (!hasActiveSession) {
-    Alert.alert(
-      'Punch In Required',
-      'You need to punch in first before starting a visit.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Go to Punch In',
-          onPress: () => navigation.navigate('DailyPunch'),
-        },
-      ],
-    );
-    return;
-  }
+    if (!hasActiveSession) {
+      Alert.alert(
+        'Punch In Required',
+        'You need to punch in first before starting a visit.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Go to Punch In',
+            onPress: () => navigation.navigate('DailyPunch'),
+          },
+        ],
+      );
+      return;
+    }
 
-  console.log('✅ Starting new visit');
-  await handleVisitPunchIn();
-};
+    console.log('✅ Starting new visit');
+    await handleVisitPunchIn();
+  };
 
-  
-
+  // ── Manual location refresh (user initiated) ──
   const handleManualLocationRefresh = () => {
     if (!isCheckingLocation && !punchInLoading && !isProcessing && !isGettingAddress) {
-      updateLocation();
+      // User initiated - show toast
+      updateLocation(true);
     }
   };
 
@@ -1417,7 +1457,7 @@ const handlePunch = async () => {
                 styles.refreshLocationBtnSmall,
                 { backgroundColor: C.primary },
               ]}
-              onPress={updateLocation}
+              onPress={handleManualLocationRefresh}
               disabled={isFormDisabled || isCheckingLocation || isGettingAddress}
             >
               {isCheckingLocation || isGettingAddress ? (
@@ -1538,7 +1578,7 @@ const handlePunch = async () => {
   };
 
   // ── Debug logs ──
-  console.log('🔄 Render - isVisitActive:', isVisitActive, 'visitStatus:', visitStatus);
+  console.log('🔄 Render - isVisitActive:', isVisitActive, 'visitStatus:', visitStatus, 'duration:', visitDuration);
 
   // Show loading while restoring state
   if (isLoadingState) {
@@ -1853,7 +1893,7 @@ const handlePunch = async () => {
         </ScrollView>
       </Animated.View>
 
-      {/* ✅ Remarks Modal */}
+      {/* Remarks Modal */}
       {renderRemarksModal()}
     </MainLayout>
   );

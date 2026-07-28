@@ -39,6 +39,7 @@ import {
   Briefcase,
   MapPin,
   Send,
+  Eye,
 } from 'lucide-react-native';
 import { Colors, Fonts } from '../../../utils/GlobalText';
 import { useTheme } from '../../../context/ThemeContext';
@@ -47,6 +48,7 @@ import { setAlert } from '../../../store/actions/authActions';
 import { ReusableCalendar } from '../../../components/common/ReusableCalendar';
 import { showToast } from '../../../components/common/ToastProvider';
 import { getEmployeeProfile } from '../../../store/actions/employeeActions';
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const USER_BRANCH = 'CHD'; // Current user's branch
@@ -575,6 +577,92 @@ const calculateLeaveDays = (
 const today = new Date();
 const todayStr = today.toISOString().split('T')[0];
 
+// ─── Rejection Reason Modal ──────────────────────────────────────────────────
+
+const RejectionReasonModal = ({ visible, reason, onClose, theme }) => {
+  const C = theme.colors;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={[styles.popupOverlay, { backgroundColor: C.overlayBg }]}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View
+          style={[
+            styles.rejectionModalCard,
+            { backgroundColor: C.surfaceSolid, borderColor: C.border },
+          ]}
+        >
+          <View style={styles.rejectionModalHeader}>
+            <View
+              style={[
+                styles.rejectionModalIconWrap,
+                { backgroundColor: C.error + '15' },
+              ]}
+            >
+              <AlertTriangle size={wp('5%')} color={C.error} />
+            </View>
+            <Text style={[styles.rejectionModalTitle, { color: C.textPrimary }]}>
+              Rejection Reason
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[
+                styles.rejectionModalClose,
+                { backgroundColor: C.background, borderColor: C.border },
+              ]}
+            >
+              <X size={wp('4%')} color={C.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.rejectionModalDivider,
+              { backgroundColor: C.border },
+            ]}
+          />
+
+          <View style={styles.rejectionModalBody}>
+            <View
+              style={[
+                styles.rejectionReasonBox,
+                {
+                  backgroundColor: C.background,
+                  borderColor: C.error + '30',
+                },
+              ]}
+            >
+              <Text style={[styles.rejectionReasonLabel, { color: C.textSecondary }]}>
+                Remarks:
+              </Text>
+              <Text style={[styles.rejectionReasonText, { color: C.textPrimary }]}>
+                {reason || 'No reason provided'}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.rejectionModalBtn, { backgroundColor: C.primary }]}
+            onPress={onClose}
+          >
+            <Text style={[styles.rejectionModalBtnText, { color: '#fff' }]}>
+              Got it
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const LeaveScreen = ({ navigation }) => {
@@ -594,6 +682,10 @@ const LeaveScreen = ({ navigation }) => {
   const MAX_WORDS = 30;
   const [refreshing, setRefreshing] = useState(false);
 
+  // ─── Rejection Reason Modal State ─────────────────────────────────────────
+  const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState('');
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
 
@@ -606,10 +698,12 @@ const LeaveScreen = ({ navigation }) => {
       setRefreshing(false);
     }
   }, [dispatch]);
+
   const countWords = text => {
     if (!text.trim()) return 0;
     return text.trim().split(/\s+/).length;
   };
+
   const handleTextChange = text => {
     const words = countWords(text);
     if (words <= MAX_WORDS) {
@@ -617,141 +711,13 @@ const LeaveScreen = ({ navigation }) => {
       setWordCount(words);
       if (reasonError) setReasonError('');
     } else {
-      // Show alert when trying to exceed limit
       Alert.alert(
         'Word Limit Exceeded',
         `You can only enter up to ${MAX_WORDS} words. Current words: ${wordCount}`,
         [{ text: 'OK' }],
       );
-      // Don't update the text
       return;
     }
-  };
-  // Inside the component, add the getDayInfo function:
-  const getDayInfoForCalendar = (day, dateStr) => {
-    const dayOfWeek = new Date(year, currentMonth, day).getDay();
-    const isSunday = dayOfWeek === 0;
-    const isSecondSat = day === secondSat;
-    const isFourthSat = day === fourthSat;
-    const holiday = HOLIDAY_MAP[dateStr];
-    const isPast = new Date(dateStr) < new Date(todayStr);
-
-    const branchHoliday = holiday
-      ? isHolidayForBranch(dateStr, USER_BRANCH)
-      : null;
-    const isHalf =
-      branchHoliday &&
-      (branchHoliday.type === 'half1' || branchHoliday.type === 'half2');
-    const isFullHoliday = branchHoliday && branchHoliday.type === 'full';
-
-    const isOff = isSunday || isSecondSat || isFourthSat;
-    const inRange =
-      startDate && endDate && dateStr >= startDate && dateStr <= endDate;
-    const isStart = dateStr === startDate;
-    const isEnd = dateStr === (endDate || startDate);
-    const isSingleSelected = isStart && (!endDate || startDate === endDate);
-    const isRangeMid = inRange && !isStart && !isEnd;
-    const isRangeStart = isStart && startDate !== endDate && endDate;
-    const isRangeEnd = isEnd && startDate !== endDate && endDate;
-
-    let backgroundColor = 'transparent';
-    let textColor = C.textPrimary;
-    let fontFamily = Fonts.medium;
-    let borderColor = 'transparent';
-    let borderWidth = 0;
-    let showDot = false;
-    let dotColor = '';
-    let showHalfIcon = false;
-    let halfIconColor = '';
-    let isHoliday = false;
-    let holidayInfo = null;
-
-    if (isPast) {
-      textColor = C.disabled;
-    }
-
-    if (isOff && !holiday) {
-      backgroundColor = C.error + '12';
-      textColor = C.error;
-      fontFamily = Fonts.bold;
-      isHoliday = true;
-    }
-
-    if (isFullHoliday && branchHoliday) {
-      backgroundColor = C.primary + '18';
-      textColor = C.primary;
-      fontFamily = Fonts.bold;
-      showDot = true;
-      dotColor = C.primary;
-      isHoliday = true;
-      holidayInfo = {
-        name: holiday.name,
-        type: 'full',
-        color: C.primary,
-        branches: Object.entries(holiday.branches).map(([b, t]) => ({
-          name: b,
-          color: t === 'full' ? C.primary : C.warning,
-          isUser: b === USER_BRANCH,
-        })),
-      };
-    }
-
-    if (isHalf && branchHoliday) {
-      backgroundColor = C.warning + '18';
-      textColor = C.warning;
-      fontFamily = Fonts.bold;
-      showHalfIcon = true;
-      halfIconColor = C.warning;
-      isHoliday = true;
-      holidayInfo = {
-        name: holiday.name,
-        type: branchHoliday.type,
-        color: C.warning,
-        branches: Object.entries(holiday.branches).map(([b, t]) => ({
-          name: b,
-          color: t === 'full' ? C.primary : C.warning,
-          isUser: b === USER_BRANCH,
-        })),
-      };
-    }
-
-    if (isSingleSelected) {
-      backgroundColor = C.primary;
-      textColor = '#fff';
-      borderColor = C.primary;
-    }
-
-    if (isRangeStart || isRangeEnd) {
-      backgroundColor = C.primary;
-      textColor = '#fff';
-    }
-
-    if (isRangeMid) {
-      backgroundColor = C.primary + '28';
-      textColor = C.primary;
-    }
-
-    return {
-      backgroundColor,
-      textColor,
-      fontFamily,
-      borderColor,
-      borderWidth,
-      showDot,
-      dotColor,
-      showHalfIcon,
-      halfIconColor,
-      isHoliday,
-      holidayInfo,
-      isWeeklyOff: isOff && !holiday,
-      isSunday,
-      isSecondSat,
-      isFourthSat,
-      holiday: holidayInfo,
-      branches: holidayInfo?.branches || [],
-      holidayColor: isFullHoliday ? C.primary : isHalf ? C.warning : null,
-      holidayType: isFullHoliday ? 'full' : isHalf ? branchHoliday?.type : null,
-    };
   };
 
   const { profile } = useSelector(state => state.employeeProfile);
@@ -778,17 +744,14 @@ const LeaveScreen = ({ navigation }) => {
   const totalLeaveBalance = LEAVE_BALANCE.total.total;
   const shortRemaining = LEAVE_BALANCE.short.remainingThisMonth;
 
-  // Get current month from API if available, otherwise calculate
   const currentMonthLeaveRemaining =
     userProfile.currentMonthLeaveRemaining !== undefined
       ? userProfile.currentMonthLeaveRemaining
       : 2.5;
   const currentMonthLeaveUsed = userProfile.currentMonthLeaveUsed || 0;
 
-  // Determine monthly leave allocation based on month
   const getMonthlyLeaveAllocation = () => {
-    const currentMonth = new Date().getMonth(); // 0-based: 2=March, 7=August
-    // March (2) and August (7) get 3.5, others get 2.5
+    const currentMonth = new Date().getMonth();
     if (currentMonth === 2 || currentMonth === 7) return 3.5;
     return 2.5;
   };
@@ -846,12 +809,10 @@ const LeaveScreen = ({ navigation }) => {
       const result = await dispatch(fetchLeaves());
       console.log('Fetch leaves result: ', result);
 
-      // Handle different response formats
       if (result?.success && result?.data) {
         setMyLeaves(result.data);
         console.log('✅ Leaves set successfully:', result.data.length);
       } else if (result?.data) {
-        // If the result has data but no success flag
         setMyLeaves(result.data);
         console.log('✅ Leaves set successfully (alternative):', result.data.length);
       } else {
@@ -863,6 +824,7 @@ const LeaveScreen = ({ navigation }) => {
       setMyLeaves([]);
     }
   };
+
   const toggleLeaves = () => {
     const toValue = leavesExpanded ? 0 : 1;
     Animated.timing(leavesAnim, {
@@ -873,18 +835,12 @@ const LeaveScreen = ({ navigation }) => {
     setLeavesExpanded(v => !v);
   };
 
-  // Add this helper function at the top of the component (after const declarations)
   const formatLeaveDays = days => {
     if (!days && days !== 0) return '0';
-    // For 0.25, show 0.25 only
     if (days === 0.25) return '0.25';
-    // For other decimals, check if it's a whole number
     if (Number.isInteger(days)) return days.toString();
-    // For 0.5, show 0.5 (not 0.50)
     if (days === 0.5) return '0.5';
-    // For any other decimal, show with 2 decimals only if needed
     const fixed = days.toFixed(2);
-    // Remove trailing .00
     return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed;
   };
 
@@ -911,7 +867,6 @@ const LeaveScreen = ({ navigation }) => {
     const date = new Date(dateStr);
     if (isNaN(date)) return '';
 
-    // 🔥 IMPORTANT FIX
     if (isEndDate) {
       date.setDate(date.getDate() - 1);
     }
@@ -934,7 +889,6 @@ const LeaveScreen = ({ navigation }) => {
 
     if (isNaN(s) || isNaN(e)) return 0;
 
-    // 🧠 FIX: if endDate is exactly next day 00:00 → reduce 1 day
     const isMidnight =
       e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0;
 
@@ -965,7 +919,7 @@ const LeaveScreen = ({ navigation }) => {
       setShortHalfType('half2');
     }
   }, [leaveType, startDate]);
-  // Listen for leaves state changes from Redux
+
   const { leaves } = useSelector(state => state.leave || { leaves: [] });
 
   useEffect(() => {
@@ -1044,8 +998,9 @@ const LeaveScreen = ({ navigation }) => {
     }
   }, [isMultiDay]);
 
+  const toastGuardRef = useRef(false);
+  const TOAST_GUARD_DELAY = 2000;
 
-  // Safe toast - only shows once within the delay period
   const safeToast = (message, type = 'error', duration = 3000) => {
     if (toastGuardRef.current) {
       console.log('🚫 Toast blocked - already shown recently');
@@ -1060,6 +1015,10 @@ const LeaveScreen = ({ navigation }) => {
       toastGuardRef.current = false;
     }, TOAST_GUARD_DELAY);
   };
+
+  const globalToastLock = useRef(false);
+  const LAST_TOAST_TIME = useRef(0);
+  const LOCK_DURATION = 3000;
 
   const ultraSafeToast = (message, type = 'error', duration = 3000) => {
     const now = Date.now();
@@ -1077,13 +1036,11 @@ const LeaveScreen = ({ navigation }) => {
   const handleDayPress = day => {
     if (!day) return;
 
-    // Prevent rapid taps
     if (globalTapLock.current) {
       console.log('👆 Tap blocked - too fast');
       return;
     }
 
-    // Set tap lock
     globalTapLock.current = true;
     setTimeout(() => {
       globalTapLock.current = false;
@@ -1093,7 +1050,6 @@ const LeaveScreen = ({ navigation }) => {
     const dateObj = new Date(dateStr);
     const todayOnly = new Date(todayStr);
 
-    // Past date - show info popup (no toast)
     if (dateObj < todayOnly) {
       const holiday = HOLIDAY_MAP[dateStr];
       const dayOfWeek = new Date(dateStr).getDay();
@@ -1102,7 +1058,6 @@ const LeaveScreen = ({ navigation }) => {
       const isFourthSat = day === fourthSat;
 
       if (holiday || isSunday || isSecondSat || isFourthSat) {
-        // Only show popup if not already showing
         if (!popupVisible) {
           setSelectedDate({
             day,
@@ -1118,7 +1073,6 @@ const LeaveScreen = ({ navigation }) => {
       return;
     }
 
-    // Check for end date validation
     if (selectionMode === 'end' && dateStr === startDate && leaveType !== 'half' && leaveType !== 'short') {
       ultraSafeToast('Please select a different date for end date', 'info');
       return;
@@ -1127,9 +1081,7 @@ const LeaveScreen = ({ navigation }) => {
     const branchHoliday = isHolidayForBranch(dateStr, USER_BRANCH);
     const off = isWeeklyOff(dateStr);
 
-    // Full holiday
     if (branchHoliday && branchHoliday.type === 'full' && !off) {
-      // Only show modal if not already showing
       if (!leaveAlertVisible) {
         setLeaveAlertData({
           type: 'full_holiday',
@@ -1142,7 +1094,6 @@ const LeaveScreen = ({ navigation }) => {
       return;
     }
 
-    // Half holiday
     if (branchHoliday && (branchHoliday.type === 'half1' || branchHoliday.type === 'half2')) {
       if (!leaveAlertVisible) {
         setLeaveAlertData({
@@ -1158,7 +1109,6 @@ const LeaveScreen = ({ navigation }) => {
       return;
     }
 
-    // Weekly off - show popup
     if (off) {
       if (!popupVisible) {
         const holiday = HOLIDAY_MAP[dateStr];
@@ -1214,7 +1164,6 @@ const LeaveScreen = ({ navigation }) => {
   }, [selectionMode, startDate, leaveType]);
 
   const showHolidayInfo = (day, dateStr) => {
-    // Prevent multiple popups
     if (isProcessingTapRef.current) {
       return;
     }
@@ -1271,18 +1220,15 @@ const LeaveScreen = ({ navigation }) => {
       todayDate.getDate() === day;
     const isPast = new Date(dateStr) < new Date(todayStr);
 
-    // FIX: Properly determine if date is in range
     let inRange = false;
     let isStart = false;
     let isEnd = false;
 
     if (startDate && endDate) {
-      // Both dates selected - proper range
       inRange = dateStr >= startDate && dateStr <= endDate;
       isStart = dateStr === startDate;
       isEnd = dateStr === endDate;
     } else if (startDate && !endDate) {
-      // Only start date selected
       inRange = dateStr === startDate;
       isStart = dateStr === startDate;
       isEnd = false;
@@ -1323,42 +1269,26 @@ const LeaveScreen = ({ navigation }) => {
     if (startDate !== todayDateStr) return true;
 
     if (isAllLeaveBlocked) {
-      // Alert.alert(
-      //   'Leave Not Allowed',
-      //   t?.leave?.blockedAfter630 ||
-      //     'Leave cannot be applied for today after 6:30 PM',
-      // );
       showToast('Leave cannot be applied for today after 6:30 PM', 'warning');
-
       return false;
     }
 
     if (leaveType === 'short' && shortHalfType === 'half1') {
       if (currentMinutes > 11 * 60 + 30) {
-        // Alert.alert(
-        //   'Short Leave Not Allowed',
-        //   'First Half short leave can only be applied before 11:30 AM.',
-        // );First Half short leave can only be applied before 11:30 AM
         showToast(
           'First Half short leave can only be applied before 11:30 AM',
           'warning',
         );
-
         return false;
       }
     }
 
     if (leaveType === 'half' && halfDayType === 'half1') {
       if (currentMinutes > 12 * 60) {
-        // Alert.alert(
-        //   'Half Day Leave Not Allowed',
-        //   'First Half half-day leave must be applied before 12:00 PM.',
-        // );
         showToast(
           'First Half half-day leave must be applied before 12:00 PM.',
           'warning',
         );
-
         return false;
       }
     }
@@ -1366,54 +1296,40 @@ const LeaveScreen = ({ navigation }) => {
     return true;
   };
 
-  // Refs for scrolling
   const scrollViewRef = useRef(null);
   const endDateRef = useRef(null);
   const leaveTypeRef = useRef(null);
   const reasonRef = useRef(null);
 
-
   const isPopupOpenRef = useRef(false);
-  // Add this with your other refs
   const lastTapTimeRef = useRef(0);
   const isProcessingTapRef = useRef(false);
   const lastToastTimeRef = useRef(0);
   const lastToastMessageRef = useRef('');
-  const DEBOUNCE_DELAY = 2000; // 2 seconds delay
-  const toastGuardRef = useRef(false);
+  const DEBOUNCE_DELAY = 2000;
   const tapGuardRef = useRef(false);
-  const TOAST_GUARD_DELAY = 2000; // 2 seconds
-  let globalToastShown = false;
-  const toastResetTimeout = useRef(null);
-  const globalToastLock = useRef(false);
   const globalTapLock = useRef(false);
-  const LAST_TOAST_TIME = useRef(0);
-  const LOCK_DURATION = 3000;
+  const toastResetTimeout = useRef(null);
+  let globalToastShown = false;
 
   const showDebouncedToast = (message, type = 'error', duration = 3000) => {
-    // Global flag to prevent ANY toast within the delay period
     if (globalToastShown) {
       console.log('Global toast blocked - already shown');
       return;
     }
 
-
-
     const now = Date.now();
-    // Check if same message was shown within DEBOUNCE_DELAY
     if (now - lastToastTimeRef.current < DEBOUNCE_DELAY &&
       lastToastMessageRef.current === message) {
       console.log('Toast debounced - already shown recently:', message);
       return;
     }
 
-    // Set global flag
     globalToastShown = true;
     lastToastTimeRef.current = now;
     lastToastMessageRef.current = message;
     showToast(message, type, duration);
 
-    // Reset global flag after delay
     if (toastResetTimeout.current) {
       clearTimeout(toastResetTimeout.current);
     }
@@ -1453,36 +1369,14 @@ const LeaveScreen = ({ navigation }) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setLeaveType(type);
 
-    // For half day or short leave, set end date to start date if not set
     if ((type === 'half' || type === 'short') && startDate && !endDate) {
       setEndDate(startDate);
     }
 
-    // Scroll to reason section after selection
     setTimeout(() => {
       scrollToSection(reasonRef);
     }, 300);
   };
-
-  // const handleConfirm = () => {
-  //   if (!remarks.trim()) {
-  //     // remarks not defined in LeaveScreen
-  //     alert(t.breaks.reasonRequired || 'Please enter a reason for break');
-  //     return;
-  //   }
-  //   if (wordCount > MAX_WORDS) {
-  //     alert(`Please limit your reason to ${MAX_WORDS} words or less`);
-  //     return;
-  //   }
-  //   onConfirm(breakType, remarks); // onConfirm not defined
-  //   resetForm();
-  // };
-
-  // const resetForm = () => {
-  //   setRemarks(''); // setRemarks not defined
-  //   setBreakType('LUNCH'); // setBreakType not defined
-  //   setWordCount(0);
-  // };
 
   const handleApplyLeave = async () => {
     if (!startDate || !leaveCalc) return;
@@ -1528,33 +1422,19 @@ const LeaveScreen = ({ navigation }) => {
         }).start();
         setReason('');
 
-        // ✅ REFRESH BOTH - Leave history AND Employee profile (for updated balance)
-        console.log('🔄 Refreshing data after successful leave application...');
-
-        // Fetch leaves and update myLeaves state
         const leavesResult = await dispatch(fetchLeaves());
-        console.log('Leaves result:', leavesResult);
-
         if (leavesResult?.success && leavesResult?.data) {
           setMyLeaves(leavesResult.data);
-          console.log('✅ Leaves updated:', leavesResult.data.length);
         } else if (leavesResult?.data) {
-          // If the result doesn't have a success flag but has data
           setMyLeaves(leavesResult.data);
-          console.log('✅ Leaves updated (alternative):', leavesResult.data.length);
         } else {
-          // Fallback: try to get leaves from Redux state
           const state = useSelector(state => state.leave);
           if (state?.leaves) {
             setMyLeaves(state.leaves);
-            console.log('✅ Leaves updated from Redux:', state.leaves.length);
           }
         }
 
-        // Fetch employee profile for updated balance
         await dispatch(getEmployeeProfile());
-
-        console.log('✅ Data refresh complete');
       } else {
         showToast(result?.error || 'Something went wrong', 'warning');
       }
@@ -1565,12 +1445,19 @@ const LeaveScreen = ({ navigation }) => {
       setIsSubmitting(false);
     }
   };
+
   const scrollToTop = () => {
     setTimeout(() => {
       if (scrollViewRef.current) {
         scrollViewRef.current.scrollTo({ y: 0, animated: true });
       }
     }, 100);
+  };
+
+  // ─── Handle View Rejection Reason ────────────────────────────────────────
+  const handleViewRejectionReason = (rejectionReason) => {
+    setSelectedRejectionReason(rejectionReason || 'No reason provided');
+    setRejectionModalVisible(true);
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -1608,11 +1495,6 @@ const LeaveScreen = ({ navigation }) => {
             </Text>
           </View>
         </View>
-        {/* <View
-          style={[styles.headerIcon, { backgroundColor: C.primary + '20' }]}
-        >
-         
-        </View> */}
       </View>
 
       <ScrollView
@@ -1942,14 +1824,6 @@ const LeaveScreen = ({ navigation }) => {
                   >
                     {LEAVE_BALANCE.total.used} {t?.leave?.usedLabel || 'used'} {""}
                   </Text>
-                  {/* <Text
-                    style={[
-                      styles.balanceAllocationText,
-                      { color: C.primary + '80' },
-                    ]}
-                  >
-                    +{monthlyLeaveAllocation}/mo
-                  </Text> */}
                 </View>
               </View>
 
@@ -2025,24 +1899,11 @@ const LeaveScreen = ({ navigation }) => {
                   />
                 </View>
                 <View style={styles.balanceInfoRow}>
-
                   <Text
                     style={[styles.balanceUsedText, { color: C.textSecondary }]}
                   >
                     {currentMonthLeaveUsed} used
                   </Text>
-                  {/* <Text style={[styles.balanceUsedText, { color: C.textSecondary }]}>
-                  </Text>
-                  <Text
-                    style={[
-                      styles.balanceAllocationText,
-                      { color: C.success + '80' },
-                    ]}
-                  >
-                    {new Date().getMonth() === 2 || new Date().getMonth() === 7
-                      ? '3.5/mo'
-                      : '2.5/mo'}
-                  </Text> */}
                 </View>
               </View>
 
@@ -2119,19 +1980,11 @@ const LeaveScreen = ({ navigation }) => {
                   >
                     {LEAVE_BALANCE.short.usedThisMonth} used {" "}
                   </Text>
-                  {/* <Text
-                    style={[
-                      styles.balanceAllocationText,
-                      { color: C.warning + '80' },
-                    ]}
-                  >
-                    Resets monthly
-                  </Text> */}
                 </View>
               </View>
-{/* ------------------------------------------------------ */}
 
-  <View
+              {/* Loss of Pay */}
+              <View
                 style={[
                   styles.balanceCard,
                   {
@@ -2140,7 +1993,7 @@ const LeaveScreen = ({ navigation }) => {
                   },
                 ]}
               >
-               <View
+                <View
                   style={[
                     styles.balanceCardTop,
                     { backgroundColor: C.lime + '12' },
@@ -2149,10 +2002,8 @@ const LeaveScreen = ({ navigation }) => {
                   <Text
                     style={[styles.balanceCardRemaining, { color: C.lime }]}
                   >
-                      {userProfile?.currentMonthLeaveLop}
-
+                    {userProfile?.currentMonthLeaveLop || 0}
                   </Text>
-                 
                 </View>
                 <View style={styles.balanceCardLabelRow}>
                   <Text
@@ -2180,15 +2031,12 @@ const LeaveScreen = ({ navigation }) => {
                       styles.balanceBarFill,
                       {
                         width: "100%",
-                        backgroundColor: C.lime 
+                        backgroundColor: C.lime
                       },
                     ]}
                   />
                 </View>
-              
               </View>
-
-
             </ScrollView>
           </View>
 
@@ -2222,45 +2070,6 @@ const LeaveScreen = ({ navigation }) => {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Instruction */}
-          {/* <View
-            style={[
-              styles.instructionBanner,
-              {
-                backgroundColor:
-                  selectionMode === 'start'
-                    ? C.primary + '12'
-                    : C.success + '12',
-                borderColor:
-                  selectionMode === 'start'
-                    ? C.primary + '40'
-                    : C.success + '40',
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.instructionDot,
-                {
-                  backgroundColor:
-                    selectionMode === 'start' ? C.primary : C.success,
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.instructionText,
-                { color: selectionMode === 'start' ? C.primary : C.success },
-              ]}
-            >
-              {selectionMode === 'start'
-                ? t?.leave?.tapStartDate ||
-                  '📅 Tap a date on calendar to set Start Date'
-                : t?.leave?.tapEndDate ||
-                  '📅 Tap another date to set End Date (or same date for single day)'}
-            </Text>
-          </View> */}
 
           {/* Date row */}
           <View style={styles.datePickerRow}>
@@ -2507,15 +2316,10 @@ const LeaveScreen = ({ navigation }) => {
                   ]}
                   onPress={() => {
                     if (isHalfDayHalf1Blocked) {
-                      // Alert.alert(
-                      //   'Not Allowed',
-                      //   'First Half leave must be applied before 12:00 PM.',
-                      // );
                       showToast(
                         'First Half leave must be applied before 12:00 PM.',
                         'warning',
                       );
-
                       return;
                     }
                     setHalfDayType('half1');
@@ -2720,15 +2524,10 @@ const LeaveScreen = ({ navigation }) => {
                   ]}
                   onPress={() => {
                     if (isShortLeaveHalf1Blocked) {
-                      // Alert.alert(
-                      //   'Not Allowed',
-                      //   'First Half short leave must be applied before 11:30 AM.',
-                      // );
                       showToast(
                         'First Half short leave must be applied before 11:30 AM.',
                         'warning',
                       );
-
                       return;
                     }
                     setShortHalfType('half1');
@@ -3010,47 +2809,6 @@ const LeaveScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* Sandwich Warning */}
-              {/* {leaveCalc.sandwichWarning && (
-                <View
-                  style={[
-                    styles.sandwichWarningRow,
-                    {
-                      borderTopColor: C.warning + '30',
-                      backgroundColor: C.warning + '10',
-                    },
-                  ]}
-                >
-                  <AlertTriangle size={wp('3.5%')} color={C.warning} />
-                  <Text
-                    style={[styles.sandwichWarningText, { color: C.warning }]}
-                  >
-                    {leaveCalc.sandwichWarning.message}
-                  </Text>
-                </View>
-              )} */}
-
-              {/* Sandwich counted days */}
-              {/* {leaveCalc.breakdown.some(b => b.isSandwich) && (
-                <View
-                  style={[
-                    styles.freeNoteRow,
-                    {
-                      borderTopColor: C.warning + '30',
-                      backgroundColor: C.warning + '08',
-                    },
-                  ]}
-                >
-                  <AlertTriangle size={wp('3%')} color={C.warning} />
-                  <Text style={[styles.freeNoteText, { color: C.warning }]}>
-                    🥪 {leaveCalc.breakdown.filter(b => b.isSandwich).length}{' '}
-                    {t?.leave?.sandwichCounted ||
-                      'sandwich day(s) counted — holiday between leave days'}
-                  </Text>
-                </View>
-              )}
-               */}
-
               {/* Free days note */}
               {leaveCalc.breakdown.some(b => b.count === 0) && (
                 <View
@@ -3075,9 +2833,6 @@ const LeaveScreen = ({ navigation }) => {
 
           {/* ── Leave Reason ── */}
           <View style={styles.reasonSection}>
-            {/* <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
-              {t?.leave?.reasonForLeave || 'Reason for Leave *'}
-            </Text> */}
             <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
               {t?.leave?.reasonForLeave ? t?.leave?.reasonForLeave.replace('*', '') : 'Reason for Leave '}
               <Text style={{ color: C.error }}>*</Text>
@@ -3102,7 +2857,7 @@ const LeaveScreen = ({ navigation }) => {
               }
               placeholderTextColor={C.disabled}
               value={reason}
-              onChangeText={handleTextChange} // instead of onChangeText={setRemarks}
+              onChangeText={handleTextChange}
               multiline
               numberOfLines={3}
             />
@@ -3303,7 +3058,6 @@ const LeaveScreen = ({ navigation }) => {
                 style={styles.leavesScrollView}
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={true}
-              // ref={scrollViewRef}
               >
                 {myLeaves
                   .slice()
@@ -3314,7 +3068,7 @@ const LeaveScreen = ({ navigation }) => {
                     const endDateFormatted = formatLeaveDate(
                       leave.endDate,
                       true,
-                    ); // 👈 yahan true
+                    );
                     const isShortOrHalf =
                       leave.leaveType.includes('SHORT') ||
                       leave.leaveType.includes('HALF');
@@ -3322,11 +3076,8 @@ const LeaveScreen = ({ navigation }) => {
                     const isMultiDay =
                       !isShortOrHalf && startDateFormatted !== endDateFormatted;
 
-                    const isSingleDayLeave =
-                      leave.leaveType?.includes('SHORT') ||
-                      leave.leaveType?.includes('HALF');
-
                     const totalDays = calculateLeaveDaysSimple(leave);
+                    const isRejected = leave.status?.toUpperCase() === 'REJECTED';
 
                     return (
                       <View
@@ -3400,6 +3151,33 @@ const LeaveScreen = ({ navigation }) => {
                           </Text>
                         </View>
 
+                        {/* ✅ Rejection Reason - Show only for REJECTED status */}
+                        {isRejected && leave.rejectionReason && (
+                          <TouchableOpacity
+                            style={[
+                              styles.rejectionReasonRow,
+                              {
+                                backgroundColor: C.error + '10',
+                                borderColor: C.error + '30',
+                              },
+                            ]}
+                            onPress={() => handleViewRejectionReason(leave.rejectionReason)}
+                            activeOpacity={0.7}
+                          >
+                            <AlertTriangle size={wp('3%')} color={C.error} />
+                            <Text
+                              style={[
+                                styles.rejectionReasonText,
+                                { color: C.error },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              Rejected: {leave.rejectionReason}
+                            </Text>
+                            <Eye size={wp('3%')} color={C.primary} />
+                          </TouchableOpacity>
+                        )}
+
                         {totalDays > 1 && (
                           <View style={styles.leaveDaysBadge}>
                             <Clock size={wp('2.5%')} color={C.success} />
@@ -3422,7 +3200,7 @@ const LeaveScreen = ({ navigation }) => {
           </Animated.View>
         </View>
 
-        {/* ── Legend (Collapsible) ── */}
+        {/* ── Legend ── */}
         <View
           style={[
             styles.legendCard,
@@ -4133,27 +3911,7 @@ const LeaveScreen = ({ navigation }) => {
                 'Your leave request has been submitted successfully and is pending approval.'}
             </Text>
 
-            {/* {((leaveType === 'short' && leaveCalc?.total > shortRemaining) ||
-              (leaveType !== 'short' && leaveCalc?.total > totalRemaining)) && (
-              <View
-                style={[
-                  styles.lopWarningInsideModal,
-                  {
-                    backgroundColor: C.warning + '15',
-                    borderColor: C.warning + '40',
-                    marginTop: hp('1%'),
-                  },
-                ]}
-              >
-                <AlertTriangle size={wp('4%')} color={C.warning} />
-                {leaveType === 'short'
-                  ? `${formatLeaveDays(leaveCalc.total - shortRemaining)} short leave day(s)`
-                  : `${formatLeaveDays(leaveCalc.total - totalRemaining)} day(s)`}
-              </View>
-            )} */}
-
             {/* Summary pill row */}
-            {/* Summary pill row - FIXED */}
             <View style={styles.successSummaryRow}>
               <View
                 style={[
@@ -4173,7 +3931,6 @@ const LeaveScreen = ({ navigation }) => {
                 </Text>
               </View>
 
-              {/* 🔥 FIX: Add null check for leaveCalc */}
               {leaveCalc && (
                 <View
                   style={[
@@ -4202,45 +3959,6 @@ const LeaveScreen = ({ navigation }) => {
                 </View>
               )}
             </View>
-
-            {/* Leave Status from API */}
-            {/* {leaveResponse?.status && (
-              <View
-                style={[
-                  styles.leaveStatusBadge,
-                  {
-                    backgroundColor:
-                      leaveResponse.status === 'PENDING'
-                        ? C.warning + '20'
-                        : C.success + '20',
-                    borderColor:
-                      leaveResponse.status === 'PENDING'
-                        ? C.warning
-                        : C.success,
-                  },
-                ]}
-              >
-                <Clock
-                  size={wp('3.5%')}
-                  color={
-                    leaveResponse.status === 'PENDING' ? C.warning : C.success
-                  }
-                />
-                <Text
-                  style={[
-                    styles.leaveStatusText,
-                    {
-                      color:
-                        leaveResponse.status === 'PENDING'
-                          ? C.warning
-                          : C.success,
-                    },
-                  ]}
-                >
-                  {leaveResponse.status}
-                </Text>
-              </View>
-            )} */}
 
             {/* Leave Status from API */}
             {leaveResponse?.status && (
@@ -4286,7 +4004,6 @@ const LeaveScreen = ({ navigation }) => {
               onPress={() => {
                 setSuccessModalVisible(false);
                 clearSelection();
-                // navigation.navigate('Home');
               }}
               activeOpacity={0.85}
             >
@@ -4311,6 +4028,14 @@ const LeaveScreen = ({ navigation }) => {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* ── Rejection Reason Modal ── */}
+      <RejectionReasonModal
+        visible={rejectionModalVisible}
+        reason={selectedRejectionReason}
+        onClose={() => setRejectionModalVisible(false)}
+        theme={theme}
+      />
     </View>
   );
 };
@@ -4320,9 +4045,7 @@ const LeaveScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingBottom: hp('3%') },
-  wordCounter: {
-    // No specific styles needed as inline styles are used
-  },
+  wordCounter: {},
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4479,23 +4202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  lopWarningInsideModal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('2%'),
-    padding: wp('3%'),
-    borderRadius: wp('2%'),
-    borderWidth: 1,
-    marginHorizontal: wp('5%'),
-    marginBottom: hp('1%'),
-  },
-  lopWarningText: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-    flex: 1,
-    textAlign: 'left',
-    lineHeight: 15,
-  },
   leavePanelTitle: { fontSize: wp('4%'), fontFamily: Fonts.bold, flex: 1 },
   clearBtn: {
     flexDirection: 'row',
@@ -4508,17 +4214,53 @@ const styles = StyleSheet.create({
   },
   clearBtnText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
 
-  instructionBanner: {
+  balanceStripWrap: { gap: hp('1%') },
+  balanceStripTitle: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.medium,
+    letterSpacing: 0.8,
+    paddingHorizontal: wp('0.5%'),
+  },
+  balanceStrip: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('2%'),
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('1%'),
+    gap: wp('2.5%'),
+    paddingHorizontal: wp('0.5%'),
+    paddingBottom: 2,
+  },
+  balanceCard: {
     borderRadius: wp('3%'),
     borderWidth: 1,
+    padding: wp('3%'),
+    gap: hp('0.4%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  instructionDot: { width: 7, height: 7, borderRadius: 4 },
-  instructionText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium, flex: 1 },
+  balanceCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 1,
+    paddingHorizontal: wp('1.5%'),
+    paddingVertical: hp('0.5%'),
+    borderRadius: wp('2%'),
+  },
+  balanceCardRemaining: {
+    fontSize: wp('5.5%'),
+    fontFamily: Fonts.bold,
+    lineHeight: wp('6%'),
+  },
+  balanceCardTotal: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.regular,
+    paddingBottom: wp('0.5%'),
+  },
+  balanceCardLabel: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+    marginTop: 2,
+  },
   balanceCardLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -4530,16 +4272,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontStyle: 'italic',
   },
+  balanceBar: { height: 3, borderRadius: 2, overflow: 'hidden', marginTop: 2 },
+  balanceBarFill: { height: '100%', borderRadius: 2 },
+  balanceUsedText: {
+    fontSize: wp('2.2%'),
+    fontFamily: Fonts.regular,
+    marginTop: 1,
+  },
   balanceInfoRow: {
     flexDirection: 'row',
-    // justifyContent: 'space-between',
-    // alignItems: 'center',
     marginTop: 1,
   },
   balanceAllocationText: {
     fontSize: wp('2.2%'),
     fontFamily: Fonts.medium,
   },
+  panelSectionDivider: { height: 1, marginVertical: hp('0.5%') },
+
   datePickerRow: { flexDirection: 'row', alignItems: 'center', gap: wp('2%') },
   datePickerBox: {
     flex: 1,
@@ -4568,8 +4317,196 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flex: 1,
   },
+  leaveTypeOption: {
+    flex: 1,
+    paddingVertical: hp('0.8%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
+  leaveTypeText: { fontSize: wp('3%'), fontFamily: Fonts.medium },
+  leaveTypeDisabledTag: {
+    fontSize: wp('2%'),
+    fontFamily: Fonts.medium,
+    marginTop: 1,
+  },
+  multiDayHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('0.8%'),
+    borderRadius: wp('2.5%'),
+    borderWidth: 1,
+  },
+  multiDayHintText: { fontSize: wp('2.6%'), fontFamily: Fonts.medium, flex: 1 },
 
-  // Add to styles object
+  halfDaySection: {
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+    padding: wp('3%'),
+    gap: hp('1.2%'),
+  },
+  halfDaySectionLabel: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+    marginBottom: 2,
+  },
+  halfDayOptions: { flexDirection: 'row', gap: wp('2.5%') },
+  halfDayOption: {
+    flex: 1,
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+    padding: wp('3%'),
+    gap: hp('0.8%'),
+  },
+  halfDayOptionTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('1.5%'),
+  },
+  halfDayRadio: {
+    width: wp('4%'),
+    height: wp('4%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  halfDayRadioInner: {
+    width: wp('2%'),
+    height: wp('2%'),
+    borderRadius: wp('1%'),
+  },
+  halfDayOptionTitle: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.bold,
+    flex: 1,
+  },
+  halfDayLeaveTime: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+  },
+  halfDayWorkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: wp('2%'),
+    paddingVertical: hp('0.6%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  halfDayWorkTime: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.medium,
+    flex: 1,
+  },
+
+  shortLeaveNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('0.8%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  shortLeaveNoteText: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+    lineHeight: hp('2.2%'),
+  },
+
+  leaveResult: {
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  leaveResultMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('3%'),
+    padding: wp('3.5%'),
+  },
+  leaveResultCount: {
+    fontSize: wp('8%'),
+    fontFamily: Fonts.bold,
+    lineHeight: wp('8%'),
+  },
+  leaveResultUnit: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.regular,
+    marginTop: 2,
+  },
+  leaveResultDivider: { width: 1, height: hp('6%') },
+  leaveResultRange: { fontSize: wp('3%'), fontFamily: Fonts.medium },
+  leaveResultArrow: { fontSize: wp('2.8%'), fontFamily: Fonts.regular },
+  leaveResultTypeRow: { marginBottom: 4 },
+  leaveResultTypePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: wp('2.5%'),
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  leaveResultTypeText: { fontSize: wp('2.6%'), fontFamily: Fonts.bold },
+  freeNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: wp('3.5%'),
+    paddingVertical: hp('1%'),
+    borderTopWidth: 1,
+  },
+  freeNoteText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium, flex: 1 },
+
+  reasonSection: {
+    gap: hp('0.8%'),
+    marginTop: hp('0.5%'),
+  },
+  reasonLabel: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.medium,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderRadius: wp('3%'),
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('1.2%'),
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.regular,
+    minHeight: hp('8%'),
+    textAlignVertical: 'top',
+  },
+  reasonError: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.medium,
+  },
+
+  applyBtn: {
+    borderRadius: wp('3.5%'),
+    paddingVertical: hp('1.8%'),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: hp('0.5%'),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  applyBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2.5%'),
+  },
+  applyBtnText: {
+    fontSize: wp('4%'),
+    fontFamily: Fonts.bold,
+    letterSpacing: 0.2,
+  },
+
+  // ─── My Leaves Styles ────────────────────────────────────────────────────
   leavesCard: {
     marginHorizontal: wp('4%'),
     marginTop: hp('2%'),
@@ -4685,64 +4622,25 @@ const styles = StyleSheet.create({
     fontSize: wp('2.2%'),
     fontFamily: Fonts.medium,
   },
-  leaveTypeOption: {
-    flex: 1,
-    paddingVertical: hp('0.8%'),
+
+  // ─── Rejection Reason Styles ─────────────────────────────────────────────
+  rejectionReasonRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
+    gap: wp('2%'),
+    paddingHorizontal: wp('2.5%'),
+    paddingVertical: hp('0.6%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginTop: hp('0.5%'),
   },
-  leaveTypeText: { fontSize: wp('3%'), fontFamily: Fonts.medium },
-  leaveTypeDisabledTag: {
-    fontSize: wp('2%'),
+  rejectionReasonText: {
+    fontSize: wp('2.6%'),
     fontFamily: Fonts.medium,
-    marginTop: 1,
+    flex: 1,
   },
-  multiDayHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('0.8%'),
-    borderRadius: wp('2.5%'),
-    borderWidth: 1,
-  },
-  multiDayHintText: { fontSize: wp('2.6%'), fontFamily: Fonts.medium, flex: 1 },
 
-  leaveResult: {
-    borderRadius: wp('3%'),
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  leaveResultMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('3%'),
-    padding: wp('3.5%'),
-  },
-  leaveResultCount: {
-    fontSize: wp('8%'),
-    fontFamily: Fonts.bold,
-    lineHeight: wp('8%'),
-  },
-  leaveResultUnit: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.regular,
-    marginTop: 2,
-  },
-  leaveResultDivider: { width: 1, height: hp('6%'), backgroundColor: '#0002' },
-  leaveResultRange: { fontSize: wp('3%'), fontFamily: Fonts.medium },
-  leaveResultArrow: { fontSize: wp('2.8%'), fontFamily: Fonts.regular },
-  freeNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: wp('3.5%'),
-    paddingVertical: hp('1%'),
-    borderTopWidth: 1,
-  },
-  freeNoteText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium, flex: 1 },
-
+  // ─── Legend Styles ───────────────────────────────────────────────────────
   legendCard: {
     marginHorizontal: wp('4%'),
     marginTop: hp('2%'),
@@ -4805,6 +4703,7 @@ const styles = StyleSheet.create({
   },
   legendText: { fontSize: wp('2.8%'), fontFamily: Fonts.regular, flex: 1 },
 
+  // ─── Holiday List Styles ─────────────────────────────────────────────────
   holidayList: { marginHorizontal: wp('4%'), marginTop: hp('2%') },
   holidayListTitle: {
     fontSize: wp('2.6%'),
@@ -4870,6 +4769,7 @@ const styles = StyleSheet.create({
   },
   branchPillText: { fontSize: wp('2.3%'), fontFamily: Fonts.medium },
 
+  // ─── Note Card ───────────────────────────────────────────────────────────
   noteCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -4886,6 +4786,7 @@ const styles = StyleSheet.create({
     lineHeight: hp('2.5%'),
   },
 
+  // ─── Popup Styles ────────────────────────────────────────────────────────
   popupOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -4934,6 +4835,7 @@ const styles = StyleSheet.create({
   },
   popupBranchLabel: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
 
+  // ─── Alert Modal Styles ──────────────────────────────────────────────────
   alertCard: {
     borderRadius: wp('5%'),
     padding: wp('6%'),
@@ -4984,188 +4886,7 @@ const styles = StyleSheet.create({
   },
   alertBtnOutlineText: { fontSize: wp('3.5%'), fontFamily: Fonts.medium },
 
-  balanceStripWrap: { gap: hp('1%') },
-  balanceStripTitle: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.medium,
-    letterSpacing: 0.8,
-    paddingHorizontal: wp('0.5%'),
-  },
-  balanceStrip: {
-    flexDirection: 'row',
-    gap: wp('2.5%'),
-    paddingHorizontal: wp('0.5%'),
-    paddingBottom: 2,
-  },
-  balanceCard: {
-    // width: wp('30%'),
-    borderRadius: wp('3%'),
-    borderWidth: 1,
-    padding: wp('3%'),
-    gap: hp('0.4%'),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  balanceCardTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 1,
-    paddingHorizontal: wp('1.5%'),
-    paddingVertical: hp('0.5%'),
-    borderRadius: wp('2%'),
-  },
-  balanceCardRemaining: {
-    fontSize: wp('5.5%'),
-    fontFamily: Fonts.bold,
-    lineHeight: wp('6%'),
-  },
-  balanceCardTotal: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.regular,
-    paddingBottom: wp('0.5%'),
-  },
-  balanceCardLabel: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-    marginTop: 2,
-  },
-  balanceBar: { height: 3, borderRadius: 2, overflow: 'hidden', marginTop: 2 },
-  balanceBarFill: { height: '100%', borderRadius: 2 },
-  balanceUsedText: {
-    fontSize: wp('2.2%'),
-    fontFamily: Fonts.regular,
-    marginTop: 1,
-  },
-  panelSectionDivider: { height: 1, marginVertical: hp('0.5%') },
-
-  halfDaySection: {
-    borderRadius: wp('3%'),
-    borderWidth: 1,
-    padding: wp('3%'),
-    gap: hp('1.2%'),
-  },
-  halfDaySectionLabel: {
-    fontSize: wp('2.8%'),
-    fontFamily: Fonts.medium,
-    marginBottom: 2,
-  },
-  halfDayOptions: { flexDirection: 'row', gap: wp('2.5%') },
-  halfDayOption: {
-    flex: 1,
-    borderRadius: wp('3%'),
-    borderWidth: 1,
-    padding: wp('3%'),
-    gap: hp('0.8%'),
-  },
-  halfDayOptionTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('1.5%'),
-  },
-  halfDayRadio: {
-    width: wp('4%'),
-    height: wp('4%'),
-    borderRadius: wp('2%'),
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  halfDayRadioInner: {
-    width: wp('2%'),
-    height: wp('2%'),
-    borderRadius: wp('1%'),
-  },
-  halfDayOptionTitle: {
-    fontSize: wp('3%'),
-    fontFamily: Fonts.bold,
-    flex: 1,
-  },
-  halfDayLeaveTime: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.regular,
-  },
-  halfDayWorkBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: wp('2%'),
-    paddingVertical: hp('0.6%'),
-    borderRadius: wp('2%'),
-    borderWidth: 1,
-  },
-  halfDayWorkTime: {
-    fontSize: wp('2.4%'),
-    fontFamily: Fonts.medium,
-    flex: 1,
-  },
-
-  shortLeaveNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('0.8%'),
-    borderRadius: wp('2%'),
-    borderWidth: 1,
-  },
-  shortLeaveNoteText: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.regular,
-    flex: 1,
-    lineHeight: hp('2.2%'),
-  },
-
-  sandwichWarningRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingHorizontal: wp('3.5%'),
-    paddingVertical: hp('1.2%'),
-    borderTopWidth: 1,
-  },
-  sandwichWarningText: {
-    fontSize: wp('2.7%'),
-    fontFamily: Fonts.medium,
-    flex: 1,
-    lineHeight: hp('2.2%'),
-  },
-
-  applyBtn: {
-    borderRadius: wp('3.5%'),
-    paddingVertical: hp('1.8%'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: hp('0.5%'),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  applyBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp('2.5%'),
-  },
-  applyBtnText: {
-    fontSize: wp('4%'),
-    fontFamily: Fonts.bold,
-    letterSpacing: 0.2,
-  },
-
-  leaveResultCountWrap: { alignItems: 'center' },
-  leaveResultTypeRow: { marginBottom: 4 },
-  leaveResultTypePill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: wp('2.5%'),
-    paddingVertical: 3,
-    borderRadius: 20,
-  },
-  leaveResultTypeText: { fontSize: wp('2.6%'), fontFamily: Fonts.bold },
-
+  // ─── Success Modal Styles ───────────────────────────────────────────────
   successCard: {
     borderRadius: wp('5%'),
     width: '100%',
@@ -5239,29 +4960,93 @@ const styles = StyleSheet.create({
     marginTop: hp('0.5%'),
   },
 
-  reasonSection: {
-    gap: hp('0.8%'),
-    marginTop: hp('0.5%'),
+  // ─── Rejection Modal Styles ─────────────────────────────────────────────
+  rejectionModalCard: {
+    borderRadius: wp('5%'),
+    padding: wp('5%'),
+    width: '100%',
+    borderWidth: 1,
+    gap: hp('1%'),
   },
-  reasonLabel: {
-    fontSize: wp('3%'),
+  rejectionModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('3%'),
+  },
+  rejectionModalIconWrap: {
+    width: wp('10%'),
+    height: wp('10%'),
+    borderRadius: wp('5%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rejectionModalTitle: {
+    fontSize: wp('4%'),
+    fontFamily: Fonts.bold,
+    flex: 1,
+  },
+  rejectionModalClose: {
+    width: wp('8%'),
+    height: wp('8%'),
+    borderRadius: wp('2%'),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  rejectionModalDivider: {
+    height: 1,
+    marginVertical: hp('0.5%'),
+  },
+  rejectionModalBody: {
+    paddingVertical: hp('1%'),
+  },
+  rejectionReasonBox: {
+    padding: wp('3.5%'),
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+    gap: hp('0.5%'),
+  },
+  rejectionReasonLabel: {
+    fontSize: wp('2.8%'),
     fontFamily: Fonts.medium,
   },
-  reasonInput: {
-    borderWidth: 1,
-    borderRadius: wp('3%'),
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('1.2%'),
+  rejectionReasonText: {
     fontSize: wp('3.2%'),
     fontFamily: Fonts.regular,
-    minHeight: hp('8%'),
-    textAlignVertical: 'top',
+    lineHeight: hp('2.5%'),
   },
-  reasonError: {
-    fontSize: wp('2.6%'),
-    fontFamily: Fonts.medium,
+  rejectionModalBtn: {
+    paddingVertical: hp('1.5%'),
+    borderRadius: wp('3%'),
+    alignItems: 'center',
+    marginTop: hp('0.5%'),
+  },
+  rejectionModalBtnText: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.bold,
+    color: '#fff',
   },
 
+  // ─── LOP Warning Styles ──────────────────────────────────────────────────
+  lopWarningInsideModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    padding: wp('3%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginHorizontal: wp('5%'),
+    marginBottom: hp('1%'),
+  },
+  lopWarningText: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+    flex: 1,
+    textAlign: 'left',
+    lineHeight: 15,
+  },
+
+  // ─── Leave Status Badge ──────────────────────────────────────────────────
   leaveStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5277,6 +5062,43 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     letterSpacing: 0.5,
   },
+
+  // ─── Instruction Banner ──────────────────────────────────────────────────
+  instructionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('1%'),
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+  },
+  instructionDot: { width: 7, height: 7, borderRadius: 4 },
+  instructionText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium, flex: 1 },
+
+  // ─── Leaves Scroll View ──────────────────────────────────────────────────
+  leavesScrollView: {
+    maxHeight: hp('40%'),
+  },
+
+  // ─── Sandwich Warning ────────────────────────────────────────────────────
+  sandwichWarningRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: wp('3.5%'),
+    paddingVertical: hp('1.2%'),
+    borderTopWidth: 1,
+  },
+  sandwichWarningText: {
+    fontSize: wp('2.7%'),
+    fontFamily: Fonts.medium,
+    flex: 1,
+    lineHeight: hp('2.2%'),
+  },
+
+  // ─── Leave Result Count Wrap ────────────────────────────────────────────
+  leaveResultCountWrap: { alignItems: 'center' },
 });
 
 export default LeaveScreen;

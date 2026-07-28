@@ -26,6 +26,7 @@ import LogoHeader from '../../components/Login/LogoHeader';
 import PrimaryButton from '../../components/common/PrimaryButton';
 import OTPInput from '../../components/common/OTPInput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging from '@react-native-firebase/messaging';
 
 import {
   verifyOtp,
@@ -55,6 +56,42 @@ const VerifyOTP = ({ route, navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(hp('3%'))).current;
 
+  // ============ FCM TOKEN FUNCTIONS ============
+  const getFCMToken = async () => {
+    try {
+      // Check if messaging is available
+      if (!messaging) {
+        console.log('⚠️ Firebase messaging not available');
+        return null;
+      }
+
+      // Request permission for iOS
+      if (Platform.OS === 'ios') {
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (!enabled) {
+          console.log('⚠️ FCM permission denied on iOS');
+          return null;
+        }
+      }
+
+      // Get FCM token
+      const token = await messaging().getToken();
+      console.log('📱 FCM Token:', token);
+
+      // Store token in AsyncStorage for later use
+      await AsyncStorage.setItem('fcm_token', token);
+
+      return token;
+    } catch (error) {
+      console.log('❌ Error getting FCM token:', error);
+      return null;
+    }
+  };
+
   // ============ TIMER PERSISTENCE FUNCTIONS ============
   const saveTimerState = async expiryTime => {
     try {
@@ -71,7 +108,6 @@ const VerifyOTP = ({ route, navigation }) => {
       const savedEmployeeId = await AsyncStorage.getItem('otp_employee_id');
       const savedResendCount = await AsyncStorage.getItem('otp_resend_count');
 
-      // Check if saved state exists and matches current employee
       if (savedExpiry && savedEmployeeId === employeeId) {
         const expiryTime = parseInt(savedExpiry, 10);
         const now = Date.now();
@@ -102,7 +138,6 @@ const VerifyOTP = ({ route, navigation }) => {
     try {
       await AsyncStorage.removeItem('otp_timer_expiry');
       await AsyncStorage.removeItem('otp_resend_count');
-      // Don't remove employeeId immediately, keep for comparison
     } catch (error) {
       console.log('Error clearing timer state:', error);
     }
@@ -130,7 +165,6 @@ const VerifyOTP = ({ route, navigation }) => {
     return () => {
       console.log('🔐 VerifyOTP unmounted');
       dispatch({ type: RESET_SEND_OTP });
-      // Don't clear timer state on unmount - we want it to persist
     };
   }, []);
 
@@ -141,7 +175,6 @@ const VerifyOTP = ({ route, navigation }) => {
       interval = setInterval(() => {
         setTimer(prev => {
           const newTimer = prev - 1;
-          // Save expiry time when timer updates
           if (newTimer > 0) {
             const expiryTime = Date.now() + newTimer * 1000;
             saveTimerState(expiryTime);
@@ -151,7 +184,6 @@ const VerifyOTP = ({ route, navigation }) => {
       }, 1000);
     } else {
       setCanResend(true);
-      // Clear timer state when timer reaches 0
       clearTimerState();
     }
     return () => clearInterval(interval);
@@ -170,20 +202,41 @@ const VerifyOTP = ({ route, navigation }) => {
     }
 
     console.log('🔑 Verifying OTP for employee ID:', employeeId);
-    const result = await dispatch(verifyOtp(employeeId, otpString));
 
-    if (result.success) {
-      console.log('✅ OTP verified successfully');
-      // Clear timer state on successful verification
-      await clearTimerState();
-      dispatch(checkAuthState());
-    } else {
-      setOtp(['', '', '', '', '', '']);
+    try {
+      // Get FCM token
+      let fcmToken = await getFCMToken();
+      console.log("fcmToken--v---", fcmToken);
+
+      // If token is null or empty, try to get from AsyncStorage
+      if (!fcmToken) {
+        fcmToken = await AsyncStorage.getItem('fcm_token');
+      }
+
+      console.log('📱 Sending FCM Token with OTP verification:', fcmToken);
+
+      // Call verifyOtp with employeeId, otp, and fcmToken
+      const result = await dispatch(
+        verifyOtp(employeeId, otpString, fcmToken || '')
+      );
+
+      if (result.success) {
+        console.log('✅ OTP verified successfully');
+        await clearTimerState();
+        dispatch(checkAuthState());
+      } else {
+        setOtp(['', '', '', '', '', '']);
+      }
+    } catch (error) {
+      console.error('❌ Error in verify OTP:', error);
+      showToast(
+        error.message || 'Failed to verify OTP. Please try again.',
+        'error'
+      );
     }
   };
 
   const handleResendOtp = async () => {
-    // Check resend limit (max 3 attempts)
     if (resendCount >= 3) {
       showToast(
         'Maximum resend limit reached (3 attempts). Please try again later.',
@@ -199,26 +252,47 @@ const VerifyOTP = ({ route, navigation }) => {
 
     setResendLoading(true);
 
-    console.log('📧 Resending OTP for employee ID:', employeeId);
-    const result = await dispatch(resendOtp(employeeId));
+    try {
+      console.log('📧 Resending OTP for employee ID:', employeeId);
 
-    setResendLoading(false);
+      // Get FCM token for resend as well
+      let fcmToken = await getFCMToken();
+      console.log("fcmtoken---fcmToken-->", fcmToken);
 
-    if (result.success) {
-      // Increment resend count
-      const newCount = resendCount + 1;
-      setResendCount(newCount);
-      await AsyncStorage.setItem('otp_resend_count', newCount.toString());
+      if (!fcmToken) {
+        fcmToken = await AsyncStorage.getItem('fcm_token');
+      }
+      console.log("fcmtoken----->", fcmToken);
 
-      setTimer(30);
-      setCanResend(false);
-      setOtp(['', '', '', '', '', '']);
+      const result = await dispatch(resendOtp(employeeId, fcmToken || ''));
 
-      // Save new timer expiry
-      const expiryTime = Date.now() + 30 * 1000;
-      await saveTimerState(expiryTime);
+      if (result.success) {
+        const newCount = resendCount + 1;
+        setResendCount(newCount);
+        await AsyncStorage.setItem('otp_resend_count', newCount.toString());
 
-      showToast(t.alerts.otpSent || 'OTP resent successfully', 'success');
+        setTimer(30);
+        setCanResend(false);
+        setOtp(['', '', '', '', '', '']);
+
+        const expiryTime = Date.now() + 30 * 1000;
+        await saveTimerState(expiryTime);
+
+        showToast(t.alerts.otpSent || 'OTP resent successfully', 'success');
+      } else {
+        showToast(
+          result.error || 'Failed to resend OTP. Please try again.',
+          'error'
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error in resend OTP:', error);
+      showToast(
+        error.message || 'Failed to resend OTP. Please try again.',
+        'error'
+      );
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -230,7 +304,6 @@ const VerifyOTP = ({ route, navigation }) => {
     }
   };
 
-  // Check if resend button should be disabled
   const isResendDisabled = !canResend || resendCount >= 3 || resendLoading;
 
   return (
@@ -318,7 +391,6 @@ const VerifyOTP = ({ route, navigation }) => {
               )}
             </View>
 
-            {/* Show resend attempts remaining */}
             {resendCount > 0 && resendCount < 3 && (
               <Text style={[styles.resendInfoText, { color: C.textTertiary }]}>
                 {3 - resendCount} resend attempt(s) remaining
@@ -338,15 +410,10 @@ const VerifyOTP = ({ route, navigation }) => {
               disabled={otp.join('').length !== 6 || verifyOtpLoading}
               style={styles.verifyButton}
             />
-
-            {/* <Text style={[styles.helpText, { color: C.textSecondary }]}>
-              {t.otp.validity || 'OTP is valid for 5 minutes'}
-            </Text> */}
           </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
 
-      {/* Settings Button - Fixed at bottom, moved up */}
       <TouchableOpacity
         style={[styles.settingsButton, { backgroundColor: C.primary }]}
         onPress={() =>
@@ -361,13 +428,13 @@ const VerifyOTP = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  rootContainer: { 
+  rootContainer: {
     flex: 1,
     position: 'relative',
   },
   settingsButton: {
     position: 'absolute',
-    bottom: hp('6%'), // Moved up from bottom
+    bottom: hp('6%'),
     right: wp('6%'),
     width: wp('14%'),
     height: wp('14%'),
@@ -405,7 +472,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingTop: hp('20%'),
-    paddingBottom: hp('12%'), // Increased to prevent content hiding behind button
+    paddingBottom: hp('12%'),
   },
   backButton: {
     flexDirection: 'row',

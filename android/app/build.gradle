@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: 'com.google.gms.google-services'
 
 react {
     autolinkLibrariesWithApp()
@@ -18,8 +19,11 @@ android {
         applicationId "com.presenza"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 28
-        versionName "1.1.14"
+        versionCode 29
+        versionName "1.1.15"
+        
+        // ✅ Add this for vector drawables support
+        vectorDrawables.useSupportLibrary = true
     }
 
     signingConfigs {
@@ -61,15 +65,32 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-     lint {
+    
+    lint {
         checkReleaseBuilds false
         abortOnError false
     }
 }
 
 dependencies {
+    // ✅ React Native
     implementation("com.facebook.react:react-android")
+    
+    // ✅ File System
     implementation project(':react-native-fs')
+    
+    // ✅ Firebase / FCM
+    implementation platform('com.google.firebase:firebase-bom:34.16.0')
+    implementation 'com.google.firebase:firebase-analytics'
+    implementation 'com.google.firebase:firebase-messaging'
+    
+    // ✅ Push Notification - Add these dependencies
+    implementation project(':react-native-push-notification')
+    implementation 'androidx.core:core:1.9.0'
+    implementation 'androidx.work:work-runtime:2.8.1'
+    
+    // ✅ For vector drawable support (if needed)
+    implementation 'androidx.vectordrawable:vectordrawable:1.1.0'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -77,3 +98,13 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// ✅ Add these configurations at the bottom
+configurations.all {
+    resolutionStrategy {
+        force 'com.facebook.fbjni:fbjni:0.7.0'
+    }
+}
+
+// ✅ For Google Services
+apply plugin: 'com.google.gms.google-services'

@@ -1,3 +1,4 @@
+
 // src/screens/home/punch/DailyPunch.jsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
@@ -1252,3 +1253,4 @@ const styles = StyleSheet.create({
 });
 
 export default DailyPunch;
+

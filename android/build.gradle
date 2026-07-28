@@ -18,6 +18,23 @@ buildscript {
         classpath("com.android.tools.build:gradle:${androidGradlePluginVersion}")
         classpath("com.facebook.react:react-native-gradle-plugin:${reactNativeGradlePluginVersion}")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
+        classpath 'com.google.gms:google-services:4.5.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+        // ✅ For react-native-push-notification
+        maven {
+            url "https://jcenter.bintray.com"
+            content {
+                includeGroup "com.dieam.reactnativepushnotification"
+                includeGroup "com.google.android.exoplayer"
+            }
+        }
     }
 }
 

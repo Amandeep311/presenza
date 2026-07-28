@@ -1,3 +1,4 @@
+
 import {
   RefreshControl,
   ScrollView,
@@ -32,7 +33,6 @@ import {
 } from 'react-native-responsive-screen';
 import { Fonts } from '../../../utils/GlobalText';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-import { pick } from '@react-native-documents/picker';
 import {
   ChevronLeft,
   Plus,
@@ -55,6 +55,7 @@ import {
   User,
   Check,
   Printer,
+  Bike,
 } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -62,6 +63,13 @@ import {
   fetchExpenses,
 } from '../../../store/actions/expenseActions';
 import { requestCameraPermission, requestLocationPermission, quickCheckPermissions } from '../../../utils/permissions';
+import { pick } from '@react-native-documents/picker';
+import Share from 'react-native-share';
+import { printToFile, print } from 'react-native-print';
+
+
+// API Configuration
+const API_BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1';
 
 const Reimbursement = ({ navigation }) => {
   const { theme } = useTheme();
@@ -82,6 +90,15 @@ const Reimbursement = ({ navigation }) => {
   const { profile } = useSelector(state => state.employeeProfile);
   const { user } = useSelector(state => state.auth);
 
+  // ✅ FIX: Get token from multiple possible locations in Redux store
+  const authState = useSelector(state => state.auth);
+  console.log('🔍 Full auth state:', authState);
+
+  // Try different possible token locations
+  const token = authState?.token || authState?.accessToken || authState?.access_token || null;
+  console.log("🔑 Token found:", token ? 'Yes (length: ' + token.length + ')' : 'No');
+  console.log("🔑 Token value (first 20 chars):", token ? token.substring(0, 20) + '...' : 'undefined');
+
   // Get employee name from profile
   const employeeName = profile?.[0]?.fullName || user?.name || 'N/A';
 
@@ -99,6 +116,8 @@ const Reimbursement = ({ navigation }) => {
   const [otherExpenses, setOtherExpenses] = useState([]);
   const [kilometers, setKilometers] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [fuelPricePerKm, setFuelPricePerKm] = useState(null);
+  const [fetchingFuelRate, setFetchingFuelRate] = useState(false);
 
   const [showDatePickerModal, setShowDatePickerModal] = useState(false);
   const [tempDay, setTempDay] = useState(new Date().getDate());
@@ -111,7 +130,7 @@ const Reimbursement = ({ navigation }) => {
   // ============ CONSTANTS ============
   const AMOUNT_MAX_LENGTH = 5;
   const AMOUNT_MAX_VALUE = 100000;
-  const KM_MAX_VALUE = 1000;
+  const KM_MAX_VALUE = 100; // Max kilometers allowed
   const MAX_FILE_SIZE_MB = 5;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const LOCATION_MAX_LENGTH = 30;
@@ -160,6 +179,236 @@ const Reimbursement = ({ navigation }) => {
   // Helper function to get days in a month
   const getDaysInMonthForPicker = (month, year) => {
     return new Date(year, month, 0).getDate();
+  };
+
+  // ============ FUEL RATE API FUNCTION (CORRECTED) ============
+const fetchFuelRate = async (type, distanceKm) => {
+  if (!distanceKm || parseFloat(distanceKm) <= 0) {
+    setFuelPricePerKm(null);
+    setAmount('');
+    return;
+  }
+
+  // Only fetch for bike and car
+  if (type !== 'bike' && type !== 'car') {
+    setFuelPricePerKm(null);
+    setAmount('');
+    return;
+  }
+
+  // ✅ Check if token is available
+  if (!token) {
+    console.warn('⚠️ No auth token available for fuel rate API - using fallback rates');
+    const vehicleType = type === 'car' ? 'car' : 'bike';
+    const fallbackRate = vehicleType === 'car' ? 10 : 5;
+    setFuelPricePerKm(fallbackRate);
+    
+    const distance = parseFloat(distanceKm);
+    if (distance > 0) {
+      const calculatedAmount = distance * fallbackRate;
+      setAmount(Math.round(calculatedAmount).toString());
+    }
+    return;
+  }
+
+  try {
+    setFetchingFuelRate(true);
+    
+    // Map expense type to API expected format
+    const vehicleType = type === 'car' ? 'car' : 'bike';
+    
+    console.log('🔍 Fetching fuel rate for:', vehicleType);
+    
+    const response = await fetch(`${API_BASE_URL}/fuel-rates`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 Fuel rate response status:', response.status);
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} - ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('📦 RAW API RESPONSE DATA:', JSON.stringify(data, null, 2));
+
+    // --- UPDATED PARSING LOGIC START ---
+    let ratePerKm = null;
+
+    // 1. Check for standard structure: { success: true, data: [ ... ] }
+    if (data.success === true && Array.isArray(data.data) && data.data.length > 0) {
+        // We take the first item from the array
+        const firstItem = data.data[0];
+        
+        // Look for bike/car specific keys in the array item
+        // Based on your screenshot: "revisedTwoWheeler", "revisedRateFourWheeler"
+        if (vehicleType === 'bike') {
+            ratePerKm = firstItem.revisedTwoWheeler || firstItem.bikeRate || firstItem.twoWheelerRate || null;
+        } else if (vehicleType === 'car') {
+            ratePerKm = firstItem.revisedRateFourWheeler || firstItem.carRate || firstItem.fourWheelerRate || null;
+        }
+        console.log(`📌 Structure 1 (Standard) matched! Found rate for ${vehicleType}: ${ratePerKm}`);
+    }
+
+    // 2. Fallback to your previous Array logic if Structure 1 failed
+    if (!ratePerKm && Array.isArray(data)) {
+      const bikeItem = data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
+      const carItem = data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
+      
+      if (vehicleType === 'bike' && bikeItem) {
+        ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
+      } else if (vehicleType === 'car' && carItem) {
+        ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
+      }
+      console.log('📌 Structure 2 (Array) matched! Found rate:', ratePerKm);
+    }
+
+    // 3. Fallback to the previous parsing logic (just in case)
+    if (!ratePerKm && data.data && Array.isArray(data.data)) {
+      const bikeItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
+      const carItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
+      if (vehicleType === 'bike' && bikeItem) {
+        ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
+      } else if (vehicleType === 'car' && carItem) {
+        ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
+      }
+      console.log('📌 Structure 3 (Nested Array) matched! Found rate:', ratePerKm);
+    }
+    // --- UPDATED PARSING LOGIC END ---
+
+    // If we still don't have a rate, use fallback
+    if (!ratePerKm || ratePerKm === 0) {
+      console.warn(`⚠️ Could not find a valid rate in API response. Using fallback.`);
+      const fallbackRate = vehicleType === 'car' ? 10 : 5;
+      ratePerKm = fallbackRate;
+      console.log(`⚠️ Using fallback rate: ${ratePerKm}`);
+    }
+
+    console.log(`✅ Final rate for ${vehicleType}: ₹${ratePerKm}/km`);
+    
+    // Update State
+    setFuelPricePerKm(ratePerKm);
+    
+    // Auto-calculate amount based on kilometers and rate
+    const distance = parseFloat(distanceKm);
+    if (distance > 0 && ratePerKm > 0) {
+      const calculatedAmount = distance * ratePerKm;
+      const roundedAmount = Math.round(calculatedAmount);
+      setAmount(roundedAmount.toString());
+      console.log(`💰 Calculated amount: ${distance}km × ₹${ratePerKm} = ₹${roundedAmount}`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error fetching fuel rates:', error);
+    // Use fallback rates on error
+    const vehicleType = type === 'car' ? 'car' : 'bike';
+    const fallbackRate = vehicleType === 'car' ? 10 : 5;
+    console.warn(`⚠️ API Failed. Setting fallback rate for ${vehicleType}: ${fallbackRate}`);
+    setFuelPricePerKm(fallbackRate);
+    
+    const distance = parseFloat(distanceKm);
+    if (distance > 0) {
+      const calculatedAmount = distance * fallbackRate;
+      setAmount(Math.round(calculatedAmount).toString());
+    }
+    
+    // Show warning to user (only once per session to avoid spam)
+    if (!fetchFuelRate.warningShown) {
+      fetchFuelRate.warningShown = true;
+      Alert.alert(
+        'Note',
+        'Unable to fetch latest fuel rates. Using default rates for calculation.',
+        [{ text: 'OK' }]
+      );
+      setTimeout(() => {
+        fetchFuelRate.warningShown = false;
+      }, 10000);
+    }
+  } finally {
+    setFetchingFuelRate(false);
+  }
+};
+  // Static property to track warning display
+  fetchFuelRate.warningShown = false;
+
+  // ============ VALIDATION FUNCTIONS ============
+  const validateAmount = value => {
+    if (!value) return '';
+    const numValue = value.replace(/[^0-9]/g, '');
+    if (numValue === '') return '';
+    return numValue.slice(0, AMOUNT_MAX_LENGTH);
+  };
+
+  const validateKilometers = value => {
+    if (!value) return '';
+    const numValue = value.replace(/[^0-9]/g, '');
+    if (numValue === '') return '';
+
+    // Parse the numeric value
+    const numericValue = parseFloat(numValue);
+
+    // Check if value exceeds max limit
+    if (numericValue > KM_MAX_VALUE) {
+      Alert.alert(
+        'Distance Limit Exceeded',
+        `Maximum allowed distance is ${KM_MAX_VALUE} km. Please enter a valid distance.`,
+        [{ text: 'OK' }]
+      );
+      return KM_MAX_VALUE.toString(); // Return max value as string
+    }
+
+    return numValue.slice(0, 6);
+  };
+
+  const validateLocation = value => {
+    if (!value) return '';
+    return value.slice(0, LOCATION_MAX_LENGTH);
+  };
+
+  const validatePurpose = value => {
+    if (!value) return '';
+    return value.slice(0, PURPOSE_MAX_LENGTH);
+  };
+
+  const validateDescription = value => {
+    if (!value) return '';
+    return value.slice(0, DESCRIPTION_MAX_LENGTH);
+  };
+
+  // Handle kilometers change with fuel rate fetch and validation
+  const handleKilometersChange = (text) => {
+    // First validate and apply limit
+    const validated = validateKilometers(text);
+    setKilometers(validated);
+
+    // Fetch fuel rate when kilometers is valid and > 0
+    if (validated && parseFloat(validated) > 0 && parseFloat(validated) <= KM_MAX_VALUE) {
+      fetchFuelRate(expenseType, validated);
+    } else {
+      setFuelPricePerKm(null);
+      setAmount('');
+    }
+  };
+
+  // Handle expense type change
+  const handleExpenseTypeChange = (type) => {
+    setExpenseType(type);
+
+    // Reset fuel-related fields when switching to non-vehicle types
+    if (type !== 'bike' && type !== 'car') {
+      setFuelPricePerKm(null);
+      setAmount('');
+      setKilometers('');
+    } else if (kilometers && parseFloat(kilometers) > 0 && parseFloat(kilometers) <= KM_MAX_VALUE) {
+      // If switching between bike and car, recalculate with new rate
+      // Note: DO NOT setFuelPricePerKm(null) here! Let the fetch update it.
+      fetchFuelRate(type, kilometers);
+    }
   };
 
   // Handle From Date confirmation
@@ -315,36 +564,6 @@ const Reimbursement = ({ navigation }) => {
     setInitialLoadingDone(true);
   };
 
-  // ============ VALIDATION FUNCTIONS ============
-  const validateAmount = value => {
-    if (!value) return '';
-    const numValue = value.replace(/[^0-9]/g, '');
-    if (numValue === '') return '';
-    return numValue.slice(0, AMOUNT_MAX_LENGTH);
-  };
-
-  const validateKilometers = value => {
-    if (!value) return '';
-    const numValue = value.replace(/[^0-9]/g, '');
-    if (numValue === '') return '';
-    return numValue.slice(0, 6);
-  };
-
-  const validateLocation = value => {
-    if (!value) return '';
-    return value.slice(0, LOCATION_MAX_LENGTH);
-  };
-
-  const validatePurpose = value => {
-    if (!value) return '';
-    return value.slice(0, PURPOSE_MAX_LENGTH);
-  };
-
-  const validateDescription = value => {
-    if (!value) return '';
-    return value.slice(0, DESCRIPTION_MAX_LENGTH);
-  };
-
   // ============ HELPER FUNCTIONS ============
   const formatDDMMYYYY = dateStr => {
     if (!dateStr) return '';
@@ -417,9 +636,9 @@ const Reimbursement = ({ navigation }) => {
     if (!type) return 'Other';
     const typeStr = type.toLowerCase();
     if (typeStr.includes('car')) return 'Car';
+    if (typeStr.includes('bike') || typeStr.includes('two') || typeStr.includes('2wheeler')) return 'Bike';
     if (typeStr.includes('train')) return 'Train';
-    if (typeStr.includes('flight') || typeStr.includes('plane'))
-      return 'Flight';
+    if (typeStr.includes('flight') || typeStr.includes('plane')) return 'Flight';
     return 'Other';
   };
 
@@ -427,6 +646,8 @@ const Reimbursement = ({ navigation }) => {
     const typeStr = (type || '').toLowerCase();
     if (typeStr.includes('car')) {
       return <Car size={wp('4%')} color="#FF6B35" />;
+    } else if (typeStr.includes('bike') || typeStr.includes('two') || typeStr.includes('2wheeler')) {
+      return <Bike size={wp('4%')} color="#2ECC71" />;
     } else if (typeStr.includes('train')) {
       return <Train size={wp('4%')} color="#4A90E2" />;
     } else if (typeStr.includes('flight') || typeStr.includes('plane')) {
@@ -596,16 +817,54 @@ const Reimbursement = ({ navigation }) => {
     }
 
     try {
-      const result = await pick({
-        type: ['application/pdf'],
-        allowMultiSelection: false,
-        mode: 'import',
-      });
+      let pickConfig;
 
-      if (result && result.length > 0) {
-        const file = result[0];
+      if (Platform.OS === 'ios') {
+        pickConfig = {
+          type: ['public.content'],
+          allowMultiSelection: false,
+          mode: 'import',
+        };
+      } else {
+        pickConfig = {
+          type: ['application/pdf'],
+          allowMultiSelection: false,
+          mode: 'import',
+          copyToInternalStorage: true,
+        };
+      }
 
-        if (!validateFileSize(file.size)) {
+      console.log('📄 PDF Pick Config:', pickConfig);
+
+      const result = await pick(pickConfig);
+
+      console.log('📄 PDF Pick Result:', result);
+
+      const files = Array.isArray(result) ? result : (result ? [result] : []);
+
+      if (files.length > 0) {
+        const file = files[0];
+
+        if (!file || !file.uri) {
+          console.log('No file selected');
+          return;
+        }
+
+        const fileName = (file.name || '').toLowerCase();
+        const isPDF = fileName.endsWith('.pdf') ||
+          file.mimeType === 'application/pdf' ||
+          file.type === 'application/pdf';
+
+        if (!isPDF) {
+          Alert.alert('Invalid File', 'Please select a PDF file');
+          return;
+        }
+
+        if (file.size && file.size > MAX_FILE_SIZE_BYTES) {
+          Alert.alert(
+            'File Too Large',
+            `${MAX_FILE_SIZE_MB}MB maximum file size allowed.`
+          );
           return;
         }
 
@@ -614,21 +873,26 @@ const Reimbursement = ({ navigation }) => {
           uri: file.uri,
           type: 'pdf',
           name: file.name || `document_${Date.now()}.pdf`,
-          size: file.size,
+          size: file.size || 0,
           mimeType: 'application/pdf',
         };
 
         setSelectedFiles(prev => [...prev, pdfFile]);
-        Alert.alert('Success', 'PDF selected');
+        Alert.alert('Success', 'PDF selected successfully');
       }
     } catch (error) {
+      console.log('PDF Picker Error:', error);
+
       if (error.code === 'DOCUMENT_PICKER_CANCELED' ||
+        error.code === 'OPERATION_CANCELED' ||
         error.code === 3072 ||
-        error.message?.includes('canceled')) {
+        error.message?.includes('canceled') ||
+        error.message?.includes('cancelled')) {
         console.log('User canceled PDF picker');
         return;
       }
-      Alert.alert('Error', 'Failed to pick PDF: ' + error.message);
+
+      Alert.alert('Error', 'Failed to pick PDF: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -770,7 +1034,7 @@ const Reimbursement = ({ navigation }) => {
     }
   };
 
-  // ============ DOWNLOAD RECEIPT ============
+  // ============ DOWNLOAD RECEIPT - FIXED ============
   const handleDownloadReceipt = async (receiptUrl) => {
     if (!receiptUrl) {
       Alert.alert('Error', 'No receipt available');
@@ -783,7 +1047,6 @@ const Reimbursement = ({ navigation }) => {
       const fileName = receiptUrl.split('/').pop();
       const extension = fileName.split('.').pop()?.toLowerCase();
 
-      // Check if extension is allowed
       const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
       if (!allowedExtensions.includes(extension?.toLowerCase())) {
         Alert.alert('Error', 'Unsupported file type');
@@ -791,7 +1054,41 @@ const Reimbursement = ({ navigation }) => {
         return;
       }
 
-      const downloadPath = `${RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath}/${fileName}`;
+      // Use DocumentDirectoryPath for better compatibility
+      const downloadPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      // Check if file already exists
+      const fileExists = await RNFS.exists(downloadPath);
+      if (fileExists) {
+        // File already exists, offer to open it
+        Alert.alert(
+          'File Already Exists',
+          'The file is already downloaded. Would you like to open it?',
+          [
+            {
+              text: 'Open',
+              onPress: async () => {
+                try {
+                  let mimeType = '*/*';
+                  if (extension === 'pdf') mimeType = 'application/pdf';
+                  else if (['jpg', 'jpeg'].includes(extension)) mimeType = 'image/jpeg';
+                  else if (extension === 'png') mimeType = 'image/png';
+
+                  await FileViewer.open(downloadPath, {
+                    showOpenWithDialog: true,
+                    mimeType,
+                  });
+                } catch (error) {
+                  Alert.alert('Error', 'Cannot open file');
+                }
+              }
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+        setOpeningFile(false);
+        return;
+      }
 
       const downloadResult = await RNFS.downloadFile({
         fromUrl: receiptUrl,
@@ -802,7 +1099,7 @@ const Reimbursement = ({ navigation }) => {
       if (downloadResult.statusCode === 200) {
         Alert.alert(
           'Download Successful',
-          `File saved to: ${downloadPath}`,
+          `File saved successfully!`,
           [
             {
               text: 'Open File',
@@ -830,13 +1127,17 @@ const Reimbursement = ({ navigation }) => {
       }
     } catch (error) {
       console.log('DOWNLOAD ERROR =>', error);
-      Alert.alert('Error', 'Failed to download receipt');
+      Alert.alert('Error', 'Failed to download receipt: ' + error.message);
     } finally {
       setOpeningFile(false);
     }
   };
 
-  // ============ GENERATE AND DOWNLOAD PDF ============
+  // OR if the above doesn't work, use:
+  // import { printToFile } from 'react-native-print';
+
+  // ============ GENERATE AND DOWNLOAD PDF - USING REACT-NATIVE-PRINT ============
+  // ============ GENERATE AND DOWNLOAD PDF - FIXED ============
   const generateExpensePDF = async (request) => {
     try {
       setDownloadingPDF(true);
@@ -844,134 +1145,429 @@ const Reimbursement = ({ navigation }) => {
       const status = (request.status || '').toUpperCase();
       const isApproved = status === 'APPROVED';
       const isRejected = status === 'REJECTED';
-      
-      // ✅ Get approvedBy from the request object
+
       const approvedByName = request.approvedBy?.fullName || '—';
       const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
-      
-      // Build formatted text content
-      const line = '═'.repeat(60);
-      const thinLine = '─'.repeat(60);
-      
-      let content = [];
-      content.push(line);
-      content.push('              EXPENSE REIMBURSEMENT DETAILS');
-      content.push(line);
-      content.push('');
-      content.push(`Generated on: ${new Date().toLocaleString()}`);
-      content.push('');
-      content.push(thinLine);
-      content.push('');
-      content.push(`STATUS: ${status}`);
-      content.push('');
-      content.push(thinLine);
-      content.push('');
-      content.push('📋 TRAVEL INFORMATION');
-      content.push(thinLine);
-      content.push(`Travel Type: ${getTravelTypeLabel(request.travelType)}`);
-      content.push(`From Location: ${request.fromLocation || 'N/A'}`);
-      content.push(`To Location: ${request.toLocation || 'N/A'}`);
-      content.push(`From Date: ${request.fromDate ? formatDate(request.fromDate) : 'N/A'}`);
-      content.push(`To Date: ${request.toDate ? formatDate(request.toDate) : 'N/A'}`);
-      if (request.distanceKm) {
-        content.push(`Distance: ${request.distanceKm} km`);
+
+      // Create HTML content for PDF
+      const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: Arial, Helvetica, sans-serif; 
+            padding: 40px; 
+            color: #333;
+            background: #fff;
+            font-size: 14px;
+          }
+          .header { 
+            text-align: center; 
+            border-bottom: 3px solid #2c3e50; 
+            padding-bottom: 20px; 
+            margin-bottom: 20px; 
+          }
+          .title { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #2c3e50; 
+            margin: 0; 
+          }
+          .subtitle { 
+            font-size: 14px; 
+            color: #7f8c8d; 
+            margin-top: 5px; 
+          }
+          .status-badge { 
+            display: inline-block; 
+            padding: 8px 20px; 
+            border-radius: 20px; 
+            font-weight: bold; 
+            font-size: 14px; 
+          }
+          .status-APPROVED { background: #2ecc71; color: white; }
+          .status-PENDING { background: #f39c12; color: white; }
+          .status-REJECTED { background: #e74c3c; color: white; }
+          .section { 
+            margin-top: 25px; 
+          }
+          .section-title { 
+            font-size: 18px; 
+            font-weight: bold; 
+            color: #2c3e50; 
+            border-bottom: 2px solid #ecf0f1; 
+            padding-bottom: 10px; 
+            margin-bottom: 15px; 
+          }
+          .row { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 8px 0; 
+            border-bottom: 1px solid #ecf0f1; 
+          }
+          .label { 
+            font-weight: 600; 
+            color: #7f8c8d; 
+          }
+          .value { 
+            color: #2c3e50; 
+          }
+          .total-row { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            margin-top: 15px; 
+            border-radius: 5px; 
+            display: flex;
+            justify-content: space-between;
+          }
+          .total-label { 
+            font-size: 20px; 
+            font-weight: bold; 
+            color: #2c3e50; 
+          }
+          .total-amount { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #e67e22; 
+          }
+          .expense-item { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 8px 0; 
+            border-bottom: 1px solid #ecf0f1; 
+          }
+          .expense-desc { 
+            color: #2c3e50; 
+          }
+          .expense-amount { 
+            font-weight: 600; 
+            color: #2c3e50; 
+          }
+          .footer { 
+            margin-top: 30px; 
+            padding-top: 20px; 
+            border-top: 2px solid #ecf0f1; 
+            font-size: 12px; 
+            color: #95a5a6; 
+            text-align: center; 
+          }
+          .employee-row { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-top: 10px; 
+            padding: 10px 0;
+          }
+          @media print {
+            body { padding: 20px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="title">EXPENSE REIMBURSEMENT DETAILS</h1>
+          <p class="subtitle">Generated on: ${new Date().toLocaleString()}</p>
+        </div>
+
+        <div style="text-align: center; margin: 20px 0;">
+          <span class="status-badge status-${status}">${status}</span>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">📋 TRAVEL INFORMATION</h2>
+          <div class="row">
+            <span class="label">Travel Type:</span>
+            <span class="value">${getTravelTypeLabel(request.travelType)}</span>
+          </div>
+          <div class="row">
+            <span class="label">From Location:</span>
+            <span class="value">${request.fromLocation || 'N/A'}</span>
+          </div>
+          <div class="row">
+            <span class="label">To Location:</span>
+            <span class="value">${request.toLocation || 'N/A'}</span>
+          </div>
+          <div class="row">
+            <span class="label">From Date:</span>
+            <span class="value">${request.fromDate ? formatDate(request.fromDate) : 'N/A'}</span>
+          </div>
+          <div class="row">
+            <span class="label">To Date:</span>
+            <span class="value">${request.toDate ? formatDate(request.toDate) : 'N/A'}</span>
+          </div>
+          ${request.distanceKm ? `
+          <div class="row">
+            <span class="label">Distance:</span>
+            <span class="value">${request.distanceKm} km</span>
+          </div>` : ''}
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">🎯 BUSINESS PURPOSE</h2>
+          <p style="margin: 10px 0;">${request.businessPurpose || 'N/A'}</p>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">📊 EXPENSE BREAKDOWN</h2>
+          ${(() => {
+          let items = '';
+          let totalAmount = 0;
+
+          if (request.expenses?.travel) {
+            const amount = request.expenses.travel.amount || 0;
+            totalAmount += amount;
+            const paidBy = request.expenses.travel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+            items += `
+                <div class="expense-item">
+                  <span class="expense-desc">Travel Cost (${paidBy})</span>
+                  <span class="expense-amount">${formatCurrency(amount)}</span>
+                </div>`;
+          }
+
+          if (request.expenses?.hotel?.amount > 0) {
+            const amount = request.expenses.hotel.amount;
+            totalAmount += amount;
+            const paidBy = request.expenses.hotel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+            items += `
+                <div class="expense-item">
+                  <span class="expense-desc">Hotel Cost (${paidBy})</span>
+                  <span class="expense-amount">${formatCurrency(amount)}</span>
+                </div>`;
+          }
+
+          if (request.expenses?.food?.amount > 0) {
+            const amount = request.expenses.food.amount;
+            totalAmount += amount;
+            const paidBy = request.expenses.food.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+            items += `
+                <div class="expense-item">
+                  <span class="expense-desc">Food Cost (${paidBy})</span>
+                  <span class="expense-amount">${formatCurrency(amount)}</span>
+                </div>`;
+          }
+
+          if (request.miscItems?.length > 0) {
+            request.miscItems.forEach(item => {
+              const amount = item.amount || 0;
+              totalAmount += amount;
+              const paidBy = item.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
+              const desc = item.description || 'Other Expense';
+              items += `
+                  <div class="expense-item">
+                    <span class="expense-desc">${desc} (${paidBy})</span>
+                    <span class="expense-amount">${formatCurrency(amount)}</span>
+                  </div>`;
+            });
+          }
+
+          items += `
+              <div class="total-row">
+                <span class="total-label">TOTAL AMOUNT:</span>
+                <span class="total-amount">${formatCurrency(totalAmount)}</span>
+              </div>`;
+
+          return items;
+        })()}
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">📝 SUBMISSION DETAILS</h2>
+          <div class="row">
+            <span class="label">Submitted On:</span>
+            <span class="value">${formatDate(request.createdAt)}</span>
+          </div>
+          <div class="employee-row">
+            <span><strong>Employee:</strong> ${employeeName}</span>
+            <span><strong>Approved By:</strong> ${approvedBy}</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>Generated from Expense Reimbursement System</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+      console.log('📄 Generating PDF...');
+
+      // Try using react-native-html-to-pdf
+      let pdfPath = null;
+      let error = null;
+
+      // Method 1: Using RNHTMLtoPDF from import
+      try {
+        const { RNHTMLtoPDF } = require('react-native-html-to-pdf');
+        if (RNHTMLtoPDF && typeof RNHTMLtoPDF.convert === 'function') {
+          const options = {
+            html: htmlContent,
+            fileName: `Expense_${request._id || 'report'}`,
+            directory: Platform.OS === 'android' ? 'Download' : 'Documents',
+            padding: 20,
+            quality: 100,
+            orientation: 'portrait',
+            base64: false,
+          };
+          const result = await RNHTMLtoPDF.convert(options);
+          pdfPath = result.filePath;
+          console.log('📄 PDF generated via RNHTMLtoPDF:', pdfPath);
+        }
+      } catch (e) {
+        error = e;
+        console.log('📄 RNHTMLtoPDF method 1 failed:', e.message);
       }
-      content.push('');
-      content.push(thinLine);
-      content.push('');
-      content.push('🎯 BUSINESS PURPOSE');
-      content.push(thinLine);
-      content.push(request.businessPurpose || 'N/A');
-      content.push('');
-      content.push(thinLine);
-      content.push('');
-      content.push('📊 EXPENSE BREAKDOWN');
-      content.push(thinLine);
-      
-      let totalAmount = 0;
 
-      // Travel Cost
-      if (request.expenses?.travel) {
-        const amount = request.expenses.travel.amount || 0;
-        totalAmount += amount;
-        const paidBy = request.expenses.travel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
-        content.push(`Travel Cost (${paidBy}): ${formatCurrency(amount)}`);
+      // Method 2: Try different import style
+      if (!pdfPath) {
+        try {
+          const module = require('react-native-html-to-pdf');
+          const RNHTMLtoPDF = module.default || module;
+          if (RNHTMLtoPDF && typeof RNHTMLtoPDF.convert === 'function') {
+            const options = {
+              html: htmlContent,
+              fileName: `Expense_${request._id || 'report'}`,
+              directory: Platform.OS === 'android' ? 'Download' : 'Documents',
+              padding: 20,
+              quality: 100,
+              orientation: 'portrait',
+              base64: false,
+            };
+            const result = await RNHTMLtoPDF.convert(options);
+            pdfPath = result.filePath;
+            console.log('📄 PDF generated via RNHTMLtoPDF method 2:', pdfPath);
+          }
+        } catch (e) {
+          error = e;
+          console.log('📄 RNHTMLtoPDF method 2 failed:', e.message);
+        }
       }
 
-      // Hotel Cost
-      if (request.expenses?.hotel?.amount > 0) {
-        const amount = request.expenses.hotel.amount;
-        totalAmount += amount;
-        const paidBy = request.expenses.hotel.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
-        content.push(`Hotel Cost (${paidBy}): ${formatCurrency(amount)}`);
+      // If PDF generation failed, create HTML file as fallback
+      if (!pdfPath) {
+        console.log('📄 PDF generation failed, creating HTML file as fallback');
+        const fileName = `Expense_${request._id || 'report'}_${Date.now()}.html`;
+        const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+        await RNFS.writeFile(filePath, htmlContent, 'utf8');
+        pdfPath = filePath;
+        console.log('📄 HTML file created at:', pdfPath);
+
+        Alert.alert(
+          '✅ Report Generated',
+          `Report saved as HTML file.\nYou can view it in any browser.\n\nFile: ${fileName}`,
+          [
+            {
+              text: 'Open File',
+              onPress: async () => {
+                try {
+                  await FileViewer.open(pdfPath, {
+                    showOpenWithDialog: true,
+                    mimeType: 'text/html',
+                  });
+                } catch (error) {
+                  console.log('📄 Error opening file:', error);
+                  Alert.alert('Error', 'Cannot open file: ' + error.message);
+                }
+              }
+            },
+            {
+              text: 'Share File',
+              onPress: async () => {
+                try {
+                  await Share.open({
+                    url: `file://${pdfPath}`,
+                    type: 'text/html',
+                    title: 'Expense Report',
+                  });
+                } catch (error) {
+                  if (error.message !== 'User canceled') {
+                    console.log('📄 Error sharing file:', error);
+                    Alert.alert('Error', 'Failed to share file: ' + error.message);
+                  }
+                }
+              }
+            },
+            { text: 'OK' },
+          ],
+          { cancelable: false }
+        );
+
+        setDownloadingPDF(false);
+        return;
       }
 
-      // Food Cost
-      if (request.expenses?.food?.amount > 0) {
-        const amount = request.expenses.food.amount;
-        totalAmount += amount;
-        const paidBy = request.expenses.food.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
-        content.push(`Food Cost (${paidBy}): ${formatCurrency(amount)}`);
+      // Verify file exists
+      const fileExists = await RNFS.exists(pdfPath);
+      console.log('📄 File exists:', fileExists);
+
+      if (!fileExists) {
+        throw new Error('PDF file not found at: ' + pdfPath);
       }
 
-      // Misc Expenses
-      if (request.miscItems?.length > 0) {
-        request.miscItems.forEach(item => {
-          const amount = item.amount || 0;
-          totalAmount += amount;
-          const paidBy = item.paymentMethod === 'COMPANY' ? 'Company' : 'Self';
-          const desc = item.description || 'Other Expense';
-          content.push(`${desc} (${paidBy}): ${formatCurrency(amount)}`);
-        });
+      // For Android, copy to Downloads folder
+      if (Platform.OS === 'android' && pdfPath.endsWith('.pdf')) {
+        try {
+          const fileName = `Expense_${request._id || 'report'}_${Date.now()}.pdf`;
+          const downloadsPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+          await RNFS.copyFile(pdfPath, downloadsPath);
+          console.log('📄 PDF copied to Downloads:', downloadsPath);
+          pdfPath = downloadsPath;
+        } catch (copyError) {
+          console.log('📄 Copy to Downloads failed:', copyError);
+        }
       }
 
-      content.push(thinLine);
-      content.push(`TOTAL AMOUNT: ${formatCurrency(totalAmount)}`);
-      content.push('');
-      content.push(thinLine);
-      content.push('');
-      content.push('📝 SUBMISSION DETAILS');
-      content.push(thinLine);
-      content.push(`Submitted On: ${formatDate(request.createdAt)}`);
-      content.push('');
-      content.push(`Employee Name: ${employeeName}                     Approved By: ${approvedBy}`);
-      content.push('');
-      content.push(line);
-      content.push(`Employee: ${employeeName} | Status: ${status}`);
-      content.push(line);
-
-      // Join content with newlines
-      const textContent = content.join('\n');
-
-      const fileName = `Expense_${request._id || 'report'}_${Date.now()}.txt`;
-      const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
-
-      // Write to file
-      await RNFS.writeFile(filePath, textContent, 'utf8');
-
+      // Show success message with options
       Alert.alert(
-        'PDF Generated Successfully',
-        `File saved to: ${filePath}`,
+        '✅ PDF Downloaded Successfully',
+        `PDF saved to:\n${pdfPath}\n\nWhat would you like to do?`,
         [
           {
-            text: 'Open File',
+            text: 'Open PDF',
             onPress: async () => {
               try {
-                await FileViewer.open(filePath, {
+                console.log('📄 Opening PDF from:', pdfPath);
+                await FileViewer.open(pdfPath, {
                   showOpenWithDialog: true,
-                  mimeType: 'text/plain',
+                  mimeType: 'application/pdf',
                 });
               } catch (error) {
-                Alert.alert('Error', 'Cannot open file');
+                console.log('📄 Error opening PDF:', error);
+                Alert.alert('Error', 'Cannot open PDF: ' + error.message);
+              }
+            }
+          },
+          {
+            text: 'Share PDF',
+            onPress: async () => {
+              try {
+                await Share.open({
+                  url: `file://${pdfPath}`,
+                  type: 'application/pdf',
+                  title: 'Expense Report',
+                });
+              } catch (error) {
+                if (error.message !== 'User canceled') {
+                  console.log('📄 Error sharing PDF:', error);
+                  Alert.alert('Error', 'Failed to share PDF: ' + error.message);
+                }
               }
             }
           },
           { text: 'OK' },
-        ]
+        ],
+        { cancelable: false }
       );
+
     } catch (error) {
-      console.log('PDF GENERATION ERROR =>', error);
-      Alert.alert('Error', 'Failed to generate PDF: ' + error.message);
+      console.log('📄 PDF GENERATION ERROR =>', error);
+      Alert.alert(
+        'Error',
+        'Failed to generate PDF: ' + (error.message || 'Unknown error')
+      );
     } finally {
       setDownloadingPDF(false);
     }
@@ -1003,10 +1599,18 @@ const Reimbursement = ({ navigation }) => {
       Alert.alert('Validation Error', 'Please enter Business Purpose');
       return;
     }
-    if (expenseType === 'car' && (!kilometers || parseFloat(kilometers) <= 0)) {
+    if ((expenseType === 'car' || expenseType === 'bike') && (!kilometers || parseFloat(kilometers) <= 0)) {
       Alert.alert(
         'Validation Error',
-        'Please enter valid distance for car travel',
+        'Please enter valid distance for travel',
+      );
+      return;
+    }
+    // Validate distance limit for car and bike
+    if ((expenseType === 'car' || expenseType === 'bike') && parseFloat(kilometers) > KM_MAX_VALUE) {
+      Alert.alert(
+        'Validation Error',
+        `Distance cannot exceed ${KM_MAX_VALUE} km. Please enter a valid distance.`,
       );
       return;
     }
@@ -1047,6 +1651,7 @@ const Reimbursement = ({ navigation }) => {
       flightClass: 'Economy',
       hotelLimit: 2000,
       carRatePerKm: 10,
+      bikeRatePerKm: 5,
     };
 
     try {
@@ -1067,7 +1672,7 @@ const Reimbursement = ({ navigation }) => {
         fromDate: fromDate ? formatDateForAPI(fromDate) : null,
         toDate: toDate ? formatDateForAPI(toDate) : null,
         businessPurpose: purpose.trim(),
-        distanceKm: expenseType === 'car' ? parseFloat(kilometers) || 0 : undefined,
+        distanceKm: (expenseType === 'car' || expenseType === 'bike') ? parseFloat(kilometers) || 0 : undefined,
         expenses: {
           travel: {
             amount: parseFloat(amount) || 0,
@@ -1143,6 +1748,7 @@ const Reimbursement = ({ navigation }) => {
     setSelectedFiles([]);
     setFromDate(null);
     setToDate(null);
+    setFuelPricePerKm(null);
 
     const now = new Date();
 
@@ -1205,8 +1811,7 @@ const Reimbursement = ({ navigation }) => {
 
     const isApproved = selectedRequest.status?.toUpperCase() === 'APPROVED';
     const isRejected = selectedRequest.status?.toUpperCase() === 'REJECTED';
-    
-    // ✅ Get approvedBy fullName from the selectedRequest
+
     const approvedByName = selectedRequest.approvedBy?.fullName || '—';
     const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
 
@@ -1660,7 +2265,6 @@ const Reimbursement = ({ navigation }) => {
                   </Text>
                 </View>
 
-                {/* Employee Name - Left and Approved By - Right in same row */}
                 <View style={styles.employeeApprovedRow}>
                   <Text
                     style={[styles.employeeApprovedText, { color: C.textSecondary }]}
@@ -1675,7 +2279,6 @@ const Reimbursement = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* Download PDF Button */}
               <TouchableOpacity
                 style={[
                   styles.downloadPDFBtn,
@@ -1688,9 +2291,9 @@ const Reimbursement = ({ navigation }) => {
                   <ActivityIndicator color={C.primary} size="small" />
                 ) : (
                   <>
-                    <Printer size={wp('4%')} color={C.primary} />
+                    <Download size={wp('4%')} color={C.primary} />
                     <Text style={[styles.downloadPDFText, { color: C.primary }]}>
-                      Download(PDF)
+                      Download PDF
                     </Text>
                   </>
                 )}
@@ -2578,93 +3181,111 @@ const Reimbursement = ({ navigation }) => {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Travel Type *
+                  Travel Type * kk
                 </Text>
                 <View style={styles.typeGrid}>
-                  {['car', 'train', 'flight', 'other'].map(type => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[
-                        styles.typeOption,
-                        { borderColor: C.border },
-                        expenseType === type && {
-                          borderColor: C.primary,
-                          backgroundColor: C.primary + '10',
-                        },
-                      ]}
-                      onPress={() => setExpenseType(type)}
-                    >
-                      {type === 'car' && (
-                        <Car
-                          size={wp('5%')}
-                          color={
-                            expenseType === type ? C.primary : C.textSecondary
-                          }
-                        />
-                      )}
-                      {type === 'train' && (
-                        <Train
-                          size={wp('5%')}
-                          color={
-                            expenseType === type ? C.primary : C.textSecondary
-                          }
-                        />
-                      )}
-                      {type === 'flight' && (
-                        <Plane
-                          size={wp('5%')}
-                          color={
-                            expenseType === type ? C.primary : C.textSecondary
-                          }
-                        />
-                      )}
-                      {type === 'other' && (
-                        <FileText
-                          size={wp('5%')}
-                          color={
-                            expenseType === type ? C.primary : C.textSecondary
-                          }
-                        />
-                      )}
-                      <Text
+                  {['car', 'bike', 'train', 'flight', 'other'].map(type => {
+                    let icon;
+                    let label = type.charAt(0).toUpperCase() + type.slice(1);
+                    if (type === 'bike') label = 'Bike';
+
+                    switch (type) {
+                      case 'car':
+                        icon = <Car size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                        break;
+                      case 'bike':
+                        icon = <Bike size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                        break;
+                      case 'train':
+                        icon = <Train size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                        break;
+                      case 'flight':
+                        icon = <Plane size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                        break;
+                      default:
+                        icon = <FileText size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        key={type}
                         style={[
-                          styles.typeText,
-                          {
-                            color:
-                              expenseType === type ? C.primary : C.textSecondary,
+                          styles.typeOption,
+                          { borderColor: C.border },
+                          expenseType === type && {
+                            borderColor: C.primary,
+                            backgroundColor: C.primary + '10',
                           },
                         ]}
+                        onPress={() => handleExpenseTypeChange(type)}
                       >
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        {icon}
+                        <Text
+                          style={[
+                            styles.typeText,
+                            {
+                              color:
+                                expenseType === type ? C.primary : C.textSecondary,
+                            },
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                {expenseType === 'car' && (
-                  <View>
-                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                      Distance (KM) *
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          backgroundColor: C.surface,
-                          borderColor: C.border,
-                          color: C.textPrimary,
-                        },
-                      ]}
-                      placeholder="Enter kilometers"
-                      placeholderTextColor={C.textTertiary}
-                      keyboardType="numeric"
-                      value={kilometers}
-                      onChangeText={text =>
-                        setKilometers(validateKilometers(text))
-                      }
-                      maxLength={6}
-                    />
-                  </View>
+                {(expenseType === 'car' || expenseType === 'bike') && (
+                  <>
+                    <View>
+                      <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                        Distance (KM) * (Max {KM_MAX_VALUE} km)
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.input,
+                          {
+                            backgroundColor: C.surface,
+                            borderColor: C.border,
+                            color: C.textPrimary,
+                          },
+                        ]}
+                        placeholder={`Enter kilometers (Max ${KM_MAX_VALUE} km)`}
+                        placeholderTextColor={C.textTertiary}
+                        keyboardType="numeric"
+                        value={kilometers}
+                        onChangeText={handleKilometersChange}
+                        maxLength={6}
+                      />
+                      {kilometers && parseFloat(kilometers) > KM_MAX_VALUE && (
+                        <Text style={[styles.errorText, { color: '#E74C3C' }]}>
+                          Maximum allowed distance is {KM_MAX_VALUE} km
+                        </Text>
+                      )}
+                    </View>
+                    {fetchingFuelRate && (
+                      <View style={styles.fuelRateLoader}>
+                        <ActivityIndicator size="small" color={C.primary} />
+                        <Text style={[styles.fuelRateText, { color: C.textSecondary }]}>
+                          Fetching fuel rate...
+                        </Text>
+                      </View>
+                    )}
+                    {fuelPricePerKm !== null && !fetchingFuelRate && kilometers && parseFloat(kilometers) > 0 && parseFloat(kilometers) <= KM_MAX_VALUE && (
+                      <View style={[styles.fuelRateInfo, { backgroundColor: C.surface, borderColor: C.border }]}>
+                        <Text style={[styles.fuelRateLabel, { color: C.textSecondary }]}>
+                          Fuel Rate:
+                        </Text>
+                        <Text style={[styles.fuelRateValue, { color: C.primary }]}>
+                          ₹{fuelPricePerKm.toFixed(2)}/km
+                        </Text>
+                        <Text style={[styles.fuelRateCalculated, { color: C.textSecondary }]}>
+                          Total: ₹{(parseFloat(kilometers) * fuelPricePerKm).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
 
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
@@ -3299,9 +3920,15 @@ const styles = StyleSheet.create({
     minHeight: hp('10%'),
     textAlignVertical: 'top',
   },
-  typeGrid: { flexDirection: 'row', gap: wp('2%'), marginBottom: hp('1%') },
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp('2%'),
+    marginBottom: hp('1%')
+  },
   typeOption: {
     flex: 1,
+    minWidth: '18%',
     borderWidth: 1,
     borderRadius: wp('2%'),
     padding: wp('3%'),
@@ -3681,7 +4308,6 @@ const styles = StyleSheet.create({
   viewModalScroll: {
     paddingBottom: hp('2%'),
   },
-  // ✅ NEW STYLES FOR ADDED FEATURES
   receiptActionsRow: {
     flexDirection: 'row',
     gap: wp('2%'),
@@ -3724,6 +4350,44 @@ const styles = StyleSheet.create({
   employeeApprovedValue: {
     fontSize: wp('3%'),
     fontFamily: Fonts.medium,
+  },
+  fuelRateLoader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+    marginTop: hp('1%'),
+    paddingVertical: hp('0.5%'),
+  },
+  fuelRateText: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.regular,
+  },
+  fuelRateInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: wp('3%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    marginTop: hp('1%'),
+    marginBottom: hp('1%'),
+  },
+  fuelRateLabel: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+  },
+  fuelRateValue: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.bold,
+  },
+  fuelRateCalculated: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+  },
+  errorText: {
+    fontSize: wp('2.5%'),
+    fontFamily: Fonts.medium,
+    marginTop: hp('0.5%'),
   },
 });
 
