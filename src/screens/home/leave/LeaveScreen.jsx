@@ -752,7 +752,7 @@ const LeaveScreen = ({ navigation }) => {
 
   const getMonthlyLeaveAllocation = () => {
     const currentMonth = new Date().getMonth();
-    if (currentMonth === 2 || currentMonth === 7) return 3.5;
+    if (currentMonth === 2 || currentMonth === 7) return 2.5;
     return 2.5;
   };
 

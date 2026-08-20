@@ -108,9 +108,13 @@ const LoginScreen = ({ navigation }) => {
     }
   }, [sendOtpSuccess, employeeId, navigation]);
 
+  // const filterAlphanumeric = (text) => {
+  //   return text.replace(/[^a-zA-Z0-9]/g, '');
+  // };
   const filterAlphanumeric = (text) => {
-    return text.replace(/[^a-zA-Z0-9]/g, '');
-  };
+  // Allow alphanumeric, hyphen, and underscore
+  return text.replace(/[^a-zA-Z0-9\-_]/g, '');
+};
 
   const validateEmployeeId = (id) => {
     return id && id.trim().length > 0;

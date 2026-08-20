@@ -51,7 +51,8 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { Fonts } from '../../../utils/GlobalText';
 import { getAttendanceHistory } from '../../../store/actions/attendanceActions';
 import { formatMinutesToHours } from '../../../utils/utils';
-import apiService  from '../../../services/apiService';
+import apiService from '../../../services/apiService';
+
 const arrowIcon = require('../../../assets/arrow_right.png');
 
 // ── Visit Type Icons ──
@@ -165,7 +166,7 @@ const fmtDur = minutes => {
   const m = minutes % 60;
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+  return `${h}h ${m}h`;
 };
 
 const formatMinutes = minutes => {
@@ -594,6 +595,8 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
   const [requestType, setRequestType] = useState('ABSENT_MARKED');
   const [punchInTime, setPunchInTime] = useState('');
   const [punchOutTime, setPunchOutTime] = useState('');
+  const [punchInAmPm, setPunchInAmPm] = useState('AM');
+  const [punchOutAmPm, setPunchOutAmPm] = useState('PM');
   const [reason, setReason] = useState('');
   const scrollViewRef = useRef();
 
@@ -645,6 +648,12 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
     }
   }, [effectiveStatus]);
 
+  // Reset AM/PM when request type changes
+  useEffect(() => {
+    setPunchInAmPm('AM');
+    setPunchOutAmPm('PM');
+  }, [requestType]);
+
   const requestTypes = getRequestTypes();
 
   const dismissKeyboard = () => {
@@ -685,6 +694,12 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
     return colorMap[status] || C.textSecondary;
   };
 
+  // Get the record ID from multiple possible fields
+  const getRecordId = () => {
+    if (!record) return null;
+    return record._id || record.id || record.attendanceId || null;
+  };
+
   // Get required fields based on request type
   const getRequiredFields = (type) => {
     switch (type) {
@@ -703,10 +718,59 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
     }
   };
 
+  // Helper function to convert 12-hour time to 24-hour format with AM/PM
+  const convertTo24Hour = (timeStr, ampm) => {
+    if (!timeStr) return '';
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return '';
+    
+    let hour24 = hours;
+    if (ampm === 'PM' && hours !== 12) {
+      hour24 = hours + 12;
+    } else if (ampm === 'AM' && hours === 12) {
+      hour24 = 0;
+    }
+    return `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+
+  // ✅ Helper function to compare times (returns true if time1 > time2)
+  const isTimeGreater = (time1, ampm1, time2, ampm2) => {
+    if (!time1 || !time2) return true;
+    
+    const hour1 = parseInt(time1.split(':')[0]);
+    const minute1 = parseInt(time1.split(':')[1]);
+    const hour2 = parseInt(time2.split(':')[0]);
+    const minute2 = parseInt(time2.split(':')[1]);
+    
+    // Convert to 24-hour format for comparison
+    let hour24_1 = hour1;
+    if (ampm1 === 'PM' && hour1 !== 12) hour24_1 = hour1 + 12;
+    else if (ampm1 === 'AM' && hour1 === 12) hour24_1 = 0;
+    
+    let hour24_2 = hour2;
+    if (ampm2 === 'PM' && hour2 !== 12) hour24_2 = hour2 + 12;
+    else if (ampm2 === 'AM' && hour2 === 12) hour24_2 = 0;
+    
+    // Compare total minutes
+    const totalMinutes1 = hour24_1 * 60 + minute1;
+    const totalMinutes2 = hour24_2 * 60 + minute2;
+    
+    // Return true if time1 > time2 (strictly greater)
+    return totalMinutes1 > totalMinutes2;
+  };
+
+  // Helper function to format time for display
+  const formatTimeDisplay = (time, ampm) => {
+    if (!time) return '';
+    return `${time} ${ampm}`;
+  };
+
   const handleSubmit = async () => {
     dismissKeyboard();
 
-    if (!record?._id) {
+    const recordId = getRecordId();
+
+    if (!recordId) {
       Alert.alert('Error', 'Attendance record not found');
       return;
     }
@@ -744,30 +808,58 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
       return;
     }
 
+    // ✅ STRICT VALIDATION: Punch out time MUST be greater than punch in time
+    if (needsPunchIn && needsPunchOut) {
+      // First check if both times are provided
+      if (punchInTime && punchOutTime) {
+        // Check if punch out time is greater than punch in time
+        if (!isTimeGreater(punchOutTime, punchOutAmPm, punchInTime, punchInAmPm)) {
+          const formattedInTime = formatTimeDisplay(punchInTime, punchInAmPm);
+          const formattedOutTime = formatTimeDisplay(punchOutTime, punchOutAmPm);
+          
+          Alert.alert(
+            'Invalid Time', 
+            `Punch out time (${formattedOutTime}) must be later than punch in time (${formattedInTime}).\n\nPlease adjust the time or AM/PM selection.`
+          );
+          return;
+        }
+      }
+    }
+
     setLoading(true);
 
     try {
       // Prepare payload
       const payload = {
-        attendanceId: record._id,
+        attendanceId: recordId,
         requestType: requestType,
         attendanceDate: new Date(record.date).toISOString(),
         reason: reason.trim() || 'Requesting attendance regularization',
       };
 
-      // Add punch times based on request type
+      // Add punch times based on request type with AM/PM
       const needsPunchInForPayload = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
       const needsPunchOutForPayload = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
 
       if (needsPunchInForPayload) {
         const date = new Date(record.date).toISOString().split('T')[0];
-        const punchInDateTime = new Date(`${date}T${punchInTime}:00.000Z`);
+        // Convert 12-hour time with AM/PM to 24-hour format
+        const punchIn24Hour = convertTo24Hour(punchInTime, punchInAmPm);
+        if (!punchIn24Hour) {
+          throw new Error('Invalid punch in time format');
+        }
+        const punchInDateTime = new Date(`${date}T${punchIn24Hour}:00.000Z`);
         payload.requestedPunchIn = punchInDateTime.toISOString();
       }
 
       if (needsPunchOutForPayload) {
         const date = new Date(record.date).toISOString().split('T')[0];
-        const punchOutDateTime = new Date(`${date}T${punchOutTime}:00.000Z`);
+        // Convert 12-hour time with AM/PM to 24-hour format
+        const punchOut24Hour = convertTo24Hour(punchOutTime, punchOutAmPm);
+        if (!punchOut24Hour) {
+          throw new Error('Invalid punch out time format');
+        }
+        const punchOutDateTime = new Date(`${date}T${punchOut24Hour}:00.000Z`);
         payload.requestedPunchOut = punchOutDateTime.toISOString();
       }
 
@@ -775,25 +867,74 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
 
       const response = await apiService.post('/attendance/regularize-attendance', payload);
       
-      if (response.data?.success) {
+      // ✅ Check both top-level success and data.success
+      const isSuccess = response.data?.success === true && response.data?.data?.success !== false;
+      
+      if (isSuccess) {
         Alert.alert(
           'Success',
           'Regularization request submitted successfully!',
           [{ text: 'OK', onPress: onSuccess }]
         );
       } else {
-        throw new Error(response.data?.message || 'Failed to submit request');
+        // ✅ Extract the actual error message from data.message or top-level message
+        const errorMessage = response.data?.data?.message || 
+                            response.data?.message || 
+                            'Failed to submit regularization request';
+        Alert.alert('Error', errorMessage);
       }
     } catch (error) {
       console.error('Regularization error:', error);
-      Alert.alert(
-        'Error',
-        error.response?.data?.message || error.message || 'Failed to submit regularization request'
-      );
+      // ✅ Check if error response has data with message
+      const errorMessage = error.response?.data?.data?.message || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to submit regularization request';
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
   };
+
+  // AM/PM Toggle Button Component
+  const AmPmToggle = ({ value, onToggle }) => (
+    <View style={regStyles.amPmContainer}>
+      <TouchableOpacity
+        style={[
+          regStyles.amPmButton,
+          { backgroundColor: value === 'AM' ? C.primary : C.background },
+          { borderColor: value === 'AM' ? C.primary : C.border },
+        ]}
+        onPress={() => onToggle('AM')}
+      >
+        <Text
+          style={[
+            regStyles.amPmText,
+            { color: value === 'AM' ? C.textDark : C.textSecondary },
+          ]}
+        >
+          AM
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          regStyles.amPmButton,
+          { backgroundColor: value === 'PM' ? C.primary : C.background },
+          { borderColor: value === 'PM' ? C.primary : C.border },
+        ]}
+        onPress={() => onToggle('PM')}
+      >
+        <Text
+          style={[
+            regStyles.amPmText,
+            { color: value === 'PM' ? C.textDark : C.textSecondary },
+          ]}
+        >
+          PM
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderTimeInputs = () => {
     const needsPunchIn = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
@@ -810,24 +951,28 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
             <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
               Punch In Time (HH:MM) *
             </Text>
-            <TextInput
-              style={[
-                regStyles.timeInput,
-                {
-                  backgroundColor: C.background,
-                  borderColor: C.border,
-                  color: C.textPrimary,
-                },
-              ]}
-              placeholder="09:30"
-              placeholderTextColor={C.textSecondary}
-              value={punchInTime}
-              onChangeText={setPunchInTime}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-              returnKeyType="done"
-              onSubmitEditing={dismissKeyboard}
-            />
+            <View style={regStyles.timeInputRow}>
+              <TextInput
+                style={[
+                  regStyles.timeInput,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.border,
+                    color: C.textPrimary,
+                    flex: 1,
+                  },
+                ]}
+                placeholder="09:30"
+                placeholderTextColor={C.textSecondary}
+                value={punchInTime}
+                onChangeText={setPunchInTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                returnKeyType="done"
+                onSubmitEditing={dismissKeyboard}
+              />
+              <AmPmToggle value={punchInAmPm} onToggle={setPunchInAmPm} />
+            </View>
           </View>
         )}
 
@@ -836,24 +981,28 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
             <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
               Punch Out Time (HH:MM) *
             </Text>
-            <TextInput
-              style={[
-                regStyles.timeInput,
-                {
-                  backgroundColor: C.background,
-                  borderColor: C.border,
-                  color: C.textPrimary,
-                },
-              ]}
-              placeholder="18:30"
-              placeholderTextColor={C.textSecondary}
-              value={punchOutTime}
-              onChangeText={setPunchOutTime}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-              returnKeyType="done"
-              onSubmitEditing={dismissKeyboard}
-            />
+            <View style={regStyles.timeInputRow}>
+              <TextInput
+                style={[
+                  regStyles.timeInput,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.border,
+                    color: C.textPrimary,
+                    flex: 1,
+                  },
+                ]}
+                placeholder="18:30"
+                placeholderTextColor={C.textSecondary}
+                value={punchOutTime}
+                onChangeText={setPunchOutTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                returnKeyType="done"
+                onSubmitEditing={dismissKeyboard}
+              />
+              <AmPmToggle value={punchOutAmPm} onToggle={setPunchOutAmPm} />
+            </View>
           </View>
         )}
       </View>
@@ -919,6 +1068,8 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
                       // Reset time fields when switching types
                       setPunchInTime('');
                       setPunchOutTime('');
+                      setPunchInAmPm('AM');
+                      setPunchOutAmPm('PM');
                     }}
                   >
                     <Text
@@ -1068,12 +1219,33 @@ const regStyles = StyleSheet.create({
     fontFamily: Fonts.regular,
     marginBottom: hp('0.3%'),
   },
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+  },
   timeInput: {
     borderWidth: 1,
     borderRadius: wp('2%'),
     padding: wp('3%'),
     fontSize: wp('3.5%'),
     fontFamily: Fonts.regular,
+  },
+  amPmContainer: {
+    flexDirection: 'row',
+    borderRadius: wp('2%'),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  amPmButton: {
+    paddingHorizontal: wp('3%'),
+    paddingVertical: hp('0.8%'),
+    borderWidth: 0,
+  },
+  amPmText: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.medium,
   },
   reasonGroup: {
     paddingHorizontal: wp('4%'),
@@ -1118,13 +1290,25 @@ const RecordCard = ({ record, onRegularize }) => {
   const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t, record.isLate);
   const ApiStatusIcon = apiStatusConfig.icon;
   
-  // ✅ Show Regularize button for ABSENT, HALF_DAY, SHORT_LEAVE, and LATE (including late records)
+  // ✅ Check if the record date is TODAY - REGULARIZATION NOT ALLOWED FOR TODAY
+  const isToday = (dateString) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const recordDate = new Date(dateString);
+    recordDate.setHours(0, 0, 0, 0);
+    return recordDate.getTime() === today.getTime();
+  };
+
+  // ✅ Show Regularize button only if:
+  // 1. Status qualifies (ABSENT, HALF_DAY, SHORT_LEAVE, LATE, or PRESENT with isLate)
+  // 2. Record date is NOT today
   const shouldShowRegularize = 
-    record.attendanceStatus === 'ABSENT' ||
+    !isToday(record.date) &&
+    (record.attendanceStatus === 'ABSENT' ||
     record.attendanceStatus === 'HALF_DAY' ||
     record.attendanceStatus === 'SHORT_LEAVE' ||
     record.attendanceStatus === 'LATE' ||
-    (record.attendanceStatus === 'PRESENT' && record.isLate === true);
+    (record.attendanceStatus === 'PRESENT' && record.isLate === true));
 
   const extraDetails = getExtraDetails(record, C);
 
@@ -1251,7 +1435,7 @@ const RecordCard = ({ record, onRegularize }) => {
             { borderTopColor: C.border, backgroundColor: C.background },
           ]}
         >
-          {/* ✅ Regularization Button for Absent, Half Day, Short Leave, and Late */}
+          {/* ✅ Regularization Button - Hidden for Today's Date */}
           {shouldShowRegularize && (
             <TouchableOpacity
               style={[
@@ -1993,6 +2177,7 @@ const ReportsScreen = ({ navigation }) => {
           />
         }
       >
+        {/* Summary Grid - All cards in single row with flexWrap */}
         <View style={styles.summaryGrid}>
           <View
             style={[
@@ -2000,7 +2185,7 @@ const ReportsScreen = ({ navigation }) => {
               { backgroundColor: C.surface, borderColor: C.success + '50' },
             ]}
           >
-            <CheckCircle2 size={wp('5%')} color={C.success} />
+            <CheckCircle2 size={wp('4%')} color={C.success} />
             <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
               {stats.present}
             </Text>
@@ -2014,7 +2199,7 @@ const ReportsScreen = ({ navigation }) => {
               { backgroundColor: C.surface, borderColor: C.warning + '50' },
             ]}
           >
-            <ClockIcon size={wp('5%')} color={C.warning} />
+            <ClockIcon size={wp('4%')} color={C.warning} />
             <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
               {stats.late}
             </Text>
@@ -2028,7 +2213,7 @@ const ReportsScreen = ({ navigation }) => {
               { backgroundColor: C.surface, borderColor: C.error + '50' },
             ]}
           >
-            <XCircle size={wp('5%')} color={C.error} />
+            <XCircle size={wp('4%')} color={C.error} />
             <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
               {stats.absent}
             </Text>
@@ -2042,7 +2227,7 @@ const ReportsScreen = ({ navigation }) => {
               { backgroundColor: C.surface, borderColor: C.warning + '50' },
             ]}
           >
-            <AlertCircle size={wp('5%')} color={C.warning} />
+            <AlertCircle size={wp('4%')} color={C.warning} />
             <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
               {stats.halfDay}
             </Text>
@@ -2056,7 +2241,7 @@ const ReportsScreen = ({ navigation }) => {
               { backgroundColor: C.surface, borderColor: C.warning + '50' },
             ]}
           >
-            <Clock size={wp('5%')} color={C.warning} />
+            <Clock size={wp('4%')} color={C.warning} />
             <Text style={[styles.summaryNum, { color: C.textPrimary }]}>
               {stats.shortLeave}
             </Text>
@@ -2153,7 +2338,7 @@ const ReportsScreen = ({ navigation }) => {
           <View style={styles.list}>
             {filteredHistory.map((record, i) => (
               <RecordCard
-                key={record._id || record.date || i}
+                key={record._id || record.id || record.date || i}
                 record={record}
                 onRegularize={handleRegularize}
               />
@@ -2301,21 +2486,25 @@ const styles = StyleSheet.create({
   },
   summaryGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     paddingHorizontal: wp('4%'),
     paddingTop: hp('2%'),
-    gap: wp('2.5%'),
+    gap: wp('2%'),
   },
   summaryCard: {
     flex: 1,
-    minWidth: '18%',
     borderRadius: wp('3.5%'),
-    padding: wp('3%'),
+    paddingVertical: wp('2%'),
+    paddingHorizontal: wp('1%'),
     alignItems: 'center',
-    gap: hp('0.5%'),
+    gap: hp('0.3%'),
     borderWidth: 1,
+    minWidth: 0,
   },
-  summaryNum: { fontSize: wp('5%'), fontFamily: Fonts.bold },
+  summaryNum: { 
+    fontSize: wp('4.5%'), 
+    fontFamily: Fonts.bold,
+  },
   summaryLbl: {
     fontSize: wp('2.2%'),
     fontFamily: Fonts.regular,

@@ -326,19 +326,28 @@ const HomeScreen = ({ navigation }) => {
   }, [noInternetToastVisible, lastNoInternetToastTime]);
 
   const checkInternetAndProceed = useCallback(async (action, ...args) => {
-    const state = await NetInfo.fetch();
-    const connected = state.isConnected === true && state.isInternetReachable !== false;
-    
-    if (!connected) {
-      showNoInternetMessage();
-      return false;
-    }
-    
-    if (action) {
-      await action(...args);
-    }
-    return true;
-  }, [showNoInternetMessage]);
+  console.log('🌐 [INTERNET CHECK] Checking internet connection...');
+  const state = await NetInfo.fetch();
+  const connected = state.isConnected === true && state.isInternetReachable !== false;
+  
+  console.log('🌐 [INTERNET CHECK] Connection status:', {
+    isConnected: state.isConnected,
+    isInternetReachable: state.isInternetReachable,
+    connected: connected
+  });
+  
+  if (!connected) {
+    console.log('🚫 [INTERNET CHECK] No internet connection, showing message');
+    showNoInternetMessage();
+    return false;
+  }
+  
+  if (action) {
+    console.log(`✅ [INTERNET CHECK] Internet available, executing action: ${action.name || 'anonymous'}`);
+    await action(...args);
+  }
+  return true;
+}, [showNoInternetMessage]);
 
   // Initial load
   useEffect(() => {
@@ -487,139 +496,255 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const handleQuickActionPress = label => {
-    if (isProcessing || breakLoading) return;
+ const handleQuickActionPress = label => {
+  console.log(`👆 [QUICK ACTION] Pressed: ${label}`);
+  console.log('📊 [QUICK ACTION] Current state:', {
+    isProcessing,
+    breakLoading,
+    isPunchedIn,
+    isOnBreak,
+    isSalesTeam,
+    isVisitActive,
+    isAbsent
+  });
+  
+  if (isProcessing || breakLoading) {
+    console.log('⚠️ [QUICK ACTION] Already processing, skipping');
+    return;
+  }
 
-    if (label === t.home.dailyPunch) {
-      if (isPunchedIn) {
-        Alert.alert(
-          t.attendance.punchOut || 'Punch Out',
-          t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
-          [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesPunchOut || 'Yes, Punch Out',
-              style: 'destructive',
-              onPress: () => checkInternetAndProceed(handlePunchOut),
-            },
-          ],
-        );
-        return;
-      }
-      checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
-      return;
-    }
-
-    if (label === t.home.idleTracking) {
-      if (!isPunchedIn) {
-        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-        return;
-      }
-      if (isOnBreak) {
-        Alert.alert(
-          t.breaks.endBreak || 'End Break',
-          t.alerts.endBreakConfirm ||
-            'Are you sure you want to end your break?',
-          [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesEndBreak || 'Yes, End Break',
-              style: 'destructive',
-              onPress: () => {
-                if (!isProcessing && !breakLoading) {
-                  checkInternetAndProceed(() => {
-                    handleBreakOutDirect();
-                  });
-                }
-              },
-            },
-          ],
-        );
-        return;
-      }
-      setBreakModalVisible(true);
-      return;
-    }
-
-    // ✅ Visit button handler
-    if (label === 'Visit') {
-      if (!isSalesTeam) {
-        showToast('Visit feature is only for sales team', 'error');
-        return;
-      }
+  // ============ DAILY PUNCH ============
+  if (label === t.home.dailyPunch) {
+    console.log('📋 [QUICK ACTION] Daily Punch action triggered');
+    console.log('📊 [QUICK ACTION] Current punch state:', {
+      isPunchedIn,
+      hasAnySessionToday,
+      todaysPunchIn,
+      isOnBreak,
+      isVisitActive
+    });
+    
+    if (isPunchedIn) {
+      console.log('🔴 [QUICK ACTION] User is punched in - showing punch out alert');
       
-      if (!isPunchedIn) {
-        showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
-        return;
-      }
-
-      // Check if visit is already active
-      if (isVisitActive) {
-        // Navigate to VisitScreen and let it handle active visit
-        navigation.navigate('VisitScreen', { 
-          hasActiveVisit: true,
-          visitData: getActiveVisitData()
-        });
-        return;
-      }
-
-      // If on break, need to end break first
-      if (isOnBreak) {
+      // Check if visit is active (Sales department only)
+      if (isSalesTeam && isVisitActive) {
+        console.log('🚫 [QUICK ACTION] Visit active - blocking punch out from quick action');
         Alert.alert(
-          t.breaks.endBreak || 'End Break',
-          t.alerts.endBreakConfirm ||
-            'Are you sure you want to end your break before starting a visit?',
+          'Cannot Punch Out',
+          'You have an active visit in progress. Please end your visit first before punching out.',
           [
-            { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
-            {
-              text: t.alerts.yesEndBreak || 'Yes, End Break',
-              style: 'destructive',
+            { 
+              text: 'Go to Visit', 
               onPress: () => {
-                if (!isProcessing && !breakLoading) {
-                  checkInternetAndProceed(() => {
-                    handleBreakOutDirect();
-                  });
-                }
-              },
+                console.log('📱 [QUICK ACTION] Navigating to Visit screen');
+                navigation.navigate('VisitScreen');
+              }
             },
-          ],
+            { text: 'Cancel', style: 'cancel' },
+          ]
         );
         return;
       }
+
+      Alert.alert(
+        t.attendance.punchOut || 'Punch Out',
+        t.alerts.punchOutConfirm || 'Are you sure you want to punch out?',
+        [
+          { 
+            text: t.buttons.cancel || 'Cancel', 
+            style: 'cancel',
+            onPress: () => console.log('❌ [QUICK ACTION] User cancelled punch out from quick action')
+          },
+          {
+            text: t.alerts.yesPunchOut || 'Yes, Punch Out',
+            style: 'destructive',
+            onPress: () => {
+              console.log('✅ [QUICK ACTION] User confirmed punch out from quick action');
+              checkInternetAndProceed(handlePunchOut);
+            },
+          },
+        ],
+      );
+      return;
+    }
+    
+    console.log('🟢 [QUICK ACTION] User is not punched in - navigating to DailyPunch');
+    checkInternetAndProceed(() => navigation.navigate('DailyPuch'));
+    return;
+  }
+
+  // ============ IDLE TRACKING / BREAK ============
+  if (label === t.home.idleTracking) {
+    console.log('☕ [QUICK ACTION] Idle Tracking/Break action triggered');
+    console.log('📊 [QUICK ACTION] Break state:', {
+      isPunchedIn,
+      isOnBreak,
+      isAbsent,
+      currentBreak: currentBreak ? {
+        breakType: currentBreak.breakType,
+        breakIn: currentBreak.breakIn
+      } : null,
+      activeBreak
+    });
+    
+    if (!isPunchedIn) {
+      console.log('🚫 [QUICK ACTION] User not punched in - showing toast');
+      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+      return;
+    }
+    
+    if (isAbsent) {
+      console.log('🚫 [QUICK ACTION] User is absent - cannot take break');
+      showToast('Cannot take break when absent', 'error');
+      return;
+    }
+    
+    if (isOnBreak) {
+      console.log('🔴 [QUICK ACTION] User is on break - showing end break alert');
+      Alert.alert(
+        t.breaks.endBreak || 'End Break',
+        t.alerts.endBreakConfirm ||
+          'Are you sure you want to end your break?',
+        [
+          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+          {
+            text: t.alerts.yesEndBreak || 'Yes, End Break',
+            style: 'destructive',
+            onPress: () => {
+              console.log('✅ [QUICK ACTION] User confirmed end break');
+              if (!isProcessing && !breakLoading) {
+                checkInternetAndProceed(() => {
+                  handleBreakOutDirect();
+                });
+              }
+            },
+          },
+        ],
+      );
+      return;
+    }
+    
+    console.log('🟢 [QUICK ACTION] Opening break modal');
+    setBreakModalVisible(true);
+    return;
+  }
+
+  // ============ VISIT ============
+  if (label === 'Visit') {
+    console.log('📍 [QUICK ACTION] Visit action triggered');
+    console.log('📊 [QUICK ACTION] Visit state:', {
+      isSalesTeam,
+      isPunchedIn,
+      isVisitActive,
+      isOnBreak,
+      isAbsent
+    });
+    
+    if (!isSalesTeam) {
+      console.log('🚫 [QUICK ACTION] Not sales team - showing error');
+      showToast('Visit feature is only for sales team', 'error');
+      return;
+    }
+    
+    if (!isPunchedIn) {
+      console.log('🚫 [QUICK ACTION] User not punched in - showing toast');
+      showToast(t.alerts.punchInFirst || 'Please punch in first', 'error');
+      return;
+    }
+    
+    if (isAbsent) {
+      console.log('🚫 [QUICK ACTION] User is absent - cannot start visit');
+      showToast('Cannot start visit when absent', 'error');
+      return;
+    }
+
+    // Check if visit is already active
+    if (isVisitActive) {
+      console.log('🟢 [QUICK ACTION] Visit already active - navigating to VisitScreen');
+      const activeVisitData = getActiveVisitData();
+      console.log('📋 [QUICK ACTION] Active visit data:', activeVisitData);
       
-      // Navigate to Visit screen without active visit
-      navigation.navigate('VisitScreen', { hasActiveVisit: false });
+      navigation.navigate('VisitScreen', { 
+        hasActiveVisit: true,
+        visitData: activeVisitData
+      });
       return;
     }
 
-    if (label === t.home.reports) {
-      checkInternetAndProceed(() => navigation.navigate('Reports'));
+    // If on break, need to end break first
+    if (isOnBreak) {
+      console.log('🔴 [QUICK ACTION] User on break - showing end break alert');
+      Alert.alert(
+        t.breaks.endBreak || 'End Break',
+        t.alerts.endBreakConfirm ||
+          'Are you sure you want to end your break before starting a visit?',
+        [
+          { text: t.buttons.cancel || 'Cancel', style: 'cancel' },
+          {
+            text: t.alerts.yesEndBreak || 'Yes, End Break',
+            style: 'destructive',
+            onPress: () => {
+              console.log('✅ [QUICK ACTION] User confirmed end break for visit');
+              if (!isProcessing && !breakLoading) {
+                checkInternetAndProceed(() => {
+                  handleBreakOutDirect();
+                });
+              }
+            },
+          },
+        ],
+      );
       return;
     }
+    
+    console.log('🟢 [QUICK ACTION] Starting new visit - navigating to VisitScreen');
+    navigation.navigate('VisitScreen', { hasActiveVisit: false });
+    return;
+  }
 
-    if (label === t.home.leaveManagement) {
-      checkInternetAndProceed(() => navigation.navigate('Leave'));
-      return;
-    }
+  // ============ REPORTS ============
+  if (label === t.home.reports) {
+    console.log('📊 [QUICK ACTION] Reports action triggered');
+    checkInternetAndProceed(() => navigation.navigate('Reports'));
+    return;
+  }
 
-    if (label === t.home.reimbursement) {
-      checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
-      return;
-    }
+  // ============ LEAVE MANAGEMENT ============
+  if (label === t.home.leaveManagement) {
+    console.log('📅 [QUICK ACTION] Leave Management action triggered');
+    checkInternetAndProceed(() => navigation.navigate('Leave'));
+    return;
+  }
 
-    if (label === t.home.meetings) {
-      checkInternetAndProceed(() => navigation.navigate('Meetings'));
-      return;
-    }
-    if (label === t.home.kra) {
-      checkInternetAndProceed(() => navigation.navigate('KRA'));
-      return;
-    }
-    showToast(
-      '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
-      'info',
-    );
-  };
+  // ============ REIMBURSEMENT ============
+  if (label === t.home.reimbursement) {
+    console.log('💰 [QUICK ACTION] Reimbursement action triggered');
+    checkInternetAndProceed(() => navigation.navigate('Reimbursement'));
+    return;
+  }
+
+  // ============ MEETINGS ============
+  if (label === t.home.meetings) {
+    console.log('📹 [QUICK ACTION] Meetings action triggered');
+    checkInternetAndProceed(() => navigation.navigate('Meetings'));
+    return;
+  }
+
+  // ============ KRA ============
+  if (label === t.home.kra) {
+    console.log('📈 [QUICK ACTION] KRA action triggered');
+    checkInternetAndProceed(() => navigation.navigate('KRA'));
+    return;
+  }
+
+  // ============ COMING SOON ============
+  console.log('✨ [QUICK ACTION] Coming soon feature:', label);
+  showToast(
+    '✨ ' + label + ' ' + (t.buttons.comingSoon || 'Coming Soon!'),
+    'info',
+  );
+};
 
   // Helper to get active visit data
   const getActiveVisitData = () => {
@@ -699,61 +824,186 @@ const HomeScreen = ({ navigation }) => {
     ]);
   };
 
-  // ✅ Updated handlePunchOut function with visit active check
-  const handlePunchOut = async () => {
-    if (isProcessing || punchOutLoading) return;
+  // ✅ Updated handlePunchOut function with detailed logs
+const handlePunchOut = async () => {
+  console.log('🔴 [PUNCH OUT] ========== START ==========');
+  console.log('🔴 [PUNCH OUT] Current state:', {
+    isProcessing,
+    punchOutLoading,
+    isPunchedIn,
+    isOnBreak,
+    isSalesTeam,
+    isVisitActive,
+    todaysPunchIn,
+    lastSession: lastSession ? {
+      punchIn: lastSession.punchIn,
+      punchOut: lastSession.punchOut,
+      durationMinutes: lastSession.durationMinutes
+    } : null,
+    todayRecordId: todayRecord?._id,
+    sessionsCount: sessions.length
+  });
 
-    // ✅ Check if visit is active (Sales department only)
-    if (isSalesTeam && isVisitActive) {
-      Alert.alert(
-        'Cannot Punch Out',
-        'You have an active visit in progress. Please end your visit first before punching out.',
-        [
-          { 
-            text: 'Go to Visit', 
-            onPress: () => navigation.navigate('VisitScreen') 
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
-    }
+  // Check if already processing
+  if (isProcessing || punchOutLoading) {
+    console.log('⚠️ [PUNCH OUT] Already processing or loading, skipping');
+    return;
+  }
 
-    if (isOnBreak) {
-      Alert.alert(t.alerts.cannotPunchOut, t.alerts.endBreakFirst, [
-        { text: t.buttons.ok || 'OK' },
-      ]);
-      return;
-    }
+  // Check if visit is active (Sales department only)
+  if (isSalesTeam && isVisitActive) {
+    console.log('🚫 [PUNCH OUT] Visit active - blocking punch out');
+    console.log('📋 [PUNCH OUT] Active visit data:', getActiveVisitData());
+    Alert.alert(
+      'Cannot Punch Out',
+      'You have an active visit in progress. Please end your visit first before punching out.',
+      [
+        { 
+          text: 'Go to Visit', 
+          onPress: () => {
+            console.log('📱 [PUNCH OUT] Navigating to Visit screen');
+            navigation.navigate('VisitScreen');
+          }
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+    return;
+  }
 
-    Alert.alert(t.attendance.punchOut, t.alerts.punchOutConfirm, [
-      { text: t.buttons.cancel, style: 'cancel' },
+  // Check if on break
+  if (isOnBreak) {
+    console.log('🚫 [PUNCH OUT] On break - blocking punch out');
+    Alert.alert(t.alerts.cannotPunchOut, t.alerts.endBreakFirst, [
+      { text: t.buttons.ok || 'OK' },
+    ]);
+    return;
+  }
+
+  console.log('✅ [PUNCH OUT] All validations passed, showing confirmation alert');
+
+  // Show confirmation alert
+  Alert.alert(
+    t.attendance.punchOut,
+    t.alerts.punchOutConfirm,
+    [
+      { 
+        text: t.buttons.cancel, 
+        style: 'cancel',
+        onPress: () => {
+          console.log('❌ [PUNCH OUT] User cancelled punch out');
+        }
+      },
       {
         text: t.alerts.yesPunchOut,
         style: 'destructive',
         onPress: async () => {
-          try {
-            setIsProcessing(true);
-            const result = await dispatch(punchOut());
-
-            if (result?.cancelled) {
-              console.log('📸 Punch out cancelled');
-              setIsProcessing(false);
-              return;
-            }
-
-            if (result?.success) {
-              await loadAttendanceHistory();
-            }
-          } catch (error) {
-            console.log('Punch out error:', error);
-          } finally {
-            setIsProcessing(false);
-          }
+          console.log('✅ [PUNCH OUT] User confirmed punch out');
+          await performPunchOut();
         },
       },
-    ]);
-  };
+    ]
+  );
+};
+
+// Separate function for performing the actual punch out
+const performPunchOut = async () => {
+  console.log('🔴 [PUNCH OUT] ========== PERFORMING PUNCH OUT ==========');
+  
+  try {
+    setIsProcessing(true);
+    console.log('🔴 [PUNCH OUT] Set isProcessing = true');
+
+    // Get current location if available
+    let locationData = null;
+    try {
+      // If you have a location utility, get it here
+      console.log('📍 [PUNCH OUT] Getting current location...');
+      // locationData = await getCurrentLocation(); // Uncomment if you have this
+    } catch (locError) {
+      console.log('⚠️ [PUNCH OUT] Could not get location:', locError.message);
+    }
+
+    // Prepare punch out payload
+    const payload = {
+      attendanceId: todayRecord?._id,
+      sessionId: lastSession?.id || lastSession?._id,
+      punchOutTime: new Date().toISOString(),
+      location: locationData,
+      deviceInfo: {
+        platform: Platform.OS,
+        version: Platform.Version,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    console.log('📤 [PUNCH OUT] Request Payload:', JSON.stringify(payload, null, 2));
+    console.log('📤 [PUNCH OUT] Sending punch out request to API...');
+
+    const startTime = Date.now();
+    const result = await dispatch(punchOut());
+    const endTime = Date.now();
+    
+    console.log(`⏱️ [PUNCH OUT] API call took ${endTime - startTime}ms`);
+
+    console.log('📥 [PUNCH OUT] API Response:', JSON.stringify(result, null, 2));
+
+    if (result?.cancelled) {
+      console.log('❌ [PUNCH OUT] Punch out was cancelled by user');
+      console.log('🔴 [PUNCH OUT] ========== PUNCH OUT CANCELLED ==========');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (result?.success) {
+      console.log('✅ [PUNCH OUT] Punch out successful!');
+      console.log('📊 [PUNCH OUT] Response data:', {
+        success: result.success,
+        message: result.message,
+        data: result.data,
+        punchOutTime: result.data?.punchOut,
+        durationMinutes: result.data?.durationMinutes
+      });
+      
+      console.log('🔄 [PUNCH OUT] Refreshing attendance history...');
+      await loadAttendanceHistory();
+      console.log('✅ [PUNCH OUT] Attendance history refreshed');
+      
+      // Log the updated state
+      console.log('📊 [PUNCH OUT] Updated state:', {
+        isPunchedIn: isPunchedIn,
+        hasAnySessionToday: hasAnySessionToday,
+        totalMinutes: totalMinutes,
+        sessionsCount: sessions.length
+      });
+      
+      console.log('✅ [PUNCH OUT] ========== PUNCH OUT COMPLETED ==========');
+    } else {
+      console.log('❌ [PUNCH OUT] Punch out failed:', result?.message || 'Unknown error');
+      console.log('🔴 [PUNCH OUT] ========== PUNCH OUT FAILED ==========');
+    }
+  } catch (error) {
+    console.error('❌ [PUNCH OUT] Error during punch out:', error);
+    console.error('❌ [PUNCH OUT] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    console.log('🔴 [PUNCH OUT] ========== PUNCH OUT ERROR ==========');
+    
+    // Show error alert to user
+    Alert.alert(
+      'Punch Out Failed',
+      error.message || 'Failed to punch out. Please try again.',
+      [{ text: 'OK' }]
+    );
+  } finally {
+    console.log('🔴 [PUNCH OUT] Cleaning up - setting isProcessing = false');
+    setIsProcessing(false);
+    console.log('🔴 [PUNCH OUT] ========== PUNCH OUT END ==========');
+  }
+};
 
   const getFormattedDuration = minutes => {
     if (!minutes && minutes !== 0) return '---';
@@ -1239,33 +1489,47 @@ const HomeScreen = ({ navigation }) => {
 
                 {/* ✅ Updated Punch Out Button with visit active check */}
                 {shouldShowPunchOut() && (
-                  <TouchableOpacity
-                    style={[
-                      styles.punchOutBtn,
-                      { backgroundColor: C.error },
-                      (isLoading || shouldDisablePunchOut()) && { backgroundColor: C.disabled },
-                    ]}
-                    onPress={() => {
-                      if (!shouldDisablePunchOut()) {
-                        checkInternetAndProceed(handlePunchOut);
-                      }
-                    }}
-                    disabled={isLoading || shouldDisablePunchOut()}
-                  >
-                    <LogOut
-                      size={wp('3.5%')}
-                      color="#fff"
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text
-                      style={[styles.punchOutBtnText, { color: '#fff' }]}
-                      numberOfLines={1}
-                    >
-                      {punchOutLoading || isProcessing
-                        ? t.attendance.processing
-                        : t.attendance.punchOut}
-                    </Text>
-                  </TouchableOpacity>
+                 // In the punch out button
+<TouchableOpacity
+  style={[
+    styles.punchOutBtn,
+    { backgroundColor: C.error },
+    (isLoading || shouldDisablePunchOut()) && { backgroundColor: C.disabled },
+  ]}
+  onPress={() => {
+    console.log('👆 [UI] Punch Out button pressed');
+    console.log('📊 [UI] Button state:', {
+      isLoading,
+      shouldDisablePunchOut: shouldDisablePunchOut(),
+      isPunchedIn,
+      isOnBreak,
+      isVisitActive,
+      isSalesTeam
+    });
+    
+    if (!shouldDisablePunchOut()) {
+      console.log('✅ [UI] Conditions met, calling checkInternetAndProceed');
+      checkInternetAndProceed(handlePunchOut);
+    } else {
+      console.log('🚫 [UI] Punch out disabled, not proceeding');
+    }
+  }}
+  disabled={isLoading || shouldDisablePunchOut()}
+>
+  <LogOut
+    size={wp('3.5%')}
+    color="#fff"
+    style={{ marginRight: 4 }}
+  />
+  <Text
+    style={[styles.punchOutBtnText, { color: '#fff' }]}
+    numberOfLines={1}
+  >
+    {punchOutLoading || isProcessing
+      ? t.attendance.processing
+      : t.attendance.punchOut}
+  </Text>
+</TouchableOpacity>
                 )}
               </View>
 
