@@ -748,6 +748,12 @@ const LeaveScreen = ({ navigation }) => {
     userProfile.currentMonthLeaveRemaining !== undefined
       ? userProfile.currentMonthLeaveRemaining
       : 2.5;
+
+const previousMonthsLeaveRemaining =
+    userProfile.previousMonthsLeaveRemaining !== undefined
+      ? userProfile.previousMonthsLeaveRemaining
+      : 0;
+
   const currentMonthLeaveUsed = userProfile.currentMonthLeaveUsed || 0;
 
   const getMonthlyLeaveAllocation = () => {
@@ -1906,6 +1912,68 @@ const LeaveScreen = ({ navigation }) => {
                   </Text>
                 </View>
               </View>
+            {/* ------Remaining Leave ---------- */}
+
+            <View
+                style={[
+                  styles.balanceCard,
+                  {
+                    backgroundColor: C.background,
+                    borderColor: C.success + '40',
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.balanceCardTop,
+                    { backgroundColor: C.success + '12' },
+                  ]}
+                >
+                  <Text
+                    style={[styles.balanceCardRemaining, { color: C.lime}]}
+                  >
+                    {previousMonthsLeaveRemaining} 
+                  </Text>
+                 
+                </View>
+                <View style={styles.balanceCardLabelRow}>
+                  <Text
+                    style={[
+                      styles.balanceCardLabel,
+                      { color: C.textSecondary },
+                    ]}
+                  >
+                    Remaining Leave
+                  </Text>
+                  {/* <Text
+                    style={[
+                      styles.balanceCardSubLabel,
+                      { color: C.textSecondary + '80' },
+                    ]}
+                  >
+                    {MONTHS[new Date().getMonth()]}
+                  </Text> */}
+                </View>
+                <View
+                  style={[styles.balanceBar, { backgroundColor:C.lime}]}
+                >
+                  <View
+                    style={[
+                      styles.balanceBarFill,
+                      {
+                        width: "100%"
+                      },
+                    ]}
+                  />
+                </View>
+                {/* <View style={styles.balanceInfoRow}>
+                  <Text
+                    style={[styles.balanceUsedText, { color: C.textSecondary }]}
+                  >
+                    {currentMonthLeaveUsed} used
+                  </Text>
+                </View> */}
+              </View>
 
               {/* Short Leave — Monthly */}
               <View
@@ -1996,11 +2064,11 @@ const LeaveScreen = ({ navigation }) => {
                 <View
                   style={[
                     styles.balanceCardTop,
-                    { backgroundColor: C.lime + '12' },
+                    { backgroundColor: '#A14C3B' + '12' },
                   ]}
                 >
                   <Text
-                    style={[styles.balanceCardRemaining, { color: C.lime }]}
+                    style={[styles.balanceCardRemaining, { color: '#A14C3B'}]}
                   >
                     {userProfile?.currentMonthLeaveLop || 0}
                   </Text>
@@ -2031,7 +2099,7 @@ const LeaveScreen = ({ navigation }) => {
                       styles.balanceBarFill,
                       {
                         width: "100%",
-                        backgroundColor: C.lime
+                        backgroundColor: '#A14C3B'
                       },
                     ]}
                   />
@@ -2834,7 +2902,7 @@ const LeaveScreen = ({ navigation }) => {
           {/* ── Leave Reason ── */}
           <View style={styles.reasonSection}>
             <Text style={[styles.reasonLabel, { color: C.textSecondary }]}>
-              {t?.leave?.reasonForLeave ? t?.leave?.reasonForLeave.replace('*', '') : 'Reason for Leave '}
+              {t?.leave?.reasonForLeave ? t?.leave?.reasonForLeave.replace('*', '') : 'Reason for Leave'}
               <Text style={{ color: C.error }}>*</Text>
             </Text>
 

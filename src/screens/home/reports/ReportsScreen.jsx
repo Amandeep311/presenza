@@ -1,4 +1,4 @@
-// src/screens/home/reports/ReportsScreen.jsx - WITH VISIT HISTORY & REGULARIZATION
+// src/screens/home/reports/ReportsScreen.jsx - WITH PREVIEW & REGULARIZATION
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -45,6 +45,8 @@ import {
   LogOut,
   Send,
   Clock as ClockIcon,
+  Shield,
+  Check,
 } from 'lucide-react-native';
 import { useTheme } from '../../../context/ThemeContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -175,125 +177,548 @@ const formatMinutes = minutes => {
   return `${minutes} min`;
 };
 
-// ── Get API Status Config ──
-const getApiStatusConfig = (status, C, t, isLate) => {
-  // Check if it's a late record (status is PRESENT but isLate is true)
-  if (status === 'PRESENT' && isLate === true) {
-    return {
-      label: 'Present / Late',
-      color: C.warning,
-      icon: ClockIcon,
-      isLate: true,
-      primaryLabel: 'Present',
-      primaryColor: C.success,
-      secondaryLabel: '/Late',
-      secondaryColor: C.warning,
-    };
-  }
+// ── Attendance Calculation Engine ──────────────────────────────────
+// Office Timings
+const OFFICE_START = 9 * 60 + 30; // 09:30 AM in minutes
+const OFFICE_END = 18 * 60 + 30; // 06:30 PM in minutes
+const GRACE_END = 9 * 60 + 46; // 09:46 AM
+const MORNING_SHORT_LEAVE_END = 11 * 60 + 30; // 11:30 AM
+const SECOND_HALF_START = 14 * 60 + 0; // 02:00 PM
+const SECOND_HALF_GRACE_END = 14 * 60 + 16; // 02:16 PM
+const EVENING_SHORT_LEAVE_START = 16 * 60 + 30; // 04:30 PM
+const FULL_DAY_HOURS = 9 * 60; // 9 hours (09:30 to 18:30)
+const HALF_DAY_HOURS = 4 * 60 + 30; // 4.5 hours (09:30 to 14:00 or 14:00 to 18:30)
+const SHORT_LEAVE_HOURS = 2 * 60; // 2 hours (09:30 to 11:30 or 16:30 to 18:30)
+
+const convertToMinutes = (timeStr, ampm) => {
+  if (!timeStr) return null;
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  if (isNaN(hours) || isNaN(minutes)) return null;
   
-  if (status === 'WEEK_OFF') {
-    return {
-      label: 'Week Off',
-      color: C.textSecondary,
-      icon: CalendarDays,
-    };
+  let hour24 = hours;
+  if (ampm === 'PM' && hours !== 12) {
+    hour24 = hours + 12;
+  } else if (ampm === 'AM' && hours === 12) {
+    hour24 = 0;
   }
-  if (status === 'ON_LEAVE') {
-    return {
-      label: 'On Leave',
-      color: C.textSecondary,
-      icon: CalendarDays,
-    };
-  }
-  switch (status) {
-    case 'PRESENT':
-      return {
-        label: t.reports?.present || 'Present',
-        color: C.success,
-        icon: CheckCircle2,
-      };
-    case 'LATE':
-      return {
-        label: 'Present / Late',
-        color: C.warning,
-        icon: ClockIcon,
-        isLate: true,
-        primaryLabel: 'Present',
-        primaryColor: C.success,
-        secondaryLabel: '/Late',
-        secondaryColor: C.warning,
-      };
-    case 'ABSENT':
-      return {
-        label: t.reports?.absent || 'Absent',
-        color: C.error,
-        icon: XCircle,
-      };
-    case 'HALF_DAY':
-      return {
-        label: t.reports?.halfDay || 'Half Day',
-        color: C.warning,
-        icon: AlertCircle,
-      };
-    case 'SHORT_LEAVE':
-      return {
-        label: t.reports?.shortLeave || 'Short Leave',
-        color: C.warning,
-        icon: AlertCircle,
-      };
-    default:
-      return {
-        label: status || 'Unknown',
-        color: C.textSecondary,
-        icon: AlertCircle,
-      };
-  }
+  return hour24 * 60 + minutes;
 };
 
-// ── Get Extra Details ──
-const getExtraDetails = (record, C) => {
-  const details = [];
-
-  if (record.isLate === true && record.lateMinutes > 0) {
-    details.push({
-      type: 'late',
-      message: `⚠️ Late Login: ${formatMinutes(record.lateMinutes)} late`,
-      color: C.warning,
-    });
+const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
+  const inMinutes = convertToMinutes(punchIn, punchInAmPm);
+  const outMinutes = convertToMinutes(punchOut, punchOutAmPm);
+  
+  if (inMinutes === null || outMinutes === null || outMinutes <= inMinutes) {
+    return null;
   }
 
-  if (record.isEarlyLeave === true && record.earlyLeaveMinutes > 0) {
-    details.push({
-      type: 'early',
-      message: `⚠️ Early Logout: ${formatMinutes(
-        record.earlyLeaveMinutes,
-      )} early`,
-      color: C.warning,
-    });
+  const workingMinutes = outMinutes - inMinutes;
+  let coreStatus = '';
+  let finalStatus = '';
+  let halfDayType = '';
+  let deduction = 'None';
+  let lateMinutes = 0;
+  let statusDetails = '';
+
+  // Check if punch in is within office hours
+  const isWithinOfficeHours = inMinutes >= OFFICE_START && outMinutes <= OFFICE_END;
+  const isPartialDay = outMinutes < OFFICE_END;
+
+  // Determine if it's a morning or evening shift
+  const isMorningShift = inMinutes >= OFFICE_START && outMinutes <= SECOND_HALF_START;
+  const isEveningShift = inMinutes >= SECOND_HALF_START && outMinutes <= OFFICE_END;
+
+  // Check for early departure
+  const earlyDeparture = outMinutes < OFFICE_END;
+
+  // Calculate based on total working hours
+  if (workingMinutes >= FULL_DAY_HOURS - 15) { // Full day (at least 8.75 hours)
+    coreStatus = 'PRESENT';
+    finalStatus = 'PRESENT (Full Day)';
+    statusDetails = 'Full Day (9:30 AM - 6:30 PM)';
+    if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+      lateMinutes = 0;
+      finalStatus = 'PRESENT (Grace)';
+    } else if (inMinutes > GRACE_END) {
+      lateMinutes = inMinutes - OFFICE_START;
+      finalStatus = `PRESENT (Late by ${formatMinutes(lateMinutes)})`;
+    }
+    if (earlyDeparture && outMinutes < OFFICE_END - 15) {
+      const earlyMins = OFFICE_END - outMinutes;
+      deduction = `Early Logout: ${formatMinutes(earlyMins)}`;
+    }
+  } 
+  else if (workingMinutes >= HALF_DAY_HOURS - 15 && workingMinutes < FULL_DAY_HOURS - 15) {
+    // Half day logic
+    if (isMorningShift && inMinutes >= OFFICE_START && outMinutes <= SECOND_HALF_START) {
+      coreStatus = 'HALF_DAY';
+      finalStatus = 'HALF_DAY (First Half)';
+      halfDayType = 'MORNING';
+      statusDetails = 'First Half (9:30 AM - 2:00 PM)';
+      if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+        lateMinutes = 0;
+        finalStatus = 'HALF_DAY (First Half - Grace)';
+      } else if (inMinutes > GRACE_END) {
+        lateMinutes = inMinutes - OFFICE_START;
+        finalStatus = `HALF_DAY (First Half - Late by ${formatMinutes(lateMinutes)})`;
+      }
+    } else if (isEveningShift && inMinutes >= SECOND_HALF_START && outMinutes <= OFFICE_END) {
+      coreStatus = 'HALF_DAY';
+      finalStatus = 'HALF_DAY (Second Half)';
+      halfDayType = 'EVENING';
+      statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+      if (inMinutes > SECOND_HALF_START && inMinutes <= SECOND_HALF_GRACE_END) {
+        lateMinutes = 0;
+        finalStatus = 'HALF_DAY (Second Half - Grace)';
+      } else if (inMinutes > SECOND_HALF_GRACE_END) {
+        lateMinutes = inMinutes - SECOND_HALF_START;
+        finalStatus = `HALF_DAY (Second Half - Late by ${formatMinutes(lateMinutes)})`;
+      }
+    } else {
+      // Fallback: determine half day based on time
+      if (inMinutes < SECOND_HALF_START && outMinutes > SECOND_HALF_START) {
+        coreStatus = 'HALF_DAY';
+        finalStatus = 'HALF_DAY (First Half)';
+        halfDayType = 'MORNING';
+        statusDetails = 'First Half (9:30 AM - 2:00 PM)';
+      } else {
+        coreStatus = 'HALF_DAY';
+        finalStatus = 'HALF_DAY (Second Half)';
+        halfDayType = 'EVENING';
+        statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+      }
+    }
+  } 
+  else if (workingMinutes >= SHORT_LEAVE_HOURS - 15 && workingMinutes < HALF_DAY_HOURS - 15) {
+    // Short leave logic
+    if (inMinutes >= OFFICE_START && outMinutes <= MORNING_SHORT_LEAVE_END) {
+      coreStatus = 'SHORT_LEAVE';
+      finalStatus = 'SHORT_LEAVE (Morning)';
+      statusDetails = 'Morning Short Leave (9:30 AM - 11:30 AM)';
+      if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+        lateMinutes = 0;
+        finalStatus = 'SHORT_LEAVE (Morning - Grace)';
+      } else if (inMinutes > GRACE_END) {
+        lateMinutes = inMinutes - OFFICE_START;
+        finalStatus = `SHORT_LEAVE (Morning - Late by ${formatMinutes(lateMinutes)})`;
+      }
+    } else if (inMinutes >= EVENING_SHORT_LEAVE_START && outMinutes <= OFFICE_END) {
+      coreStatus = 'SHORT_LEAVE';
+      finalStatus = 'SHORT_LEAVE (Evening)';
+      statusDetails = 'Evening Short Leave (4:30 PM - 6:30 PM)';
+    } else if (inMinutes >= OFFICE_START && outMinutes >= MORNING_SHORT_LEAVE_END && outMinutes < SECOND_HALF_START) {
+      coreStatus = 'PRESENT';
+      finalStatus = 'PRESENT (Morning Short Leave)';
+      statusDetails = 'Present with Morning Short Leave';
+      if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+        lateMinutes = 0;
+        finalStatus = 'PRESENT (Morning Short Leave - Grace)';
+      } else if (inMinutes > GRACE_END) {
+        lateMinutes = inMinutes - OFFICE_START;
+        finalStatus = `PRESENT (Morning Short Leave - Late by ${formatMinutes(lateMinutes)})`;
+      }
+    } else if (inMinutes >= SECOND_HALF_START && outMinutes < EVENING_SHORT_LEAVE_START) {
+      coreStatus = 'PRESENT';
+      finalStatus = 'PRESENT (Evening Short Leave)';
+      statusDetails = 'Present with Evening Short Leave';
+    } else if (inMinutes >= OFFICE_START && outMinutes < EVENING_SHORT_LEAVE_START) {
+      coreStatus = 'ABSENT';
+      finalStatus = 'ABSENT';
+      statusDetails = 'Absent';
+    } else {
+      coreStatus = 'ABSENT';
+      finalStatus = 'ABSENT';
+      statusDetails = 'Absent';
+    }
+  } 
+  else if (workingMinutes < SHORT_LEAVE_HOURS - 15) {
+    // Less than 2 hours - considered absent
+    if (inMinutes >= OFFICE_START && outMinutes >= OFFICE_START + 30) {
+      coreStatus = 'PRESENT';
+      finalStatus = 'PRESENT (Short Duration)';
+      statusDetails = 'Present (Short Duration)';
+    } else {
+      coreStatus = 'ABSENT';
+      finalStatus = 'ABSENT';
+      statusDetails = 'Absent';
+    }
+  } else {
+    coreStatus = 'ABSENT';
+    finalStatus = 'ABSENT';
+    statusDetails = 'Absent';
   }
 
-  if (record.morningShortLeave?.isShortLeave === true) {
-    details.push({
-      type: 'shortLeaveAM',
-      message: `⚠️ Morning Short Leave: ${formatMinutes(
-        record.morningShortLeave.minutes,
-      )}`,
-      color: C.info,
-    });
+  // Special case: 9:30 to 11:30 - Absent (as per your requirement)
+  if (inMinutes === OFFICE_START && outMinutes <= MORNING_SHORT_LEAVE_END && workingMinutes < SHORT_LEAVE_HOURS) {
+    coreStatus = 'ABSENT';
+    finalStatus = 'ABSENT';
+    statusDetails = 'Absent';
   }
 
-  if (record.eveningShortLeave?.isShortLeave === true) {
-    details.push({
-      type: 'shortLeavePM',
-      message: `⚠️ Evening Short Leave: ${formatMinutes(
-        record.eveningShortLeave.minutes,
-      )}`,
-      color: C.info,
-    });
+  // Special case: 9:30 to 2:00 - First Half Half Day
+  if (inMinutes === OFFICE_START && outMinutes <= SECOND_HALF_START && workingMinutes >= HALF_DAY_HOURS - 15) {
+    coreStatus = 'HALF_DAY';
+    finalStatus = 'HALF_DAY (First Half)';
+    halfDayType = 'MORNING';
+    statusDetails = 'First Half (9:30 AM - 2:00 PM)';
   }
 
-  return details;
+  // Special case: 2:00 to 6:30 - Second Half Half Day
+  if (inMinutes >= SECOND_HALF_START && outMinutes === OFFICE_END && workingMinutes >= HALF_DAY_HOURS - 15) {
+    coreStatus = 'HALF_DAY';
+    finalStatus = 'HALF_DAY (Second Half)';
+    halfDayType = 'EVENING';
+    statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+  }
+
+  // Special case: 11:45 to 6:30 - Present with Morning Short Leave
+  if (inMinutes === 11 * 60 + 45 && outMinutes === OFFICE_END) {
+    coreStatus = 'PRESENT';
+    finalStatus = 'PRESENT (Morning Short Leave)';
+    statusDetails = 'Present with Morning Short Leave';
+  }
+
+  // Special case: 9:30 to 4:30 - Present with Evening Short Leave
+  if (inMinutes === OFFICE_START && outMinutes === EVENING_SHORT_LEAVE_START) {
+    coreStatus = 'PRESENT';
+    finalStatus = 'PRESENT (Evening Short Leave)';
+    statusDetails = 'Present with Evening Short Leave';
+  }
+
+  // If still absent but working hours > 0, mark as present
+  if (coreStatus === 'ABSENT' && workingMinutes > 30) {
+    coreStatus = 'PRESENT';
+    finalStatus = 'PRESENT';
+    statusDetails = 'Present';
+  }
+
+  // Check for late login
+  if (inMinutes > GRACE_END && (coreStatus === 'PRESENT' || coreStatus === 'HALF_DAY' || coreStatus === 'SHORT_LEAVE')) {
+    lateMinutes = inMinutes - OFFICE_START;
+  }
+
+  // Check for early logout deduction
+  if (outMinutes < OFFICE_END && (coreStatus === 'PRESENT' || coreStatus === 'HALF_DAY' || coreStatus === 'SHORT_LEAVE')) {
+    const earlyMins = OFFICE_END - outMinutes;
+    if (earlyMins > 15) {
+      deduction = `Early Logout: ${formatMinutes(earlyMins)}`;
+    }
+  }
+
+  return {
+    punchIn: `${punchIn} ${punchInAmPm}`,
+    punchOut: `${punchOut} ${punchOutAmPm}`,
+    workingHours: formatMinutes(workingMinutes),
+    workingMinutes: workingMinutes,
+    coreStatus,
+    finalStatus,
+    halfDayType,
+    deduction: deduction || 'None',
+    lateMinutes: lateMinutes > 0 ? formatMinutes(lateMinutes) : '0',
+    status: coreStatus,
+    isLate: lateMinutes > 0,
+    fullStatus: finalStatus,
+    statusDetails: statusDetails || finalStatus,
+  };
 };
+
+// ── Preview Modal Component ──────────────────────────────────────
+const PreviewModal = ({ 
+  visible, 
+  onClose, 
+  previewData, 
+  onSubmit,
+  loading,
+  theme 
+}) => {
+  const C = theme.colors;
+
+  if (!previewData) return null;
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'PRESENT': return C.success;
+      case 'HALF_DAY': return C.warning;
+      case 'SHORT_LEAVE': return C.warning;
+      case 'ABSENT': return C.error;
+      default: return C.textSecondary;
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'PRESENT': return CheckCircle2;
+      case 'HALF_DAY': return AlertCircle;
+      case 'SHORT_LEAVE': return ClockIcon;
+      case 'ABSENT': return XCircle;
+      default: return AlertCircle;
+    }
+  };
+
+  const StatusIcon = getStatusIcon(previewData.coreStatus);
+  const statusColor = getStatusColor(previewData.coreStatus);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={[previewStyles.modalOverlay, { backgroundColor: C.overlayBg }]}>
+          <TouchableWithoutFeedback>
+            <View
+              style={[
+                previewStyles.modalContent,
+                { backgroundColor: C.surface, borderColor: C.border },
+              ]}
+            >
+              <View style={previewStyles.modalHeader}>
+                <Text style={[previewStyles.modalTitle, { color: C.textPrimary }]}>
+                  Attendance Preview
+                </Text>
+                <TouchableOpacity onPress={onClose} disabled={loading}>
+                  <X size={wp('5%')} color={C.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Status Badge */}
+                <View style={[previewStyles.statusBadge, { backgroundColor: statusColor + '15' }]}>
+                  <StatusIcon size={wp('5%')} color={statusColor} />
+                  <Text style={[previewStyles.statusText, { color: statusColor }]}>
+                    {previewData.finalStatus}
+                  </Text>
+                </View>
+
+                {/* Status Details */}
+                {previewData.statusDetails && (
+                  <View style={[previewStyles.detailItem, { 
+                    marginHorizontal: wp('4%'), 
+                    marginTop: hp('0.5%'),
+                    padding: wp('2%'),
+                    borderRadius: wp('2%'),
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    backgroundColor: C.background,
+                    alignItems: 'center',
+                  }]}>
+                    <Text style={[previewStyles.detailLabel, { color: C.textSecondary, textAlign: 'center' }]}>
+                      {previewData.statusDetails}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Punch Times */}
+                <View style={previewStyles.infoGrid}>
+                  <View style={[previewStyles.infoCard, { backgroundColor: C.background, borderColor: C.border }]}>
+                    <Text style={[previewStyles.infoLabel, { color: C.textSecondary }]}>Punch In</Text>
+                    <Text style={[previewStyles.infoValue, { color: C.textPrimary }]}>
+                      {previewData.punchIn}
+                    </Text>
+                  </View>
+
+                  <View style={[previewStyles.infoCard, { backgroundColor: C.background, borderColor: C.border }]}>
+                    <Text style={[previewStyles.infoLabel, { color: C.textSecondary }]}>Punch Out</Text>
+                    <Text style={[previewStyles.infoValue, { color: C.textPrimary }]}>
+                      {previewData.punchOut}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Working Hours */}
+                <View style={[previewStyles.infoCard, { backgroundColor: C.background, borderColor: C.border, marginHorizontal: wp('4%'), marginTop: hp('1%') }]}>
+                  <View style={previewStyles.workingHoursRow}>
+                    <Clock size={wp('4%')} color={C.primary} />
+                    <Text style={[previewStyles.workingHoursLabel, { color: C.textSecondary }]}>
+                      Working Hours
+                    </Text>
+                    <Text style={[previewStyles.workingHoursValue, { color: C.primary }]}>
+                      {previewData.workingHours}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Time Range Info */}
+                <View style={[previewStyles.timeRangeBox, { backgroundColor: C.primary + '10', borderColor: C.primary + '30' }]}>
+                  <Text style={[previewStyles.timeRangeTitle, { color: C.primary }]}>
+                    Office Timings & Rules
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    Office: 09:30 AM - 06:30 PM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    Grace: 09:30 AM - 09:46 AM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    Morning Short Leave: 09:30 AM - 11:30 AM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    First Half: 09:30 AM - 02:00 PM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    Second Half: 02:00 PM - 06:30 PM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.textSecondary }]}>
+                    Evening Short Leave: 04:30 PM - 06:30 PM
+                  </Text>
+                  <Text style={[previewStyles.timeRangeText, { color: C.primary, fontFamily: Fonts.bold }]}>
+                    Status Based on Total Working Hours
+                  </Text>
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                  style={[
+                    previewStyles.submitBtn, 
+                    { backgroundColor: C.primary },
+                    loading && { opacity: 0.7 }
+                  ]}
+                  onPress={onSubmit}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color={C.textDark} />
+                  ) : (
+                    <>
+                      <Send size={wp('4%')} color={C.textDark} />
+                      <Text style={[previewStyles.submitText, { color: C.textDark }]}>
+                        Submit Request
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <View style={{ height: hp('2%') }} />
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+
+// ── Preview Styles ──────────────────────────────────
+const previewStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: hp('90%'),
+    borderTopLeftRadius: wp('5%'),
+    borderTopRightRadius: wp('5%'),
+    borderWidth: 1,
+    overflow: 'hidden',
+    paddingBottom: hp('2%'),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: wp('4%'),
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
+  },
+  modalTitle: {
+    fontSize: wp('4.5%'),
+    fontFamily: Fonts.bold,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    marginHorizontal: wp('4%'),
+    marginTop: hp('1%'),
+    padding: wp('3%'),
+    borderRadius: wp('3%'),
+  },
+  statusText: {
+    fontSize: wp('4%'),
+    fontFamily: Fonts.bold,
+  },
+  infoGrid: {
+    flexDirection: 'row',
+    gap: wp('3%'),
+    paddingHorizontal: wp('4%'),
+    marginTop: hp('1.5%'),
+  },
+  infoCard: {
+    flex: 1,
+    padding: wp('3%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  infoLabel: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.regular,
+    marginBottom: hp('0.3%'),
+  },
+  infoValue: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.bold,
+  },
+  workingHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp('2%'),
+  },
+  workingHoursLabel: {
+    fontSize: wp('3%'),
+    fontFamily: Fonts.regular,
+  },
+  workingHoursValue: {
+    fontSize: wp('4%'),
+    fontFamily: Fonts.bold,
+    marginLeft: 'auto',
+  },
+  detailItem: {
+    padding: wp('2.5%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  detailLabel: {
+    fontSize: wp('2.8%'),
+    fontFamily: Fonts.medium,
+  },
+  timeRangeBox: {
+    marginHorizontal: wp('4%'),
+    marginTop: hp('1.5%'),
+    padding: wp('3%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  timeRangeTitle: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.bold,
+    marginBottom: hp('0.5%'),
+  },
+  timeRangeText: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.regular,
+    marginVertical: hp('0.2%'),
+  },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    marginHorizontal: wp('4%'),
+    marginTop: hp('2%'),
+    padding: wp('3.5%'),
+    borderRadius: wp('3%'),
+  },
+  submitText: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.bold,
+  },
+});
 
 // ── Visit Record Card ────────────────────────────
 const VisitRecordCard = ({ visit, sessionIndex, visitIndex }) => {
@@ -588,16 +1013,17 @@ const visitStyles = StyleSheet.create({
 });
 
 // ── Regularization Modal ──────────────────────────
-const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => {
+const RegularizationModal = ({ visible, onClose, record, theme, onShowPreview }) => {
   const C = theme.colors;
   const { t } = useLanguage();
-  const [loading, setLoading] = useState(false);
-  const [requestType, setRequestType] = useState('ABSENT_MARKED');
+  const [requestType, setRequestType] = useState('MISSING_BOTH');
   const [punchInTime, setPunchInTime] = useState('');
   const [punchOutTime, setPunchOutTime] = useState('');
   const [punchInAmPm, setPunchInAmPm] = useState('AM');
   const [punchOutAmPm, setPunchOutAmPm] = useState('PM');
   const [reason, setReason] = useState('');
+  const [hasRegularizationRequest, setHasRegularizationRequest] = useState(false);
+  const [regularizationStatus, setRegularizationStatus] = useState(null);
   const scrollViewRef = useRef();
 
   // Get status from record
@@ -607,14 +1033,49 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
   const isLateRecord = status === 'PRESENT' && record?.isLate === true;
   const effectiveStatus = isLateRecord ? 'LATE' : status;
 
+  // Check if there's already a regularization request in the regularizations array
+  useEffect(() => {
+    if (record && record.regularizations && Array.isArray(record.regularizations)) {
+      // Check if any regularization exists with status APPROVED or PENDING
+      const hasActiveRequest = record.regularizations.some(
+        reg => reg.status === 'APPROVED' || reg.status === 'PENDING'
+      );
+      
+      // Get the first active regularization status
+      const activeReg = record.regularizations.find(
+        reg => reg.status === 'APPROVED' || reg.status === 'PENDING'
+      );
+      
+      setHasRegularizationRequest(hasActiveRequest);
+      setRegularizationStatus(activeReg?.status || null);
+    } else {
+      setHasRegularizationRequest(false);
+      setRegularizationStatus(null);
+    }
+  }, [record]);
+
+  // Clear form fields when modal opens
+  useEffect(() => {
+    if (visible) {
+      setPunchInTime('');
+      setPunchOutTime('');
+      setPunchInAmPm('AM');
+      setPunchOutAmPm('PM');
+      setReason('');
+      // Set default request type based on status
+      const types = getRequestTypes();
+      if (types.length > 0) {
+        setRequestType(types[0].id);
+      }
+    }
+  }, [visible]);
+
   // ✅ DYNAMIC REQUEST TYPES BASED ON STATUS
   const getRequestTypes = () => {
     switch (effectiveStatus) {
       case 'ABSENT':
         return [
           { id: 'MISSING_BOTH', label: 'Missing Both Punches' },
-          { id: 'MISSING_PUNCH_OUT', label: 'Missing Punch Out' },
-          { id: 'ABSENT_MARKED', label: 'Absent Marked Incorrectly' },
         ];
       case 'HALF_DAY':
         return [
@@ -631,7 +1092,6 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
         ];
       default:
         return [
-          { id: 'ABSENT_MARKED', label: 'Absent Marked Incorrectly' },
           { id: 'MISSING_PUNCH_IN', label: 'Missing Punch In' },
           { id: 'MISSING_PUNCH_OUT', label: 'Missing Punch Out' },
           { id: 'MISSING_BOTH', label: 'Missing Both Punches' },
@@ -639,20 +1099,6 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
         ];
     }
   };
-
-  // Set initial request type based on status
-  useEffect(() => {
-    const types = getRequestTypes();
-    if (types.length > 0) {
-      setRequestType(types[0].id);
-    }
-  }, [effectiveStatus]);
-
-  // Reset AM/PM when request type changes
-  useEffect(() => {
-    setPunchInAmPm('AM');
-    setPunchOutAmPm('PM');
-  }, [requestType]);
 
   const requestTypes = getRequestTypes();
 
@@ -694,96 +1140,10 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
     return colorMap[status] || C.textSecondary;
   };
 
-  // Get the record ID from multiple possible fields
-  const getRecordId = () => {
-    if (!record) return null;
-    return record._id || record.id || record.attendanceId || null;
-  };
-
-  // Get required fields based on request type
-  const getRequiredFields = (type) => {
-    switch (type) {
-      case 'MISSING_PUNCH_IN':
-        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'reason'];
-      case 'MISSING_PUNCH_OUT':
-        return ['attendanceId', 'attendanceDate', 'requestedPunchOut', 'reason'];
-      case 'MISSING_BOTH':
-        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
-      case 'WRONG_PUNCH_TIME':
-        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
-      case 'ABSENT_MARKED':
-        return ['attendanceId', 'attendanceDate', 'requestedPunchIn', 'requestedPunchOut', 'reason'];
-      default:
-        return [];
-    }
-  };
-
-  // Helper function to convert 12-hour time to 24-hour format with AM/PM
-  const convertTo24Hour = (timeStr, ampm) => {
-    if (!timeStr) return '';
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return '';
-    
-    let hour24 = hours;
-    if (ampm === 'PM' && hours !== 12) {
-      hour24 = hours + 12;
-    } else if (ampm === 'AM' && hours === 12) {
-      hour24 = 0;
-    }
-    return `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  };
-
-  // ✅ Helper function to compare times (returns true if time1 > time2)
-  const isTimeGreater = (time1, ampm1, time2, ampm2) => {
-    if (!time1 || !time2) return true;
-    
-    const hour1 = parseInt(time1.split(':')[0]);
-    const minute1 = parseInt(time1.split(':')[1]);
-    const hour2 = parseInt(time2.split(':')[0]);
-    const minute2 = parseInt(time2.split(':')[1]);
-    
-    // Convert to 24-hour format for comparison
-    let hour24_1 = hour1;
-    if (ampm1 === 'PM' && hour1 !== 12) hour24_1 = hour1 + 12;
-    else if (ampm1 === 'AM' && hour1 === 12) hour24_1 = 0;
-    
-    let hour24_2 = hour2;
-    if (ampm2 === 'PM' && hour2 !== 12) hour24_2 = hour2 + 12;
-    else if (ampm2 === 'AM' && hour2 === 12) hour24_2 = 0;
-    
-    // Compare total minutes
-    const totalMinutes1 = hour24_1 * 60 + minute1;
-    const totalMinutes2 = hour24_2 * 60 + minute2;
-    
-    // Return true if time1 > time2 (strictly greater)
-    return totalMinutes1 > totalMinutes2;
-  };
-
-  // Helper function to format time for display
-  const formatTimeDisplay = (time, ampm) => {
-    if (!time) return '';
-    return `${time} ${ampm}`;
-  };
-
-  const handleSubmit = async () => {
+  // Handle Preview
+  const handlePreview = () => {
     dismissKeyboard();
 
-    const recordId = getRecordId();
-
-    if (!recordId) {
-      Alert.alert('Error', 'Attendance record not found');
-      return;
-    }
-
-    // Validate based on request type
-    const requiredFields = getRequiredFields(requestType);
-    
-    if (requiredFields.includes('reason') && !reason.trim()) {
-      Alert.alert('Error', 'Please provide a reason for regularization');
-      return;
-    }
-
-    // Validate time inputs based on request type
     const needsPunchIn = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
     const needsPunchOut = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
 
@@ -797,103 +1157,43 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
       return;
     }
 
-    // Validate time format (HH:MM)
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-    if (needsPunchIn && !timeRegex.test(punchInTime)) {
+    if (needsPunchIn && punchInTime && !timeRegex.test(punchInTime)) {
       Alert.alert('Error', 'Please enter valid punch in time (HH:MM)');
       return;
     }
-    if (needsPunchOut && !timeRegex.test(punchOutTime)) {
+
+    if (needsPunchOut && punchOutTime && !timeRegex.test(punchOutTime)) {
       Alert.alert('Error', 'Please enter valid punch out time (HH:MM)');
       return;
     }
 
-    // ✅ STRICT VALIDATION: Punch out time MUST be greater than punch in time
-    if (needsPunchIn && needsPunchOut) {
-      // First check if both times are provided
-      if (punchInTime && punchOutTime) {
-        // Check if punch out time is greater than punch in time
-        if (!isTimeGreater(punchOutTime, punchOutAmPm, punchInTime, punchInAmPm)) {
-          const formattedInTime = formatTimeDisplay(punchInTime, punchInAmPm);
-          const formattedOutTime = formatTimeDisplay(punchOutTime, punchOutAmPm);
-          
-          Alert.alert(
-            'Invalid Time', 
-            `Punch out time (${formattedOutTime}) must be later than punch in time (${formattedInTime}).\n\nPlease adjust the time or AM/PM selection.`
-          );
-          return;
-        }
-      }
+    if (!reason.trim()) {
+      Alert.alert('Error', 'Please provide a reason for regularization');
+      return;
     }
 
-    setLoading(true);
-
-    try {
-      // Prepare payload
-      const payload = {
-        attendanceId: recordId,
-        requestType: requestType,
-        attendanceDate: new Date(record.date).toISOString(),
-        reason: reason.trim() || 'Requesting attendance regularization',
-      };
-
-      // Add punch times based on request type with AM/PM
-      const needsPunchInForPayload = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
-      const needsPunchOutForPayload = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(requestType);
-
-      if (needsPunchInForPayload) {
-        const date = new Date(record.date).toISOString().split('T')[0];
-        // Convert 12-hour time with AM/PM to 24-hour format
-        const punchIn24Hour = convertTo24Hour(punchInTime, punchInAmPm);
-        if (!punchIn24Hour) {
-          throw new Error('Invalid punch in time format');
-        }
-        const punchInDateTime = new Date(`${date}T${punchIn24Hour}:00.000Z`);
-        payload.requestedPunchIn = punchInDateTime.toISOString();
-      }
-
-      if (needsPunchOutForPayload) {
-        const date = new Date(record.date).toISOString().split('T')[0];
-        // Convert 12-hour time with AM/PM to 24-hour format
-        const punchOut24Hour = convertTo24Hour(punchOutTime, punchOutAmPm);
-        if (!punchOut24Hour) {
-          throw new Error('Invalid punch out time format');
-        }
-        const punchOutDateTime = new Date(`${date}T${punchOut24Hour}:00.000Z`);
-        payload.requestedPunchOut = punchOutDateTime.toISOString();
-      }
-
-      console.log('Regularization Payload:', payload);
-
-      const response = await apiService.post('/attendance/regularize-attendance', payload);
-      
-      // ✅ Check both top-level success and data.success
-      const isSuccess = response.data?.success === true && response.data?.data?.success !== false;
-      
-      if (isSuccess) {
-        Alert.alert(
-          'Success',
-          'Regularization request submitted successfully!',
-          [{ text: 'OK', onPress: onSuccess }]
-        );
-      } else {
-        // ✅ Extract the actual error message from data.message or top-level message
-        const errorMessage = response.data?.data?.message || 
-                            response.data?.message || 
-                            'Failed to submit regularization request';
-        Alert.alert('Error', errorMessage);
-      }
-    } catch (error) {
-      console.error('Regularization error:', error);
-      // ✅ Check if error response has data with message
-      const errorMessage = error.response?.data?.data?.message || 
-                          error.response?.data?.message || 
-                          error.message || 
-                          'Failed to submit regularization request';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
+    const result = calculateAttendance(punchInTime, punchInAmPm, punchOutTime, punchOutAmPm);
+    
+    if (!result) {
+      Alert.alert('Error', 'Punch out time must be later than punch in time');
+      return;
     }
+
+    const previewData = {
+      ...result,
+      requestType,
+      punchInTime,
+      punchOutTime,
+      punchInAmPm,
+      punchOutAmPm,
+      reason: reason.trim(),
+      recordId: record?._id || record?.id || record?.attendanceId || null,
+      date: record?.date,
+    };
+
+    onClose();
+    onShowPreview(previewData);
   };
 
   // AM/PM Toggle Button Component
@@ -992,7 +1292,7 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
                     flex: 1,
                   },
                 ]}
-                placeholder="18:30"
+                placeholder="06:30"
                 placeholderTextColor={C.textSecondary}
                 value={punchOutTime}
                 onChangeText={setPunchOutTime}
@@ -1007,6 +1307,25 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
         )}
       </View>
     );
+  };
+
+  // Get status message
+  const getStatusMessage = () => {
+    if (regularizationStatus === 'APPROVED') {
+      return '✅ Your regularization request has been approved.';
+    } else if (regularizationStatus === 'PENDING') {
+      return '⏳ Your regularization request is pending review.';
+    }
+    return 'Your regularization request has been submitted and is being reviewed.';
+  };
+
+  const getMessageColor = () => {
+    if (regularizationStatus === 'APPROVED') {
+      return C.success;
+    } else if (regularizationStatus === 'PENDING') {
+      return C.warning;
+    }
+    return C.info;
   };
 
   return (
@@ -1029,7 +1348,7 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
                 <Text style={[regStyles.modalTitle, { color: C.textPrimary }]}>
                   Regularize Attendance
                 </Text>
-                <TouchableOpacity onPress={onClose} disabled={loading}>
+                <TouchableOpacity onPress={onClose}>
                   <X size={wp('5%')} color={C.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -1048,93 +1367,118 @@ const RegularizationModal = ({ visible, onClose, onSuccess, record, theme }) => 
                   </Text>
                 </View>
 
-                <Text style={[regStyles.sectionLabel, { color: C.textSecondary }]}>
-                  Request Type
-                </Text>
-                {requestTypes.map((type) => (
-                  <TouchableOpacity
-                    key={type.id}
-                    style={[
-                      regStyles.requestTypeOption,
-                      { borderBottomColor: C.border },
-                      requestType === type.id && {
-                        backgroundColor: C.primary + '20',
-                        borderColor: C.primary,
-                      },
-                    ]}
-                    onPress={() => {
-                      dismissKeyboard();
-                      setRequestType(type.id);
-                      // Reset time fields when switching types
-                      setPunchInTime('');
-                      setPunchOutTime('');
-                      setPunchInAmPm('AM');
-                      setPunchOutAmPm('PM');
-                    }}
-                  >
-                    <Text
+                {hasRegularizationRequest ? (
+                  // Show status message when request exists
+                  <View style={[regStyles.statusContainer, { 
+                    backgroundColor: getMessageColor() + '10', 
+                    borderColor: getMessageColor() + '30',
+                  }]}>
+                    {regularizationStatus === 'APPROVED' ? (
+                      <Check size={wp('6%')} color={C.success} />
+                    ) : (
+                      <Shield size={wp('6%')} color={getMessageColor()} />
+                    )}
+                    <Text style={[regStyles.statusMessage, { 
+                      color: getMessageColor(),
+                    }]}>
+                      {getStatusMessage()}
+                    </Text>
+                    {regularizationStatus === 'APPROVED' && (
+                      <Text style={[regStyles.statusSubMessage, { 
+                        color: C.textSecondary,
+                      }]}>
+                        Your attendance has been regularized successfully.
+                      </Text>
+                    )}
+                  </View>
+                ) : (
+                  // Show form when no request exists
+                  <>
+                    <Text style={[regStyles.sectionLabel, { color: C.textSecondary }]}>
+                      Request Type
+                    </Text>
+                    {requestTypes.map((type) => (
+                      <TouchableOpacity
+                        key={type.id}
+                        style={[
+                          regStyles.requestTypeOption,
+                          { borderBottomColor: C.border },
+                          requestType === type.id && {
+                            backgroundColor: C.primary + '20',
+                            borderColor: C.primary,
+                          },
+                        ]}
+                        onPress={() => {
+                          dismissKeyboard();
+                          setRequestType(type.id);
+                          setPunchInTime('');
+                          setPunchOutTime('');
+                          setPunchInAmPm('AM');
+                          setPunchOutAmPm('PM');
+                        }}
+                      >
+                        <Text
+                          style={[
+                            regStyles.requestTypeText,
+                            {
+                              color: requestType === type.id ? C.primary : C.textPrimary,
+                            },
+                          ]}
+                        >
+                          {type.label}
+                        </Text>
+                        {requestType === type.id && (
+                          <CheckCircle2 size={wp('4%')} color={C.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+
+                    {renderTimeInputs()}
+
+                    <View style={regStyles.reasonGroup}>
+                      <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
+                        Reason for Regularization *
+                      </Text>
+                      <TextInput
+                        style={[
+                          regStyles.reasonInput,
+                          {
+                            backgroundColor: C.background,
+                            borderColor: C.border,
+                            color: C.textPrimary,
+                          },
+                        ]}
+                        placeholder="Please provide a detailed reason..."
+                        placeholderTextColor={C.textSecondary}
+                        value={reason}
+                        onChangeText={setReason}
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                        returnKeyType="done"
+                        onSubmitEditing={dismissKeyboard}
+                      />
+                    </View>
+
+                    {/* Preview Button */}
+                    <TouchableOpacity
                       style={[
-                        regStyles.requestTypeText,
-                        {
-                          color: requestType === type.id ? C.primary : C.textPrimary,
+                        regStyles.previewBtn,
+                        { 
+                          backgroundColor: C.primary + '20',
+                          borderColor: C.primary,
                         },
                       ]}
+                      onPress={handlePreview}
+                      activeOpacity={0.7}
                     >
-                      {type.label}
-                    </Text>
-                    {requestType === type.id && (
-                      <CheckCircle2 size={wp('4%')} color={C.primary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-
-                {renderTimeInputs()}
-
-                <View style={regStyles.reasonGroup}>
-                  <Text style={[regStyles.inputLabel, { color: C.textSecondary }]}>
-                    Reason for Regularization *
-                  </Text>
-                  <TextInput
-                    style={[
-                      regStyles.reasonInput,
-                      {
-                        backgroundColor: C.background,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                      },
-                    ]}
-                    placeholder="Please provide a detailed reason..."
-                    placeholderTextColor={C.textSecondary}
-                    value={reason}
-                    onChangeText={setReason}
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                    returnKeyType="done"
-                    onSubmitEditing={dismissKeyboard}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    regStyles.submitBtn,
-                    { backgroundColor: C.primary },
-                    loading && { opacity: 0.7 },
-                  ]}
-                  onPress={handleSubmit}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color={C.textDark} />
-                  ) : (
-                    <>
-                      <Send size={wp('4%')} color={C.textDark} />
-                      <Text style={[regStyles.submitText, { color: C.textDark }]}>
-                        Submit Request
+                      <Text style={[regStyles.previewBtnText, { color: C.primary }]}>
+                        👁️ Preview Attendance
                       </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                    </TouchableOpacity>
+                  </>
+                )}
+
                 <View style={{ height: hp('2%') }} />
               </ScrollView>
             </View>
@@ -1259,21 +1603,161 @@ const regStyles = StyleSheet.create({
     fontFamily: Fonts.regular,
     minHeight: hp('10%'),
   },
-  submitBtn: {
+  previewBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: wp('2%'),
     marginHorizontal: wp('4%'),
-    marginTop: hp('2%'),
+    marginTop: hp('1.5%'),
     padding: wp('3.5%'),
     borderRadius: wp('3%'),
+    borderWidth: 1,
   },
-  submitText: {
+  previewBtnText: {
     fontSize: wp('3.5%'),
     fontFamily: Fonts.bold,
   },
+  statusContainer: {
+    alignItems: 'center',
+    padding: wp('4%'),
+    marginHorizontal: wp('4%'),
+    marginTop: hp('1%'),
+    borderRadius: wp('2%'),
+    borderWidth: 1,
+  },
+  statusMessage: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
+    textAlign: 'center',
+    marginTop: hp('0.5%'),
+  },
+  statusSubMessage: {
+    fontSize: wp('2.6%'),
+    fontFamily: Fonts.regular,
+    textAlign: 'center',
+    marginTop: hp('0.3%'),
+  },
 });
+
+// ── Get API Status Config ──
+const getApiStatusConfig = (status, C, t, isLate) => {
+  if (status === 'PRESENT' && isLate === true) {
+    return {
+      label: 'Present / Late',
+      color: C.warning,
+      icon: ClockIcon,
+      isLate: true,
+      primaryLabel: 'Present',
+      primaryColor: C.success,
+      secondaryLabel: '/Late',
+      secondaryColor: C.warning,
+    };
+  }
+  
+  if (status === 'WEEK_OFF') {
+    return {
+      label: 'Week Off',
+      color: C.textSecondary,
+      icon: CalendarDays,
+    };
+  }
+  if (status === 'ON_LEAVE') {
+    return {
+      label: 'On Leave',
+      color: C.textSecondary,
+      icon: CalendarDays,
+    };
+  }
+  switch (status) {
+    case 'PRESENT':
+      return {
+        label: t.reports?.present || 'Present',
+        color: C.success,
+        icon: CheckCircle2,
+      };
+    case 'LATE':
+      return {
+        label: 'Present / Late',
+        color: C.warning,
+        icon: ClockIcon,
+        isLate: true,
+        primaryLabel: 'Present',
+        primaryColor: C.success,
+        secondaryLabel: '/Late',
+        secondaryColor: C.warning,
+      };
+    case 'ABSENT':
+      return {
+        label: t.reports?.absent || 'Absent',
+        color: C.error,
+        icon: XCircle,
+      };
+    case 'HALF_DAY':
+      return {
+        label: t.reports?.halfDay || 'Half Day',
+        color: C.warning,
+        icon: AlertCircle,
+      };
+    case 'SHORT_LEAVE':
+      return {
+        label: t.reports?.shortLeave || 'Short Leave',
+        color: C.warning,
+        icon: AlertCircle,
+      };
+    default:
+      return {
+        label: status || 'Unknown',
+        color: C.textSecondary,
+        icon: AlertCircle,
+      };
+  }
+};
+
+// ── Get Extra Details ──
+const getExtraDetails = (record, C) => {
+  const details = [];
+
+  if (record.isLate === true && record.lateMinutes > 0) {
+    details.push({
+      type: 'late',
+      message: `⚠️ Late Login: ${formatMinutes(record.lateMinutes)} late`,
+      color: C.warning,
+    });
+  }
+
+  if (record.isEarlyLeave === true && record.earlyLeaveMinutes > 0) {
+    details.push({
+      type: 'early',
+      message: `⚠️ Early Logout: ${formatMinutes(
+        record.earlyLeaveMinutes,
+      )} early`,
+      color: C.warning,
+    });
+  }
+
+  if (record.morningShortLeave?.isShortLeave === true) {
+    details.push({
+      type: 'shortLeaveAM',
+      message: `⚠️ Morning Short Leave: ${formatMinutes(
+        record.morningShortLeave.minutes,
+      )}`,
+      color: C.info,
+    });
+  }
+
+  if (record.eveningShortLeave?.isShortLeave === true) {
+    details.push({
+      type: 'shortLeavePM',
+      message: `⚠️ Evening Short Leave: ${formatMinutes(
+        record.eveningShortLeave.minutes,
+      )}`,
+      color: C.info,
+    });
+  }
+
+  return details;
+};
 
 // ── Single Record Card ────────────────────────────
 const RecordCard = ({ record, onRegularize }) => {
@@ -1285,12 +1769,10 @@ const RecordCard = ({ record, onRegularize }) => {
   const sessions = record.sessions || [];
   const isSalesTeam = record.employee?.departmentName?.toLowerCase().includes('sales') || false;
 
-  // Check if this is a late record
   const isLateRecord = record.attendanceStatus === 'PRESENT' && record.isLate === true;
   const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t, record.isLate);
   const ApiStatusIcon = apiStatusConfig.icon;
   
-  // ✅ Check if the record date is TODAY - REGULARIZATION NOT ALLOWED FOR TODAY
   const isToday = (dateString) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1299,11 +1781,33 @@ const RecordCard = ({ record, onRegularize }) => {
     return recordDate.getTime() === today.getTime();
   };
 
-  // ✅ Show Regularize button only if:
-  // 1. Status qualifies (ABSENT, HALF_DAY, SHORT_LEAVE, LATE, or PRESENT with isLate)
-  // 2. Record date is NOT today
+  // Check if there's an approved or pending regularization in the regularizations array
+  const hasActiveRegularization = (() => {
+    if (!record || !record.regularizations || !Array.isArray(record.regularizations)) {
+      return false;
+    }
+    return record.regularizations.some(
+      reg => reg.status === 'APPROVED' || reg.status === 'PENDING'
+    );
+  })();
+
+  // Check if there's an approved regularization specifically
+  const hasApprovedRegularization = (() => {
+    if (!record || !record.regularizations || !Array.isArray(record.regularizations)) {
+      return false;
+    }
+    return record.regularizations.some(
+      reg => reg.status === 'APPROVED'
+    );
+  })();
+
+  // Show Regularize button only if:
+  // 1. Record date is NOT today
+  // 2. Status qualifies (ABSENT, HALF_DAY, SHORT_LEAVE, LATE, or PRESENT with isLate)
+  // 3. No active regularization (PENDING or APPROVED)
   const shouldShowRegularize = 
     !isToday(record.date) &&
+    !hasActiveRegularization &&
     (record.attendanceStatus === 'ABSENT' ||
     record.attendanceStatus === 'HALF_DAY' ||
     record.attendanceStatus === 'SHORT_LEAVE' ||
@@ -1359,7 +1863,6 @@ const RecordCard = ({ record, onRegularize }) => {
               <ApiStatusIcon size={wp('2.8%')} color={isLateRecord ? C.warning : apiStatusConfig.color} />
               
               {isLateRecord ? (
-                // ✅ Dual color status: Present (green) / Late (orange)
                 <Text style={cardStyles.dualStatusText}>
                   <Text style={[cardStyles.statusText, { color: C.success }]}>
                     Present
@@ -1435,8 +1938,7 @@ const RecordCard = ({ record, onRegularize }) => {
             { borderTopColor: C.border, backgroundColor: C.background },
           ]}
         >
-          {/* ✅ Regularization Button - Hidden for Today's Date */}
-          {shouldShowRegularize && (
+          {shouldShowRegularize ? (
             <TouchableOpacity
               style={[
                 cardStyles.regularizeBtn,
@@ -1449,9 +1951,32 @@ const RecordCard = ({ record, onRegularize }) => {
                 Regularize Your Attendance
               </Text>
             </TouchableOpacity>
-          )}
+          ) : hasApprovedRegularization ? (
+            <View
+              style={[
+                cardStyles.regularizedBadge,
+                { backgroundColor: C.success + '15', borderColor: C.success },
+              ]}
+            >
+              <Check size={wp('4%')} color={C.success} />
+              <Text style={[cardStyles.regularizedText, { color: C.success }]}>
+                ✅ Attendance Regularized
+              </Text>
+            </View>
+          ) : hasActiveRegularization ? (
+            <View
+              style={[
+                cardStyles.regularizedBadge,
+                { backgroundColor: C.warning + '15', borderColor: C.warning },
+              ]}
+            >
+              <Shield size={wp('4%')} color={C.warning} />
+              <Text style={[cardStyles.regularizedText, { color: C.warning }]}>
+                ⏳ Request Pending
+              </Text>
+            </View>
+          ) : null}
 
-          {/* Extra Details */}
           {extraDetails.length > 0 && (
             <View
               style={[
@@ -1511,7 +2036,6 @@ const RecordCard = ({ record, onRegularize }) => {
             </View>
           </View>
 
-          {/* Sessions */}
           {sessions.map((session, si) => (
             <View
               key={si}
@@ -1569,7 +2093,6 @@ const RecordCard = ({ record, onRegularize }) => {
                 </View>
               </View>
 
-              {/* ✅ Visits Section - Only show for Sales department */}
               {isSalesTeam && session.visits && session.visits.length > 0 && (
                 <View style={cardStyles.visitsSection}>
                   <View style={cardStyles.visitsHeader}>
@@ -1589,7 +2112,6 @@ const RecordCard = ({ record, onRegularize }) => {
                 </View>
               )}
 
-              {/* Breaks */}
               {session.breaks?.length > 0 && (
                 <View style={cardStyles.breaksBlock}>
                   {session.breaks.map((b, bi) => (
@@ -1640,7 +2162,6 @@ const RecordCard = ({ record, onRegularize }) => {
                 </View>
               )}
 
-              {/* Location */}
               {session.punchInLocation?.address && (
                 <View
                   style={[cardStyles.locationRow, { borderTopColor: C.border }]}
@@ -1748,6 +2269,21 @@ const cardStyles = StyleSheet.create({
     borderWidth: 1,
   },
   regularizeBtnText: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.medium,
+  },
+  regularizedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp('2%'),
+    margin: wp('4%'),
+    marginBottom: 0,
+    padding: wp('3%'),
+    borderRadius: wp('3%'),
+    borderWidth: 1,
+  },
+  regularizedText: {
     fontSize: wp('3.2%'),
     fontFamily: Fonts.medium,
   },
@@ -1997,6 +2533,12 @@ const ReportsScreen = ({ navigation }) => {
   const [showCustomDateModal, setShowCustomDateModal] = useState(false);
   const [showRegularizeModal, setShowRegularizeModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  
+  // Preview modal states
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [tempRecord, setTempRecord] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     dispatch(getAttendanceHistory());
@@ -2032,7 +2574,6 @@ const ReportsScreen = ({ navigation }) => {
     if (activeStatusFilter !== 'ALL') {
       filtered = filtered.filter(
         record => {
-          // For LATE filter, also include records that are PRESENT but isLate is true
           if (activeStatusFilter === 'LATE') {
             return record.attendanceStatus === 'LATE' || 
                    (record.attendanceStatus === 'PRESENT' && record.isLate === true);
@@ -2047,7 +2588,6 @@ const ReportsScreen = ({ navigation }) => {
 
   const filteredHistory = getFilteredHistory();
 
-  // Count records including late ones
   const countByStatus = (status) => {
     if (status === 'LATE') {
       return filteredHistory.filter(r => 
@@ -2103,14 +2643,121 @@ const ReportsScreen = ({ navigation }) => {
 
   const handleRegularize = (record) => {
     setSelectedRecord(record);
+    setTempRecord(record);
     setShowRegularizeModal(true);
   };
 
   const handleRegularizeSuccess = () => {
     setShowRegularizeModal(false);
     setSelectedRecord(null);
-    // Refresh the history
+    setTempRecord(null);
     dispatch(getAttendanceHistory());
+  };
+
+  const handleShowPreview = (data) => {
+    setTempRecord(selectedRecord);
+    setPreviewData(data);
+    setShowPreviewModal(true);
+  };
+
+  const handlePreviewClose = () => {
+    setShowPreviewModal(false);
+    setPreviewData(null);
+    setSubmitting(false);
+    if (tempRecord) {
+      setSelectedRecord(tempRecord);
+      setShowRegularizeModal(true);
+    }
+  };
+
+  const handleSubmitFromPreview = async () => {
+    if (!previewData) return;
+    
+    setSubmitting(true);
+
+    try {
+      const recordId = previewData.recordId;
+
+      if (!recordId) {
+        Alert.alert('Error', 'Attendance record not found');
+        setSubmitting(false);
+        return;
+      }
+
+      const convertTo24Hour = (timeStr, ampm) => {
+        if (!timeStr) return '';
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes)) return '';
+        
+        let hour24 = hours;
+        if (ampm === 'PM' && hours !== 12) {
+          hour24 = hours + 12;
+        } else if (ampm === 'AM' && hours === 12) {
+          hour24 = 0;
+        }
+        return `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      };
+
+      const payload = {
+        attendanceId: recordId,
+        requestType: previewData.requestType,
+        attendanceDate: new Date(previewData.date).toISOString(),
+        reason: previewData.reason || 'Requesting attendance regularization',
+      };
+
+      const needsPunchInForPayload = ['MISSING_PUNCH_IN', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(previewData.requestType);
+      const needsPunchOutForPayload = ['MISSING_PUNCH_OUT', 'MISSING_BOTH', 'WRONG_PUNCH_TIME', 'ABSENT_MARKED'].includes(previewData.requestType);
+
+      if (needsPunchInForPayload && previewData.punchInTime) {
+        const date = new Date(previewData.date).toISOString().split('T')[0];
+        const punchIn24Hour = convertTo24Hour(previewData.punchInTime, previewData.punchInAmPm);
+        if (!punchIn24Hour) {
+          throw new Error('Invalid punch in time format');
+        }
+        const punchInDateTime = new Date(`${date}T${punchIn24Hour}:00.000Z`);
+        payload.requestedPunchIn = punchInDateTime.toISOString();
+      }
+
+      if (needsPunchOutForPayload && previewData.punchOutTime) {
+        const date = new Date(previewData.date).toISOString().split('T')[0];
+        const punchOut24Hour = convertTo24Hour(previewData.punchOutTime, previewData.punchOutAmPm);
+        if (!punchOut24Hour) {
+          throw new Error('Invalid punch out time format');
+        }
+        const punchOutDateTime = new Date(`${date}T${punchOut24Hour}:00.000Z`);
+        payload.requestedPunchOut = punchOutDateTime.toISOString();
+      }
+
+      const response = await apiService.post('/attendance/regularize-attendance', payload);
+      
+      const isSuccess = response.data?.success === true && response.data?.data?.success !== false;
+      
+      if (isSuccess) {
+        Alert.alert(
+          '✅ Request Submitted Successfully',
+          'Your regularization request has been submitted and will be reviewed by the HR team.',
+          [{ text: 'OK', onPress: () => {
+            setShowPreviewModal(false);
+            setPreviewData(null);
+            setSubmitting(false);
+            handleRegularizeSuccess();
+          }}]
+        );
+      } else {
+        const errorMessage = response.data?.data?.message || 
+                            response.data?.message || 
+                            'Failed to submit regularization request';
+        Alert.alert('Error', errorMessage);
+        setSubmitting(false);
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.data?.message || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to submit regularization request';
+      Alert.alert('Error', errorMessage);
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -2177,7 +2824,6 @@ const ReportsScreen = ({ navigation }) => {
           />
         }
       >
-        {/* Summary Grid - All cards in single row with flexWrap */}
         <View style={styles.summaryGrid}>
           <View
             style={[
@@ -2425,8 +3071,17 @@ const ReportsScreen = ({ navigation }) => {
           setShowRegularizeModal(false);
           setSelectedRecord(null);
         }}
-        onSuccess={handleRegularizeSuccess}
         record={selectedRecord}
+        theme={theme}
+        onShowPreview={handleShowPreview}
+      />
+
+      <PreviewModal
+        visible={showPreviewModal}
+        onClose={handlePreviewClose}
+        previewData={previewData}
+        onSubmit={handleSubmitFromPreview}
+        loading={submitting}
         theme={theme}
       />
     </View>
