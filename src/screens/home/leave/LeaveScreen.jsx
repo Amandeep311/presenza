@@ -726,10 +726,22 @@ const LeaveScreen = ({ navigation }) => {
 
   // ── Leave Balance ─────────────────────────────────────────────────────────
   const LEAVE_BALANCE = {
+    // total: {
+    //   total: userProfile.totalLeave || 28.5,
+    //   used: userProfile.totalLeaveUsed || 0,
+    //   remaining: userProfile.totalLeaveRemaining || 28.5,
+    //   currentMonthRemainingLeave: userProfile.previousMonthsLeaveRemaining + userProfile.currentMonthLeaveTotal,
+
+    // },
     total: {
-      total: userProfile.totalLeave || 28.5,
-      used: userProfile.totalLeaveUsed || 0,
-      remaining: userProfile.totalLeaveRemaining || 28.5,
+      total: Number(userProfile?.totalLeave) || 28.5,
+      used: Number(userProfile?.totalLeaveUsed) || 0,
+      remaining: Number(userProfile?.totalLeaveRemaining) || 28.5,
+      currentMonthRemainingLeave:
+        Math.round(
+          ((Number(userProfile?.previousMonthsLeaveRemaining) || 0) +
+            (Number(userProfile?.currentMonthLeaveTotal) || 0)) * 100
+        ) / 100,
     },
     short: {
       totalPerMonth: 2,
@@ -743,13 +755,19 @@ const LeaveScreen = ({ navigation }) => {
   const totalRemaining = LEAVE_BALANCE.total.remaining;
   const totalLeaveBalance = LEAVE_BALANCE.total.total;
   const shortRemaining = LEAVE_BALANCE.short.remainingThisMonth;
+  const currentMonthRemainingLeave = LEAVE_BALANCE.total.currentMonthRemainingLeave;
+
+
+  // const currentMonthLeaveRemaining =
+  //   userProfile.currentMonthLeaveRemaining !== undefined
+  //     ? userProfile.currentMonthLeaveRemaining
+  //     : 2.5;
 
   const currentMonthLeaveRemaining =
-    userProfile.currentMonthLeaveRemaining !== undefined
-      ? userProfile.currentMonthLeaveRemaining
-      : 2.5;
+    (Number(userProfile?.previousMonthsLeaveRemaining) || 0) +
+    (Number(userProfile?.currentMonthLeaveRemaining) || 0);
 
-const previousMonthsLeaveRemaining =
+  const previousMonthsLeaveRemaining =
     userProfile.previousMonthsLeaveRemaining !== undefined
       ? userProfile.previousMonthsLeaveRemaining
       : 0;
@@ -758,7 +776,9 @@ const previousMonthsLeaveRemaining =
 
   const getMonthlyLeaveAllocation = () => {
     const currentMonth = new Date().getMonth();
-    if (currentMonth === 2 || currentMonth === 7) return 2.5;
+    if (currentMonth === 2 || currentMonth === 8) {
+      return 3.5;
+    }
     return 2.5;
   };
 
@@ -1860,7 +1880,8 @@ const previousMonthsLeaveRemaining =
                       { color: C.success + '80' },
                     ]}
                   >
-                    / {monthlyLeaveAllocation}
+                    {/* / {monthlyLeaveAllocation} */}
+                    / {currentMonthRemainingLeave} {" "}
                   </Text>
                 </View>
                 <View style={styles.balanceCardLabelRow}>
@@ -1912,9 +1933,9 @@ const previousMonthsLeaveRemaining =
                   </Text>
                 </View>
               </View>
-            {/* ------Remaining Leave ---------- */}
+              {/* ------Remaining Leave ---------- */}
 
-            <View
+              {/* <View
                 style={[
                   styles.balanceCard,
                   {
@@ -1945,14 +1966,7 @@ const previousMonthsLeaveRemaining =
                   >
                     Remaining Leave
                   </Text>
-                  {/* <Text
-                    style={[
-                      styles.balanceCardSubLabel,
-                      { color: C.textSecondary + '80' },
-                    ]}
-                  >
-                    {MONTHS[new Date().getMonth()]}
-                  </Text> */}
+                 
                 </View>
                 <View
                   style={[styles.balanceBar, { backgroundColor:C.lime}]}
@@ -1966,14 +1980,8 @@ const previousMonthsLeaveRemaining =
                     ]}
                   />
                 </View>
-                {/* <View style={styles.balanceInfoRow}>
-                  <Text
-                    style={[styles.balanceUsedText, { color: C.textSecondary }]}
-                  >
-                    {currentMonthLeaveUsed} used
-                  </Text>
-                </View> */}
-              </View>
+                
+              </View> */}
 
               {/* Short Leave — Monthly */}
               <View
@@ -2020,7 +2028,7 @@ const previousMonthsLeaveRemaining =
                       { color: C.textSecondary + '80' },
                     ]}
                   >
-                    {" "} Monthly 🔄
+                    {" "} Monthly
                   </Text>
                 </View>
                 <View
@@ -2068,7 +2076,7 @@ const previousMonthsLeaveRemaining =
                   ]}
                 >
                   <Text
-                    style={[styles.balanceCardRemaining, { color: '#A14C3B'}]}
+                    style={[styles.balanceCardRemaining, { color: '#A14C3B' }]}
                   >
                     {userProfile?.currentMonthLeaveLop || 0}
                   </Text>

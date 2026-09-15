@@ -19,8 +19,8 @@ android {
         applicationId "com.presenza"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 29
-        versionName "1.1.15"
+        versionCode 33
+        versionName "1.1.19"
         
         // ✅ Add this for vector drawables support
         vectorDrawables.useSupportLibrary = true

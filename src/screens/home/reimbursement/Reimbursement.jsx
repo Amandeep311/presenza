@@ -1,4 +1,3 @@
-
 import {
   RefreshControl,
   ScrollView,
@@ -56,6 +55,7 @@ import {
   Check,
   Printer,
   Bike,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -66,6 +66,7 @@ import { requestCameraPermission, requestLocationPermission, quickCheckPermissio
 import { pick } from '@react-native-documents/picker';
 import Share from 'react-native-share';
 import { printToFile, print } from 'react-native-print';
+import { getAccessToken } from '../../../utils/keychainHelper';
 
 
 // API Configuration
@@ -92,14 +93,7 @@ const Reimbursement = ({ navigation }) => {
 
   // ✅ FIX: Get token from multiple possible locations in Redux store
   const authState = useSelector(state => state.auth);
-  console.log('🔍 Full auth state:', authState);
 
-  // Try different possible token locations
-  const token = authState?.token || authState?.accessToken || authState?.access_token || null;
-  console.log("🔑 Token found:", token ? 'Yes (length: ' + token.length + ')' : 'No');
-  console.log("🔑 Token value (first 20 chars):", token ? token.substring(0, 20) + '...' : 'undefined');
-
-  // Get employee name from profile
   const employeeName = profile?.[0]?.fullName || user?.name || 'N/A';
 
   // Form state
@@ -111,8 +105,17 @@ const Reimbursement = ({ navigation }) => {
   const [fromLocation, setFromLocation] = useState('');
   const [toLocation, setToLocation] = useState('');
   const [purpose, setPurpose] = useState('');
+
+  // ✅ UPDATED: Separate payment methods for each expense type
   const [travelPaymentMethod, setTravelPaymentMethod] = useState('self-paid');
+  const [hotelPaymentMethod, setHotelPaymentMethod] = useState('self-paid');
   const [foodPaymentMethod, setFoodPaymentMethod] = useState('self-paid');
+
+  // ✅ NEW: Dropdown visibility states
+  const [showTravelDropdown, setShowTravelDropdown] = useState(false);
+  const [showHotelDropdown, setShowHotelDropdown] = useState(false);
+  const [showFoodDropdown, setShowFoodDropdown] = useState(false);
+
   const [otherExpenses, setOtherExpenses] = useState([]);
   const [kilometers, setKilometers] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -130,7 +133,7 @@ const Reimbursement = ({ navigation }) => {
   // ============ CONSTANTS ============
   const AMOUNT_MAX_LENGTH = 5;
   const AMOUNT_MAX_VALUE = 100000;
-  const KM_MAX_VALUE = 100; // Max kilometers allowed
+  const KM_MAX_VALUE = 10000; // Max kilometers allowed
   const MAX_FILE_SIZE_MB = 5;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const LOCATION_MAX_LENGTH = 30;
@@ -181,160 +184,171 @@ const Reimbursement = ({ navigation }) => {
     return new Date(year, month, 0).getDate();
   };
 
-  // ============ FUEL RATE API FUNCTION (CORRECTED) ============
-const fetchFuelRate = async (type, distanceKm) => {
-  if (!distanceKm || parseFloat(distanceKm) <= 0) {
-    setFuelPricePerKm(null);
-    setAmount('');
-    return;
-  }
-
-  // Only fetch for bike and car
-  if (type !== 'bike' && type !== 'car') {
-    setFuelPricePerKm(null);
-    setAmount('');
-    return;
-  }
-
-  // ✅ Check if token is available
-  if (!token) {
-    console.warn('⚠️ No auth token available for fuel rate API - using fallback rates');
-    const vehicleType = type === 'car' ? 'car' : 'bike';
-    const fallbackRate = vehicleType === 'car' ? 10 : 5;
-    setFuelPricePerKm(fallbackRate);
-    
-    const distance = parseFloat(distanceKm);
-    if (distance > 0) {
-      const calculatedAmount = distance * fallbackRate;
-      setAmount(Math.round(calculatedAmount).toString());
-    }
-    return;
-  }
-
-  try {
-    setFetchingFuelRate(true);
-    
-    // Map expense type to API expected format
-    const vehicleType = type === 'car' ? 'car' : 'bike';
-    
-    console.log('🔍 Fetching fuel rate for:', vehicleType);
-    
-    const response = await fetch(`${API_BASE_URL}/fuel-rates`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.log('📡 Fuel rate response status:', response.status);
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} - ${response.statusText}`);
+  // ============ FUEL RATE API FUNCTION (FIXED) ============
+  const fetchFuelRate = async (type, distanceKm) => {
+    if (!distanceKm || parseFloat(distanceKm) <= 0) {
+      setFuelPricePerKm(null);
+      setAmount('');
+      return;
     }
 
-    const data = await response.json();
-    
-    console.log('📦 RAW API RESPONSE DATA:', JSON.stringify(data, null, 2));
+    // Only fetch for bike and car
+    if (type !== 'bike' && type !== 'car') {
+      setFuelPricePerKm(null);
+      setAmount('');
+      return;
+    }
 
-    // --- UPDATED PARSING LOGIC START ---
-    let ratePerKm = null;
+    // ✅ FIX: Await the token from AsyncStorage instead of using Redux
+    const token = await getAccessToken();
+    console.log('🔑 Token being used:', token);
 
-    // 1. Check for standard structure: { success: true, data: [ ... ] }
-    if (data.success === true && Array.isArray(data.data) && data.data.length > 0) {
-        // We take the first item from the array
+    // ✅ Check if token is available
+    if (!token) {
+      console.warn('⚠️ No auth token available for fuel rate API - using fallback rates');
+      const vehicleType = type === 'car' ? 'car' : 'bike';
+      const fallbackRate = vehicleType === 'car' ? 10 : 5;
+      setFuelPricePerKm(fallbackRate);
+
+      const distance = parseFloat(distanceKm);
+      if (distance > 0) {
+        const calculatedAmount = distance * fallbackRate;
+        setAmount(Math.round(calculatedAmount).toString());
+      }
+      return;
+    }
+
+    try {
+      setFetchingFuelRate(true);
+
+      // Map expense type to API expected format
+      const vehicleType = type === 'car' ? 'car' : 'bike';
+
+      console.log('🔍 Fetching fuel rate for:', vehicleType);
+      console.log('🔍 Using token:', token.substring(0, 20) + '...');
+
+      const response = await fetch(`${API_BASE_URL}/fuel-rates`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      console.log('📡 Fuel rate response status:', response.status);
+
+      // ✅ Handle 401 specifically
+      if (response.status === 401) {
+        console.warn('⚠️ 401 Unauthorized: Token might be expired or invalid. Using fallback.');
+        throw new Error('Unauthorized');
+      }
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      console.log('📦 RAW API RESPONSE DATA:', JSON.stringify(data, null, 2));
+
+      // --- PARSING LOGIC ---
+      let ratePerKm = null;
+
+      // 1. Check for standard structure: { success: true, data: [ ... ] }
+      if (data.success === true && Array.isArray(data.data) && data.data.length > 0) {
         const firstItem = data.data[0];
-        
-        // Look for bike/car specific keys in the array item
-        // Based on your screenshot: "revisedTwoWheeler", "revisedRateFourWheeler"
+
         if (vehicleType === 'bike') {
-            ratePerKm = firstItem.revisedTwoWheeler || firstItem.bikeRate || firstItem.twoWheelerRate || null;
+          ratePerKm = firstItem.revisedTwoWheeler || firstItem.bikeRate || firstItem.twoWheelerRate || null;
         } else if (vehicleType === 'car') {
-            ratePerKm = firstItem.revisedRateFourWheeler || firstItem.carRate || firstItem.fourWheelerRate || null;
+          ratePerKm = firstItem.revisedRateFourWheeler || firstItem.carRate || firstItem.fourWheelerRate || null;
         }
         console.log(`📌 Structure 1 (Standard) matched! Found rate for ${vehicleType}: ${ratePerKm}`);
-    }
-
-    // 2. Fallback to your previous Array logic if Structure 1 failed
-    if (!ratePerKm && Array.isArray(data)) {
-      const bikeItem = data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
-      const carItem = data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
-      
-      if (vehicleType === 'bike' && bikeItem) {
-        ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
-      } else if (vehicleType === 'car' && carItem) {
-        ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
       }
-      console.log('📌 Structure 2 (Array) matched! Found rate:', ratePerKm);
-    }
 
-    // 3. Fallback to the previous parsing logic (just in case)
-    if (!ratePerKm && data.data && Array.isArray(data.data)) {
-      const bikeItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
-      const carItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
-      if (vehicleType === 'bike' && bikeItem) {
-        ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
-      } else if (vehicleType === 'car' && carItem) {
-        ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
+      // 2. Fallback to Array logic
+      if (!ratePerKm && Array.isArray(data)) {
+        const bikeItem = data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
+        const carItem = data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
+
+        if (vehicleType === 'bike' && bikeItem) {
+          ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
+        } else if (vehicleType === 'car' && carItem) {
+          ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
+        }
+        console.log('📌 Structure 2 (Array) matched! Found rate:', ratePerKm);
       }
-      console.log('📌 Structure 3 (Nested Array) matched! Found rate:', ratePerKm);
-    }
-    // --- UPDATED PARSING LOGIC END ---
 
-    // If we still don't have a rate, use fallback
-    if (!ratePerKm || ratePerKm === 0) {
-      console.warn(`⚠️ Could not find a valid rate in API response. Using fallback.`);
+      // 3. Fallback to Nested Array logic
+      if (!ratePerKm && data.data && Array.isArray(data.data)) {
+        const bikeItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('bike') || item.revisedTwoWheeler);
+        const carItem = data.data.find(item => item.vehicleType?.toLowerCase().includes('car') || item.revisedRateFourWheeler);
+        if (vehicleType === 'bike' && bikeItem) {
+          ratePerKm = bikeItem.revisedTwoWheeler || bikeItem.ratePerKm || bikeItem.rate || bikeItem.fuelRate || null;
+        } else if (vehicleType === 'car' && carItem) {
+          ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
+        }
+        console.log('📌 Structure 3 (Nested Array) matched! Found rate:', ratePerKm);
+      }
+
+      // If we still don't have a rate, use fallback
+      if (!ratePerKm || ratePerKm === 0) {
+        console.warn(`⚠️ Could not find a valid rate in API response. Using fallback.`);
+        const fallbackRate = vehicleType === 'car' ? 10 : 5;
+        ratePerKm = fallbackRate;
+        console.log(`⚠️ Using fallback rate: ${ratePerKm}`);
+      }
+
+      console.log(`✅ Final rate for ${vehicleType}: ₹${ratePerKm}/km`);
+
+      // Update State
+      setFuelPricePerKm(ratePerKm);
+
+      // Auto-calculate amount based on kilometers and rate
+      const distance = parseFloat(distanceKm);
+      if (distance > 0 && ratePerKm > 0) {
+        const calculatedAmount = distance * ratePerKm;
+        const roundedAmount = Math.round(calculatedAmount);
+        setAmount(roundedAmount.toString());
+        console.log(`💰 Calculated amount: ${distance}km × ₹${ratePerKm} = ₹${roundedAmount}`);
+      }
+
+    } catch (error) {
+      // ✅ Use console.warn instead of console.error to avoid the red screen
+      console.warn(`⚠️ API Failed (${error.message}). Setting fallback rate.`);
+
+      const vehicleType = type === 'car' ? 'car' : 'bike';
       const fallbackRate = vehicleType === 'car' ? 10 : 5;
-      ratePerKm = fallbackRate;
-      console.log(`⚠️ Using fallback rate: ${ratePerKm}`);
-    }
 
-    console.log(`✅ Final rate for ${vehicleType}: ₹${ratePerKm}/km`);
-    
-    // Update State
-    setFuelPricePerKm(ratePerKm);
-    
-    // Auto-calculate amount based on kilometers and rate
-    const distance = parseFloat(distanceKm);
-    if (distance > 0 && ratePerKm > 0) {
-      const calculatedAmount = distance * ratePerKm;
-      const roundedAmount = Math.round(calculatedAmount);
-      setAmount(roundedAmount.toString());
-      console.log(`💰 Calculated amount: ${distance}km × ₹${ratePerKm} = ₹${roundedAmount}`);
+      setFuelPricePerKm(fallbackRate);
+
+      const distance = parseFloat(distanceKm);
+      if (distance > 0) {
+        const calculatedAmount = distance * fallbackRate;
+        setAmount(Math.round(calculatedAmount).toString());
+      }
+
+      // Show warning to user (only once per session to avoid spam)
+      if (!fetchFuelRate.warningShown) {
+        fetchFuelRate.warningShown = true;
+        Alert.alert(
+          'Note',
+          'Unable to fetch latest fuel rates. Using default rates for calculation.',
+          [{ text: 'OK' }]
+        );
+        setTimeout(() => {
+          fetchFuelRate.warningShown = false;
+        }, 10000);
+      }
+    } finally {
+      setFetchingFuelRate(false);
     }
-    
-  } catch (error) {
-    console.error('❌ Error fetching fuel rates:', error);
-    // Use fallback rates on error
-    const vehicleType = type === 'car' ? 'car' : 'bike';
-    const fallbackRate = vehicleType === 'car' ? 10 : 5;
-    console.warn(`⚠️ API Failed. Setting fallback rate for ${vehicleType}: ${fallbackRate}`);
-    setFuelPricePerKm(fallbackRate);
-    
-    const distance = parseFloat(distanceKm);
-    if (distance > 0) {
-      const calculatedAmount = distance * fallbackRate;
-      setAmount(Math.round(calculatedAmount).toString());
-    }
-    
-    // Show warning to user (only once per session to avoid spam)
-    if (!fetchFuelRate.warningShown) {
-      fetchFuelRate.warningShown = true;
-      Alert.alert(
-        'Note',
-        'Unable to fetch latest fuel rates. Using default rates for calculation.',
-        [{ text: 'OK' }]
-      );
-      setTimeout(() => {
-        fetchFuelRate.warningShown = false;
-      }, 10000);
-    }
-  } finally {
-    setFetchingFuelRate(false);
-  }
-};
+  };
+
   // Static property to track warning display
   fetchFuelRate.warningShown = false;
+
 
   // ============ VALIDATION FUNCTIONS ============
   const validateAmount = value => {
@@ -1149,6 +1163,9 @@ const fetchFuelRate = async (type, distanceKm) => {
       const approvedByName = request.approvedBy?.fullName || '—';
       const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
 
+      // ✅ FIX: Check if purpose exists and is not just whitespace
+      const hasPurpose = request.businessPurpose && request.businessPurpose.trim().length > 0;
+
       // Create HTML content for PDF
       const htmlContent = `
       <!DOCTYPE html>
@@ -1305,10 +1322,11 @@ const fetchFuelRate = async (type, distanceKm) => {
           </div>` : ''}
         </div>
 
+        ${hasPurpose ? `
         <div class="section">
           <h2 class="section-title">🎯 BUSINESS PURPOSE</h2>
-          <p style="margin: 10px 0;">${request.businessPurpose || 'N/A'}</p>
-        </div>
+          <p style="margin: 10px 0;">${request.businessPurpose}</p>
+        </div>` : ''}
 
         <div class="section">
           <h2 class="section-title">📊 EXPENSE BREAKDOWN</h2>
@@ -1575,10 +1593,7 @@ const fetchFuelRate = async (type, distanceKm) => {
 
   // ============ SUBMIT EXPENSE ============
   const handleSubmitExpense = () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid travel amount');
-      return;
-    }
+
     if (!fromDate) {
       Alert.alert('Validation Error', 'Please select From Date');
       return;
@@ -1595,15 +1610,21 @@ const fetchFuelRate = async (type, distanceKm) => {
       Alert.alert('Validation Error', 'Please enter "To Location"');
       return;
     }
-    if (!purpose.trim()) {
-      Alert.alert('Validation Error', 'Please enter Business Purpose');
-      return;
-    }
+    // if (!purpose.trim()) {
+    //   Alert.alert('Validation Error', 'Please enter Business Purpose');
+    //   return;
+    // }
+
     if ((expenseType === 'car' || expenseType === 'bike') && (!kilometers || parseFloat(kilometers) <= 0)) {
       Alert.alert(
         'Validation Error',
         'Please enter valid distance for travel',
       );
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid travel amount');
       return;
     }
     // Validate distance limit for car and bike
@@ -1614,13 +1635,13 @@ const fetchFuelRate = async (type, distanceKm) => {
       );
       return;
     }
-    if (selectedFiles.length === 0) {
-      Alert.alert(
-        'Validation Error',
-        'Please upload receipt/document attachment',
-      );
-      return;
-    }
+    // if (selectedFiles.length === 0) {
+    //   Alert.alert(
+    //     'Validation Error',
+    //     'Please upload receipt/document attachment',
+    //   );
+    //   return;
+    // }
 
     for (const item of otherExpenses) {
       if (item.description.trim() && !item.amount) {
@@ -1680,11 +1701,11 @@ const fetchFuelRate = async (type, distanceKm) => {
           },
           hotel: {
             amount: parseFloat(hotelCost) || 0,
-            paymentMethod: foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: hotelPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY', // ✅ UPDATED
           },
           food: {
             amount: parseFloat(foodCost) || 0,
-            paymentMethod: foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY',
+            paymentMethod: foodPaymentMethod === 'self-paid' ? 'SELF' : 'COMPANY', // ✅ UPDATED
           },
         },
         miscItems: otherExpenses
@@ -1741,7 +1762,9 @@ const fetchFuelRate = async (type, distanceKm) => {
     setFromLocation('');
     setToLocation('');
     setPurpose('');
+    // ✅ UPDATED: Reset all payment methods
     setTravelPaymentMethod('self-paid');
+    setHotelPaymentMethod('self-paid');
     setFoodPaymentMethod('self-paid');
     setOtherExpenses([]);
     setKilometers('');
@@ -1749,6 +1772,10 @@ const fetchFuelRate = async (type, distanceKm) => {
     setFromDate(null);
     setToDate(null);
     setFuelPricePerKm(null);
+    // ✅ Reset dropdowns
+    setShowTravelDropdown(false);
+    setShowHotelDropdown(false);
+    setShowFoodDropdown(false);
 
     const now = new Date();
 
@@ -1814,6 +1841,9 @@ const fetchFuelRate = async (type, distanceKm) => {
 
     const approvedByName = selectedRequest.approvedBy?.fullName || '—';
     const approvedBy = isApproved ? approvedByName : isRejected ? approvedByName : '—';
+
+    // ✅ FIX: Check if purpose exists and is not just whitespace
+    const hasPurpose = selectedRequest.businessPurpose && selectedRequest.businessPurpose.trim().length > 0;
 
     return (
       <Modal
@@ -1979,18 +2009,21 @@ const fetchFuelRate = async (type, distanceKm) => {
                 )}
               </View>
 
-              <View style={styles.viewSection}>
-                <Text
-                  style={[styles.viewSectionTitle, { color: C.textPrimary }]}
-                >
-                  Business Purpose
-                </Text>
-                <Text
-                  style={[styles.viewPurposeText, { color: C.textSecondary }]}
-                >
-                  {selectedRequest.businessPurpose || 'N/A'}
-                </Text>
-              </View>
+              {/* ✅ FIX: Only render Business Purpose section if it has content */}
+              {hasPurpose && (
+                <View style={styles.viewSection}>
+                  <Text
+                    style={[styles.viewSectionTitle, { color: C.textPrimary }]}
+                  >
+                    Business Purpose
+                  </Text>
+                  <Text
+                    style={[styles.viewPurposeText, { color: C.textSecondary }]}
+                  >
+                    {selectedRequest.businessPurpose}
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.viewSection}>
                 <Text
@@ -2007,11 +2040,10 @@ const fetchFuelRate = async (type, distanceKm) => {
                     ]}
                   >
                     <View>
-                      <Text
-                        style={[
-                          styles.viewExpenseLabel,
-                          { color: C.textSecondary },
-                        ]}
+                      <Text style={[
+                        styles.viewExpenseLabel,
+                        { color: C.textSecondary },
+                      ]}
                       >
                         Travel Cost
                       </Text>
@@ -3100,19 +3132,22 @@ const fetchFuelRate = async (type, distanceKm) => {
                 <View style={[styles.divider, { backgroundColor: C.border }]} />
 
                 <View style={styles.cardDetails}>
-                  <View style={styles.detailRow}>
-                    <Text
-                      style={[styles.detailLabel, { color: C.textSecondary }]}
-                    >
-                      Purpose:
-                    </Text>
-                    <Text
-                      style={[styles.detailValue, { color: C.textPrimary }]}
-                      numberOfLines={2}
-                    >
-                      {truncateText(item.businessPurpose, 30)}
-                    </Text>
-                  </View>
+                  {/* ✅ FIX: Only render Purpose row if it has content */}
+                  {item.businessPurpose && item.businessPurpose.trim().length > 0 && (
+                    <View style={styles.detailRow}>
+                      <Text
+                        style={[styles.detailLabel, { color: C.textSecondary }]}
+                      >
+                        Purpose:
+                      </Text>
+                      <Text
+                        style={[styles.detailValue, { color: C.textPrimary }]}
+                        numberOfLines={2}
+                      >
+                        {truncateText(item.businessPurpose, 30)}
+                      </Text>
+                    </View>
+                  )}
 
                   <View style={styles.paymentMethodRow}>
                     <View
@@ -3181,7 +3216,7 @@ const fetchFuelRate = async (type, distanceKm) => {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Travel Type * kk
+                  Travel Type *
                 </Text>
                 <View style={styles.typeGrid}>
                   {['car', 'bike', 'train', 'flight', 'other'].map(type => {
@@ -3236,11 +3271,107 @@ const fetchFuelRate = async (type, distanceKm) => {
                   })}
                 </View>
 
+                <>
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    From Date *
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateInput,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                      },
+                    ]}
+                    onPress={() => setShowFromDatePicker(true)}
+                  >
+                    <Calendar size={wp('4%')} color={C.textSecondary} />
+                    <Text
+                      style={[
+                        styles.dateInputText,
+                        { color: fromDate ? C.textPrimary : C.textTertiary },
+                      ]}
+                    >
+                      {fromDate
+                        ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
+                        : 'DD/MM/YYYY'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
+                    To Date *
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateInput,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                      },
+                    ]}
+                    onPress={() => setShowToDatePicker(true)}
+                  >
+                    <Calendar size={wp('4%')} color={C.textSecondary} />
+                    <Text
+                      style={[
+                        styles.dateInputText,
+                        { color: toDate ? C.textPrimary : C.textTertiary },
+                      ]}
+                    >
+                      {toDate
+                        ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
+                        : 'DD/MM/YYYY'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {renderFromDatePickerModal()}
+                  {renderToDatePickerModal()}
+                </>
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  From Location *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Starting point (max 30 chars)"
+                  placeholderTextColor={C.textTertiary}
+                  value={fromLocation}
+                  onChangeText={text => setFromLocation(validateLocation(text))}
+                  maxLength={LOCATION_MAX_LENGTH}
+                />
+
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                  To Location *
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: C.surface,
+                      borderColor: C.border,
+                      color: C.textPrimary,
+                    },
+                  ]}
+                  placeholder="Destination (max 30 chars)"
+                  placeholderTextColor={C.textTertiary}
+                  value={toLocation}
+                  onChangeText={text => setToLocation(validateLocation(text))}
+                  maxLength={LOCATION_MAX_LENGTH}
+                />
+
+
                 {(expenseType === 'car' || expenseType === 'bike') && (
                   <>
                     <View>
                       <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                        Distance (KM) * (Max {KM_MAX_VALUE} km)
+                        Distance (KM) *
                       </Text>
                       <TextInput
                         style={[
@@ -3251,7 +3382,7 @@ const fetchFuelRate = async (type, distanceKm) => {
                             color: C.textPrimary,
                           },
                         ]}
-                        placeholder={`Enter kilometers (Max ${KM_MAX_VALUE} km)`}
+                        placeholder="Enter kilometers"
                         placeholderTextColor={C.textTertiary}
                         keyboardType="numeric"
                         value={kilometers}
@@ -3288,142 +3419,198 @@ const fetchFuelRate = async (type, distanceKm) => {
                   </>
                 )}
 
+                {/* ✅ TRAVEL AMOUNT SECTION WITH DROPDOWN */}
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                   Travel Amount *
                 </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Enter amount"
-                  placeholderTextColor={C.textTertiary}
-                  keyboardType="numeric"
-                  value={amount}
-                  onChangeText={text => setAmount(validateAmount(text))}
-                  maxLength={AMOUNT_MAX_LENGTH}
-                />
+                <View style={[styles.rowContainer, { zIndex: 1000 }]}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                        flex: 1,
+                      },
+                    ]}
+                    placeholder={
+                      (expenseType === 'car' || expenseType === 'bike')
+                        ? 'Auto-calculated'
+                        : 'Enter amount'
+                    }
 
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Payment Method *
-                </Text>
-                <View style={styles.paymentMethodGrid}>
-                  <TouchableOpacity
-                    style={[
-                      styles.paymentMethodOption,
-                      { borderColor: C.border },
-                      travelPaymentMethod === 'self-paid' && {
-                        borderColor: C.primary,
-                        backgroundColor: C.primary + '10',
-                      },
-                    ]}
-                    onPress={() => setTravelPaymentMethod('self-paid')}
-                  >
-                    <Wallet
-                      size={wp('4%')}
-                      color={
-                        travelPaymentMethod === 'self-paid'
-                          ? C.primary
-                          : C.textSecondary
-                      }
-                    />
-                    <Text
+                    placeholderTextColor={C.textTertiary}
+                    keyboardType="numeric"
+                    value={amount}
+                    editable={expenseType !== 'car' && expenseType !== 'bike'}
+                    onChangeText={text => setAmount(validateAmount(text))}
+                    maxLength={AMOUNT_MAX_LENGTH}
+                  />
+                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                    <TouchableOpacity
                       style={[
-                        styles.paymentMethodText,
-                        {
-                          color:
-                            travelPaymentMethod === 'self-paid'
-                              ? C.primary
-                              : C.textSecondary,
-                        },
+                        styles.dropdownTrigger,
+                        { backgroundColor: C.surface, borderColor: C.border },
                       ]}
+                      onPress={() => setShowTravelDropdown(!showTravelDropdown)}
                     >
-                      Self-Paid
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.paymentMethodOption,
-                      { borderColor: C.border },
-                      travelPaymentMethod === 'company-paid' && {
-                        borderColor: C.primary,
-                        backgroundColor: C.primary + '10',
-                      },
-                    ]}
-                    onPress={() => setTravelPaymentMethod('company-paid')}
-                  >
-                    <CreditCard
-                      size={wp('4%')}
-                      color={
-                        travelPaymentMethod === 'company-paid'
-                          ? C.primary
-                          : C.textSecondary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.paymentMethodText,
-                        {
-                          color:
-                            travelPaymentMethod === 'company-paid'
-                              ? C.primary
-                              : C.textSecondary,
-                        },
-                      ]}
-                    >
-                      Company-Paid
-                    </Text>
-                  </TouchableOpacity>
+                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                        {travelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                      </Text>
+                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                    </TouchableOpacity>
+                    {showTravelDropdown && (
+                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setTravelPaymentMethod('self-paid');
+                            setShowTravelDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setTravelPaymentMethod('company-paid');
+                            setShowTravelDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
-                <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
+                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                   Additional Expenses (Optional)
                 </Text>
+
+                {/* ✅ HOTEL COST SECTION WITH DROPDOWN */}
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                   Hotel Cost
                 </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Enter hotel cost"
-                  placeholderTextColor={C.textTertiary}
-                  keyboardType="numeric"
-                  value={hotelCost}
-                  onChangeText={text => setHotelCost(validateAmount(text))}
-                  maxLength={AMOUNT_MAX_LENGTH}
-                />
+                <View style={[styles.rowContainer, { zIndex: 900 }]}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                        flex: 1,
+                      },
+                    ]}
+                    placeholder="Enter hotel cost"
+                    placeholderTextColor={C.textTertiary}
+                    keyboardType="numeric"
+                    value={hotelCost}
+                    onChangeText={text => setHotelCost(validateAmount(text))}
+                    maxLength={AMOUNT_MAX_LENGTH}
+                  />
+                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownTrigger,
+                        { backgroundColor: C.surface, borderColor: C.border },
+                      ]}
+                      onPress={() => setShowHotelDropdown(!showHotelDropdown)}
+                    >
+                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                        {hotelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                      </Text>
+                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                    </TouchableOpacity>
+                    {showHotelDropdown && (
+                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setHotelPaymentMethod('self-paid');
+                            setShowHotelDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setHotelPaymentMethod('company-paid');
+                            setShowHotelDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* ✅ FOOD COST SECTION WITH DROPDOWN */}
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                   Food Cost
                 </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Enter food cost"
-                  placeholderTextColor={C.textTertiary}
-                  keyboardType="numeric"
-                  value={foodCost}
-                  onChangeText={text => setFoodCost(validateAmount(text))}
-                  maxLength={AMOUNT_MAX_LENGTH}
-                />
+                <View style={[styles.rowContainer, { zIndex: 800 }]}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                        flex: 1,
+                      },
+                    ]}
+                    placeholder="Enter food cost"
+                    placeholderTextColor={C.textTertiary}
+                    keyboardType="numeric"
+                    value={foodCost}
+                    onChangeText={text => setFoodCost(validateAmount(text))}
+                    maxLength={AMOUNT_MAX_LENGTH}
+                  />
+                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownTrigger,
+                        { backgroundColor: C.surface, borderColor: C.border },
+                      ]}
+                      onPress={() => setShowFoodDropdown(!showFoodDropdown)}
+                    >
+                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                        {foodPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                      </Text>
+                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                    </TouchableOpacity>
+                    {showFoodDropdown && (
+                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setFoodPaymentMethod('self-paid');
+                            setShowFoodDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setFoodPaymentMethod('company-paid');
+                            setShowFoodDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
 
                 <View style={styles.otherExpensesHeader}>
-                  <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
                     Other Expenses
                   </Text>
                   <TouchableOpacity
@@ -3486,8 +3673,8 @@ const fetchFuelRate = async (type, distanceKm) => {
 
                 <View style={styles.uploadSectionHeader}>
                   <View>
-                    <Text style={[styles.sectionTitle, { color: C.textPrimary }]}>
-                      Receipt/Document *
+                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                      Receipt/Document (Optional)
                     </Text>
                     <Text
                       style={[styles.uploadSubtitle, { color: C.textTertiary }]}
@@ -3596,103 +3783,8 @@ const fetchFuelRate = async (type, distanceKm) => {
                   </View>
                 )}
 
-                <>
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    From Date *
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.dateInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                      },
-                    ]}
-                    onPress={() => setShowFromDatePicker(true)}
-                  >
-                    <Calendar size={wp('4%')} color={C.textSecondary} />
-                    <Text
-                      style={[
-                        styles.dateInputText,
-                        { color: fromDate ? C.textPrimary : C.textTertiary },
-                      ]}
-                    >
-                      {fromDate
-                        ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
-                        : 'DD/MM/YYYY'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
-                    To Date *
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.dateInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                      },
-                    ]}
-                    onPress={() => setShowToDatePicker(true)}
-                  >
-                    <Calendar size={wp('4%')} color={C.textSecondary} />
-                    <Text
-                      style={[
-                        styles.dateInputText,
-                        { color: toDate ? C.textPrimary : C.textTertiary },
-                      ]}
-                    >
-                      {toDate
-                        ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
-                        : 'DD/MM/YYYY'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {renderFromDatePickerModal()}
-                  {renderToDatePickerModal()}
-                </>
-
                 <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  From Location *
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Starting point (max 30 chars)"
-                  placeholderTextColor={C.textTertiary}
-                  value={fromLocation}
-                  onChangeText={text => setFromLocation(validateLocation(text))}
-                  maxLength={LOCATION_MAX_LENGTH}
-                />
-
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  To Location *
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Destination (max 30 chars)"
-                  placeholderTextColor={C.textTertiary}
-                  value={toLocation}
-                  onChangeText={text => setToLocation(validateLocation(text))}
-                  maxLength={LOCATION_MAX_LENGTH}
-                />
-
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Business Purpose *
+                  Business Purpose (Optional)
                 </Text>
                 <TextInput
                   style={[
@@ -3910,6 +4002,7 @@ const styles = StyleSheet.create({
     padding: wp('3%'),
     fontSize: wp('3.2%'),
     fontFamily: Fonts.regular,
+    // ✅ REMOVED: height and textAlignVertical to restore original natural height
   },
   textArea: {
     borderWidth: 1,
@@ -3936,6 +4029,55 @@ const styles = StyleSheet.create({
     gap: hp('0.5%'),
   },
   typeText: { fontSize: wp('2.8%'), fontFamily: Fonts.medium },
+
+  // ✅ FIXED: Dropdown Layout Styles
+  rowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: hp('1%'),
+    // Note: zIndex is now applied dynamically in the JSX to prevent overlap
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: wp('2%'),
+    // ✅ FIXED: Matching vertical padding of input to get the same height
+    paddingVertical: wp('3%'),
+    paddingHorizontal: wp('3%'),
+  },
+  dropdownText: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.regular,
+    flex: 1,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    // ✅ FIXED: Adjusted top position to sit right below the trigger
+    top: hp('6%'),
+    left: 0,
+    right: 0,
+    borderWidth: 1,
+    borderRadius: wp('2%'),
+    paddingVertical: hp('0.5%'),
+    backgroundColor: '#FFFFFF', // Ensure solid white background
+    zIndex: 9999, // Highest z-index for the popup itself
+    elevation: 10, // Higher elevation for Android shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+  },
+  dropdownItem: {
+    paddingVertical: hp('1.5%'),
+    paddingHorizontal: wp('3%'),
+  },
+  dropdownItemText: {
+    fontSize: wp('3.2%'),
+    fontFamily: Fonts.regular,
+  },
+
   paymentMethodGrid: {
     flexDirection: 'row',
     gap: wp('2%'),
