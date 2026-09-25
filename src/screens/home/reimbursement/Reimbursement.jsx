@@ -13,7 +13,7 @@ import {
   Image,
   Linking,
   ActivityIndicator,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import FileViewer from 'react-native-file-viewer';
 import RNFS from 'react-native-fs';
@@ -70,7 +70,9 @@ import { getAccessToken } from '../../../utils/keychainHelper';
 
 
 // API Configuration
-const API_BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1';
+// const API_BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; // Live URL
+
+const API_BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1' // UAT URL
 
 const Reimbursement = ({ navigation }) => {
   const { theme } = useTheme();
@@ -179,6 +181,12 @@ const Reimbursement = ({ navigation }) => {
     loadExpenses();
   }, []);
 
+  const closeAllDropdowns = () => {
+    if (showTravelDropdown) setShowTravelDropdown(false);
+    if (showHotelDropdown) setShowHotelDropdown(false);
+    if (showFoodDropdown) setShowFoodDropdown(false);
+  };
+
   // Helper function to get days in a month
   const getDaysInMonthForPicker = (month, year) => {
     return new Date(year, month, 0).getDate();
@@ -203,7 +211,6 @@ const Reimbursement = ({ navigation }) => {
     const token = await getAccessToken();
     console.log('🔑 Token being used:', token);
 
-    // ✅ Check if token is available
     if (!token) {
       console.warn('⚠️ No auth token available for fuel rate API - using fallback rates');
       const vehicleType = type === 'car' ? 'car' : 'bike';
@@ -224,9 +231,6 @@ const Reimbursement = ({ navigation }) => {
       // Map expense type to API expected format
       const vehicleType = type === 'car' ? 'car' : 'bike';
 
-      console.log('🔍 Fetching fuel rate for:', vehicleType);
-      console.log('🔍 Using token:', token.substring(0, 20) + '...');
-
       const response = await fetch(`${API_BASE_URL}/fuel-rates`, {
         method: 'GET',
         headers: {
@@ -236,9 +240,7 @@ const Reimbursement = ({ navigation }) => {
         },
       });
 
-      console.log('📡 Fuel rate response status:', response.status);
 
-      // ✅ Handle 401 specifically
       if (response.status === 401) {
         console.warn('⚠️ 401 Unauthorized: Token might be expired or invalid. Using fallback.');
         throw new Error('Unauthorized');
@@ -277,7 +279,6 @@ const Reimbursement = ({ navigation }) => {
         } else if (vehicleType === 'car' && carItem) {
           ratePerKm = carItem.revisedRateFourWheeler || carItem.ratePerKm || carItem.rate || carItem.fuelRate || null;
         }
-        console.log('📌 Structure 2 (Array) matched! Found rate:', ratePerKm);
       }
 
       // 3. Fallback to Nested Array logic
@@ -297,10 +298,7 @@ const Reimbursement = ({ navigation }) => {
         console.warn(`⚠️ Could not find a valid rate in API response. Using fallback.`);
         const fallbackRate = vehicleType === 'car' ? 10 : 5;
         ratePerKm = fallbackRate;
-        console.log(`⚠️ Using fallback rate: ${ratePerKm}`);
       }
-
-      console.log(`✅ Final rate for ${vehicleType}: ₹${ratePerKm}/km`);
 
       // Update State
       setFuelPricePerKm(ratePerKm);
@@ -768,6 +766,43 @@ const Reimbursement = ({ navigation }) => {
       0,
     );
     return travel + hotel + food + otherTotal;
+  };
+
+  //  NEW: Calculate total of all company-paid expenses
+  const calculateCompanyPaidAmount = () => {
+    let companyPaid = 0;
+
+    // Travel amount (if company-paid)
+    if (travelPaymentMethod === 'company-paid') {
+      companyPaid += parseFloat(amount) || 0;
+    }
+
+    // Hotel cost (if company-paid)
+    if (hotelPaymentMethod === 'company-paid') {
+      companyPaid += parseFloat(hotelCost) || 0;
+    }
+
+    // Food cost (if company-paid)
+    if (foodPaymentMethod === 'company-paid') {
+      companyPaid += parseFloat(foodCost) || 0;
+    }
+
+    // Other expenses (if company-paid)
+    otherExpenses.forEach(item => {
+      if (item.paymentMethod === 'company-paid') {
+        companyPaid += parseFloat(item.amount) || 0;
+      }
+    });
+
+    return companyPaid;
+  };
+
+  //  NEW: Calculate the reimbursable amount (total minus company-paid)
+  const calculateReimbursableAmount = () => {
+    const total = calculateTotalAmount();
+    const companyPaid = calculateCompanyPaidAmount();
+    // Clamp to 0 in case company-paid exceeds total (shouldn't happen, but safety)
+    return Math.max(0, total - companyPaid);
   };
 
   // ============ FILE PICKING FUNCTIONS ============
@@ -1911,7 +1946,7 @@ const Reimbursement = ({ navigation }) => {
                 <Text
                   style={[styles.viewAmountLabel, { color: C.textSecondary }]}
                 >
-                  Total Amount
+                  Total Expense
                 </Text>
                 <Text style={[styles.viewAmountValue, { color: C.primary }]}>
                   {formatCurrency(selectedRequest.totalAmount || 0)}
@@ -2148,6 +2183,8 @@ const Reimbursement = ({ navigation }) => {
                           : 'Self'}
                       </Text>
                     </View>
+
+
                     <Text
                       style={[
                         styles.viewExpenseAmount,
@@ -2204,24 +2241,92 @@ const Reimbursement = ({ navigation }) => {
                     </View>
                   ))}
 
-                <View style={[styles.viewExpenseItem, styles.viewTotalRow]}>
-                  <Text
-                    style={[
-                      styles.viewExpenseLabel,
-                      { color: C.textPrimary, fontFamily: Fonts.bold },
-                    ]}
-                  >
-                    Total
-                  </Text>
-                  <Text
-                    style={[
-                      styles.viewExpenseAmount,
-                      { color: C.primary, fontFamily: Fonts.bold },
-                    ]}
-                  >
-                    {formatCurrency(selectedRequest.totalAmount || 0)}
-                  </Text>
-                </View>
+                {/* ✅ Paid by Company + Reimbursable Amount Summary */}
+                {(() => {
+                  // Calculate company-paid amount from the request data
+                  let companyPaid = 0;
+
+                  if (selectedRequest.expenses?.travel?.paymentMethod === 'COMPANY') {
+                    companyPaid += selectedRequest.expenses.travel.amount || 0;
+                  }
+                  if (selectedRequest.expenses?.hotel?.paymentMethod === 'COMPANY') {
+                    companyPaid += selectedRequest.expenses.hotel.amount || 0;
+                  }
+                  if (selectedRequest.expenses?.food?.paymentMethod === 'COMPANY') {
+                    companyPaid += selectedRequest.expenses.food.amount || 0;
+                  }
+                  selectedRequest.miscItems?.forEach(item => {
+                    if (item.paymentMethod === 'COMPANY') {
+                      companyPaid += item.amount || 0;
+                    }
+                  });
+
+                  const totalAmount = selectedRequest.totalAmount || 0;
+                  const reimbursable = Math.max(0, totalAmount - companyPaid);
+
+                  return (
+                    <>
+                      {/* Paid by Company row — only if > 0 */}
+
+                      <View style={styles.summaryRow}>
+                        <Text style={[styles.viewExpenseLabel, { color: C.textPrimary, fontFamily: Fonts.bold }]}>
+                          Total Expense
+                        </Text>
+                        <Text style={[styles.viewExpenseLabel, { color: '#315094', fontFamily: Fonts.bold, marLeft: 20 }]}>
+                          {formatCurrency(selectedRequest.totalAmount || 0)}
+                        </Text>
+                      </View>
+
+                      {companyPaid > 0 && (
+                        <>
+
+                          <View style={[styles.viewExpenseItem, { borderBottomWidth: 0, marginTop: hp('1%') }]}>
+
+                            <Text
+                              style={[
+                                styles.viewExpenseLabel,
+                                { color: C.textSecondary, fontFamily: Fonts.medium },
+                              ]}
+                            >
+                              Paid by Company
+                            </Text>
+                            <Text
+                              style={[
+                                styles.viewExpenseAmount,
+                                { color: C.success || '#2ECC71', fontFamily: Fonts.semiBold },
+                              ]}
+                            >
+                              {formatCurrency(companyPaid)}
+                            </Text>
+                          </View>
+                          <View style={[styles.viewSummaryDivider, { backgroundColor: C.border }]} />
+                        </>
+                      )}
+
+                      {/* Reimbursable Amount (highlighted final row) */}
+                      <View style={[styles.viewExpenseItem, styles.viewTotalRow]}>
+                        <Text
+                          style={[
+                            styles.viewExpenseLabel,
+                            { color: C.textPrimary, fontFamily: Fonts.bold },
+                          ]}
+                        >
+                          Reimbursable Amount
+                        </Text>
+                        <Text
+                          style={[
+                            styles.viewExpenseAmount,
+                            { color: C.primary, fontFamily: Fonts.bold },
+                          ]}
+                        >
+                          {formatCurrency(reimbursable)}
+                        </Text>
+                      </View>
+
+                    </>
+                  );
+                })()}
+
               </View>
 
               {selectedRequest.receiptUrl && (
@@ -3204,449 +3309,235 @@ const Reimbursement = ({ navigation }) => {
                 <XCircle size={wp('6%')} color={C.textSecondary} />
               </TouchableOpacity>
             </View>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            >
-              <ScrollView
-                contentContainerStyle={{
-                  paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-                  paddingHorizontal: wp('4%'),
-                }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}>
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Travel Type *
-                </Text>
-                <View style={styles.typeGrid}>
-                  {['car', 'bike', 'train', 'flight', 'other'].map(type => {
-                    let icon;
-                    let label = type.charAt(0).toUpperCase() + type.slice(1);
-                    if (type === 'bike') label = 'Bike';
 
-                    switch (type) {
-                      case 'car':
-                        icon = <Car size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
-                        break;
-                      case 'bike':
-                        icon = <Bike size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
-                        break;
-                      case 'train':
-                        icon = <Train size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
-                        break;
-                      case 'flight':
-                        icon = <Plane size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
-                        break;
-                      default:
-                        icon = <FileText size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
-                    }
+            {/* ✅ Wrap everything in TouchableWithoutFeedback so outside taps close the dropdown */}
+            <TouchableWithoutFeedback onPress={closeAllDropdowns} accessible={false}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+              >
+                <ScrollView
+                  contentContainerStyle={{
+                    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+                    paddingHorizontal: wp('4%'),
+                  }}
+                  onScrollBeginDrag={Keyboard.dismiss}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="always"
+                  showsVerticalScrollIndicator={false}>
 
-                    return (
-                      <TouchableOpacity
-                        key={type}
-                        style={[
-                          styles.typeOption,
-                          { borderColor: C.border },
-                          expenseType === type && {
-                            borderColor: C.primary,
-                            backgroundColor: C.primary + '10',
-                          },
-                        ]}
-                        onPress={() => handleExpenseTypeChange(type)}
-                      >
-                        {icon}
-                        <Text
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Travel Type *
+                  </Text>
+                  <View style={styles.typeGrid}>
+                    {['car', 'bike', 'train', 'flight', 'other'].map(type => {
+                      let icon;
+                      let label = type.charAt(0).toUpperCase() + type.slice(1);
+                      if (type === 'bike') label = 'Bike';
+
+                      switch (type) {
+                        case 'car':
+                          icon = <Car size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                          break;
+                        case 'bike':
+                          icon = <Bike size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                          break;
+                        case 'train':
+                          icon = <Train size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                          break;
+                        case 'flight':
+                          icon = <Plane size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                          break;
+                        default:
+                          icon = <FileText size={wp('5%')} color={expenseType === type ? C.primary : C.textSecondary} />;
+                      }
+
+                      return (
+                        <TouchableOpacity
+                          key={type}
                           style={[
-                            styles.typeText,
-                            {
-                              color:
-                                expenseType === type ? C.primary : C.textSecondary,
+                            styles.typeOption,
+                            { borderColor: C.border },
+                            expenseType === type && {
+                              borderColor: C.primary,
+                              backgroundColor: C.primary + '10',
                             },
                           ]}
+                          onPress={() => handleExpenseTypeChange(type)}
                         >
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                          {icon}
+                          <Text
+                            style={[
+                              styles.typeText,
+                              {
+                                color:
+                                  expenseType === type ? C.primary : C.textSecondary,
+                              },
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
-                <>
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    From Date *
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.dateInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                      },
-                    ]}
-                    onPress={() => setShowFromDatePicker(true)}
-                  >
-                    <Calendar size={wp('4%')} color={C.textSecondary} />
-                    <Text
-                      style={[
-                        styles.dateInputText,
-                        { color: fromDate ? C.textPrimary : C.textTertiary },
-                      ]}
-                    >
-                      {fromDate
-                        ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
-                        : 'DD/MM/YYYY'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
-                    To Date *
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.dateInput,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                      },
-                    ]}
-                    onPress={() => setShowToDatePicker(true)}
-                  >
-                    <Calendar size={wp('4%')} color={C.textSecondary} />
-                    <Text
-                      style={[
-                        styles.dateInputText,
-                        { color: toDate ? C.textPrimary : C.textTertiary },
-                      ]}
-                    >
-                      {toDate
-                        ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
-                        : 'DD/MM/YYYY'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {renderFromDatePickerModal()}
-                  {renderToDatePickerModal()}
-                </>
-
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  From Location *
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Starting point (max 30 chars)"
-                  placeholderTextColor={C.textTertiary}
-                  value={fromLocation}
-                  onChangeText={text => setFromLocation(validateLocation(text))}
-                  maxLength={LOCATION_MAX_LENGTH}
-                />
-
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  To Location *
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Destination (max 30 chars)"
-                  placeholderTextColor={C.textTertiary}
-                  value={toLocation}
-                  onChangeText={text => setToLocation(validateLocation(text))}
-                  maxLength={LOCATION_MAX_LENGTH}
-                />
-
-
-                {(expenseType === 'car' || expenseType === 'bike') && (
                   <>
-                    <View>
-                      <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                        Distance (KM) *
-                      </Text>
-                      <TextInput
-                        style={[
-                          styles.input,
-                          {
-                            backgroundColor: C.surface,
-                            borderColor: C.border,
-                            color: C.textPrimary,
-                          },
-                        ]}
-                        placeholder="Enter kilometers"
-                        placeholderTextColor={C.textTertiary}
-                        keyboardType="numeric"
-                        value={kilometers}
-                        onChangeText={handleKilometersChange}
-                        maxLength={6}
-                      />
-                      {kilometers && parseFloat(kilometers) > KM_MAX_VALUE && (
-                        <Text style={[styles.errorText, { color: '#E74C3C' }]}>
-                          Maximum allowed distance is {KM_MAX_VALUE} km
-                        </Text>
-                      )}
-                    </View>
-                    {fetchingFuelRate && (
-                      <View style={styles.fuelRateLoader}>
-                        <ActivityIndicator size="small" color={C.primary} />
-                        <Text style={[styles.fuelRateText, { color: C.textSecondary }]}>
-                          Fetching fuel rate...
-                        </Text>
-                      </View>
-                    )}
-                    {fuelPricePerKm !== null && !fetchingFuelRate && kilometers && parseFloat(kilometers) > 0 && parseFloat(kilometers) <= KM_MAX_VALUE && (
-                      <View style={[styles.fuelRateInfo, { backgroundColor: C.surface, borderColor: C.border }]}>
-                        <Text style={[styles.fuelRateLabel, { color: C.textSecondary }]}>
-                          Fuel Rate:
-                        </Text>
-                        <Text style={[styles.fuelRateValue, { color: C.primary }]}>
-                          ₹{fuelPricePerKm.toFixed(2)}/km
-                        </Text>
-                        <Text style={[styles.fuelRateCalculated, { color: C.textSecondary }]}>
-                          Total: ₹{(parseFloat(kilometers) * fuelPricePerKm).toFixed(2)}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                )}
-
-                {/* ✅ TRAVEL AMOUNT SECTION WITH DROPDOWN */}
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Travel Amount *
-                </Text>
-                <View style={[styles.rowContainer, { zIndex: 1000 }]}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                        flex: 1,
-                      },
-                    ]}
-                    placeholder={
-                      (expenseType === 'car' || expenseType === 'bike')
-                        ? 'Auto-calculated'
-                        : 'Enter amount'
-                    }
-
-                    placeholderTextColor={C.textTertiary}
-                    keyboardType="numeric"
-                    value={amount}
-                    editable={expenseType !== 'car' && expenseType !== 'bike'}
-                    onChangeText={text => setAmount(validateAmount(text))}
-                    maxLength={AMOUNT_MAX_LENGTH}
-                  />
-                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownTrigger,
-                        { backgroundColor: C.surface, borderColor: C.border },
-                      ]}
-                      onPress={() => setShowTravelDropdown(!showTravelDropdown)}
-                    >
-                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
-                        {travelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
-                      </Text>
-                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
-                    </TouchableOpacity>
-                    {showTravelDropdown && (
-                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setTravelPaymentMethod('self-paid');
-                            setShowTravelDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setTravelPaymentMethod('company-paid');
-                            setShowTravelDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Additional Expenses (Optional)
-                </Text>
-
-                {/* ✅ HOTEL COST SECTION WITH DROPDOWN */}
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Hotel Cost
-                </Text>
-                <View style={[styles.rowContainer, { zIndex: 900 }]}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                        flex: 1,
-                      },
-                    ]}
-                    placeholder="Enter hotel cost"
-                    placeholderTextColor={C.textTertiary}
-                    keyboardType="numeric"
-                    value={hotelCost}
-                    onChangeText={text => setHotelCost(validateAmount(text))}
-                    maxLength={AMOUNT_MAX_LENGTH}
-                  />
-                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownTrigger,
-                        { backgroundColor: C.surface, borderColor: C.border },
-                      ]}
-                      onPress={() => setShowHotelDropdown(!showHotelDropdown)}
-                    >
-                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
-                        {hotelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
-                      </Text>
-                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
-                    </TouchableOpacity>
-                    {showHotelDropdown && (
-                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setHotelPaymentMethod('self-paid');
-                            setShowHotelDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setHotelPaymentMethod('company-paid');
-                            setShowHotelDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {/* ✅ FOOD COST SECTION WITH DROPDOWN */}
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Food Cost
-                </Text>
-                <View style={[styles.rowContainer, { zIndex: 800 }]}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: C.surface,
-                        borderColor: C.border,
-                        color: C.textPrimary,
-                        flex: 1,
-                      },
-                    ]}
-                    placeholder="Enter food cost"
-                    placeholderTextColor={C.textTertiary}
-                    keyboardType="numeric"
-                    value={foodCost}
-                    onChangeText={text => setFoodCost(validateAmount(text))}
-                    maxLength={AMOUNT_MAX_LENGTH}
-                  />
-                  <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownTrigger,
-                        { backgroundColor: C.surface, borderColor: C.border },
-                      ]}
-                      onPress={() => setShowFoodDropdown(!showFoodDropdown)}
-                    >
-                      <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
-                        {foodPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
-                      </Text>
-                      <ChevronDown size={wp('3%')} color={C.textSecondary} />
-                    </TouchableOpacity>
-                    {showFoodDropdown && (
-                      <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setFoodPaymentMethod('self-paid');
-                            setShowFoodDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setFoodPaymentMethod('company-paid');
-                            setShowFoodDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.otherExpensesHeader}>
-                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                    Other Expenses
-                  </Text>
-                  <TouchableOpacity
-                    onPress={addOtherExpense}
-                    style={[styles.addExpenseBtn, { borderColor: C.primary }]}
-                  >
-                    <Plus size={wp('3%')} color={C.primary} />
-                    <Text style={[styles.addExpenseText, { color: C.primary }]}>
-                      Add
+                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                      From Date *
                     </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {otherExpenses.map(expense => (
-                  <View key={expense.id} style={styles.otherExpenseItem}>
-                    <TextInput
+                    <TouchableOpacity
                       style={[
-                        styles.otherExpenseInput,
+                        styles.dateInput,
                         {
                           backgroundColor: C.surface,
                           borderColor: C.border,
-                          color: C.textPrimary,
-                          flex: 2,
                         },
                       ]}
-                      placeholder="Description (max 30 chars)"
-                      placeholderTextColor={C.textTertiary}
-                      value={expense.description}
-                      onChangeText={text =>
-                        updateOtherExpense(expense.id, 'description', text)
-                      }
-                      maxLength={DESCRIPTION_MAX_LENGTH}
-                    />
+                      onPress={() => setShowFromDatePicker(true)}
+                    >
+                      <Calendar size={wp('4%')} color={C.textSecondary} />
+                      <Text
+                        style={[
+                          styles.dateInputText,
+                          { color: fromDate ? C.textPrimary : C.textTertiary },
+                        ]}
+                      >
+                        {fromDate
+                          ? formatDateForPicker(fromDate.getDate(), fromDate.getMonth() + 1, fromDate.getFullYear())
+                          : 'DD/MM/YYYY'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Text style={[styles.inputLabel, { color: C.textSecondary, marginTop: wp('4%') }]}>
+                      To Date *
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.dateInput,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                        },
+                      ]}
+                      onPress={() => setShowToDatePicker(true)}
+                    >
+                      <Calendar size={wp('4%')} color={C.textSecondary} />
+                      <Text
+                        style={[
+                          styles.dateInputText,
+                          { color: toDate ? C.textPrimary : C.textTertiary },
+                        ]}
+                      >
+                        {toDate
+                          ? formatDateForPicker(toDate.getDate(), toDate.getMonth() + 1, toDate.getFullYear())
+                          : 'DD/MM/YYYY'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {renderFromDatePickerModal()}
+                    {renderToDatePickerModal()}
+                  </>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    From Location *
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                      },
+                    ]}
+                    placeholder="Starting point (max 30 chars)"
+                    placeholderTextColor={C.textTertiary}
+                    value={fromLocation}
+                    onChangeText={text => setFromLocation(validateLocation(text))}
+                    maxLength={LOCATION_MAX_LENGTH}
+                  />
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    To Location *
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                      },
+                    ]}
+                    placeholder="Destination (max 30 chars)"
+                    placeholderTextColor={C.textTertiary}
+                    value={toLocation}
+                    onChangeText={text => setToLocation(validateLocation(text))}
+                    maxLength={LOCATION_MAX_LENGTH}
+                  />
+
+                  {(expenseType === 'car' || expenseType === 'bike') && (
+                    <>
+                      <View>
+                        <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                          Distance (KM) *
+                        </Text>
+                        <TextInput
+                          style={[
+                            styles.input,
+                            {
+                              backgroundColor: C.surface,
+                              borderColor: C.border,
+                              color: C.textPrimary,
+                            },
+                          ]}
+                          placeholder="Enter kilometers"
+                          placeholderTextColor={C.textTertiary}
+                          keyboardType="numeric"
+                          value={kilometers}
+                          onChangeText={handleKilometersChange}
+                          maxLength={6}
+                        />
+                        {kilometers && parseFloat(kilometers) > KM_MAX_VALUE && (
+                          <Text style={[styles.errorText, { color: '#E74C3C' }]}>
+                            Maximum allowed distance is {KM_MAX_VALUE} km
+                          </Text>
+                        )}
+                      </View>
+                      {fetchingFuelRate && (
+                        <View style={styles.fuelRateLoader}>
+                          <ActivityIndicator size="small" color={C.primary} />
+                          <Text style={[styles.fuelRateText, { color: C.textSecondary }]}>
+                            Fetching fuel rate...
+                          </Text>
+                        </View>
+                      )}
+                      {fuelPricePerKm !== null && !fetchingFuelRate && kilometers && parseFloat(kilometers) > 0 && parseFloat(kilometers) <= KM_MAX_VALUE && (
+                        <View style={[styles.fuelRateInfo, { backgroundColor: C.surface, borderColor: C.border }]}>
+                          <Text style={[styles.fuelRateLabel, { color: C.textSecondary }]}>
+                            Fuel Rate:
+                          </Text>
+                          <Text style={[styles.fuelRateValue, { color: C.primary }]}>
+                            ₹{fuelPricePerKm.toFixed(2)}/km
+                          </Text>
+                          <Text style={[styles.fuelRateCalculated, { color: C.textSecondary }]}>
+                            Total: ₹{(parseFloat(kilometers) * fuelPricePerKm).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+
+                  {/* ✅ TRAVEL AMOUNT SECTION WITH DROPDOWN */}
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Travel Amount *
+                  </Text>
+                  <View style={[styles.rowContainer, { zIndex: 1000 }]}>
                     <TextInput
                       style={[
-                        styles.otherExpenseInput,
+                        styles.input,
                         {
                           backgroundColor: C.surface,
                           borderColor: C.border,
@@ -3654,188 +3545,437 @@ const Reimbursement = ({ navigation }) => {
                           flex: 1,
                         },
                       ]}
-                      placeholder="Amount"
+                      placeholder={
+                        (expenseType === 'car' || expenseType === 'bike')
+                          ? 'Auto-calculated'
+                          : 'Enter amount'
+                      }
                       placeholderTextColor={C.textTertiary}
                       keyboardType="numeric"
-                      value={expense.amount}
-                      onChangeText={text =>
-                        updateOtherExpense(expense.id, 'amount', text)
-                      }
+                      value={amount}
+                      editable={expenseType !== 'car' && expenseType !== 'bike'}
+                      onChangeText={text => setAmount(validateAmount(text))}
                       maxLength={AMOUNT_MAX_LENGTH}
                     />
-                    <TouchableOpacity
-                      onPress={() => removeOtherExpense(expense.id)}
-                    >
-                      <Trash2 size={wp('5%')} color="#E74C3C" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-
-                <View style={styles.uploadSectionHeader}>
-                  <View>
-                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                      Receipt/Document (Optional)
-                    </Text>
-                    <Text
-                      style={[styles.uploadSubtitle, { color: C.textTertiary }]}
-                    >
-                      Upload 1 file only (PDF, JPG, or PNG, Max {MAX_FILE_SIZE_MB}
-                      MB) - {selectedFiles.length}/1
-                    </Text>
-                  </View>
-                </View>
-
-                {selectedFiles.length === 0 ? (
-                  <View style={styles.uploadButtonsContainer}>
-                    <TouchableOpacity
-                      style={[
-                        styles.uploadOptionBtn,
-                        { backgroundColor: C.surface, borderColor: C.border },
-                      ]}
-                      onPress={showFilePickerOptions}
-                    >
-                      <View
+                    <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                      <TouchableOpacity
                         style={[
-                          styles.uploadIconCircle,
-                          { backgroundColor: C.primary + '15' },
-                        ]}
-                      >
-                        <FilePlus size={wp('6%')} color={C.primary} />
-                      </View>
-                      <Text
-                        style={[
-                          styles.uploadOptionTitle,
-                          { color: C.textPrimary },
-                        ]}
-                      >
-                        Upload Files
-                      </Text>
-                      <Text
-                        style={[
-                          styles.uploadOptionSubtitle,
-                          { color: C.textTertiary },
-                        ]}
-                      >
-                        PDF, JPG, PNG{`\n`}(Max {MAX_FILE_SIZE_MB}MB)
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={styles.fileListContainer}>
-                    {selectedFiles.map(file => (
-                      <View
-                        key={file.id}
-                        style={[
-                          styles.fileItemCard,
+                          styles.dropdownTrigger,
                           { backgroundColor: C.surface, borderColor: C.border },
                         ]}
+                        onPress={() => setShowTravelDropdown(!showTravelDropdown)}
                       >
-                        <View style={styles.filePreviewContainer}>
-                          {file.type === 'jpg' ||
-                            file.type === 'png' ||
-                            file.type === 'jpeg' ? (
-                            <Image
-                              source={{ uri: file.uri }}
-                              style={styles.fileThumbnail}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View
-                              style={[
-                                styles.fileTypeIcon,
-                                { backgroundColor: '#E74C3C15' },
-                              ]}
-                            >
-                              <FileText size={wp('7%')} color="#E74C3C" />
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.fileDetailsContainer}>
-                          <Text
-                            style={[styles.fileName, { color: C.textPrimary }]}
-                            numberOfLines={1}
+                        <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                          {travelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                        </Text>
+                        <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                      </TouchableOpacity>
+                      {showTravelDropdown && (
+                        <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setTravelPaymentMethod('self-paid');
+                              setShowTravelDropdown(false);
+                            }}
                           >
-                            {truncateText(file.name, 30)}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.fileMetaText,
-                              { color: C.textSecondary },
-                            ]}
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setTravelPaymentMethod('company-paid');
+                              setShowTravelDropdown(false);
+                            }}
                           >
-                            {formatFileSize(file.size)} •{' '}
-                            {file.type.toUpperCase()}
-                          </Text>
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                          </TouchableOpacity>
                         </View>
-
-                        <TouchableOpacity
-                          style={[
-                            styles.iconButton,
-                            { backgroundColor: '#E74C3C15' },
-                          ]}
-                          onPress={() => removeFile(file.id)}
-                        >
-                          <Trash2 size={wp('4%')} color="#E74C3C" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                      )}
+                    </View>
                   </View>
-                )}
 
-                <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
-                  Business Purpose (Optional)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.textArea,
-                    {
-                      backgroundColor: C.surface,
-                      borderColor: C.border,
-                      color: C.textPrimary,
-                    },
-                  ]}
-                  placeholder="Describe the purpose (max 200 chars)..."
-                  placeholderTextColor={C.textTertiary}
-                  multiline
-                  numberOfLines={3}
-                  value={purpose}
-                  onChangeText={text => setPurpose(validatePurpose(text))}
-                  maxLength={PURPOSE_MAX_LENGTH}
-                />
-
-                <View
-                  style={[styles.totalContainer, { borderTopColor: C.border }]}
-                >
-                  <Text style={[styles.totalLabel, { color: C.textPrimary }]}>
-                    Total Amount:
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Additional Expenses (Optional)
                   </Text>
-                  <Text style={[styles.totalAmount, { color: C.primary }]}>
-                    {formatCurrency(calculateTotalAmount())}
-                  </Text>
-                </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.submitBtn,
-                    {
-                      backgroundColor: submitting ? C.primary + '80' : C.primary,
-                    },
-                  ]}
-                  onPress={handleSubmitExpense}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <View style={styles.submittingContainer}>
-                      <ActivityIndicator color="#fff" />
-                      <Text style={styles.submitBtnText}>Submitting...</Text>
+                  {/* ✅ HOTEL COST SECTION WITH DROPDOWN */}
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Hotel Cost
+                  </Text>
+                  <View style={[styles.rowContainer, { zIndex: 900 }]}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                          color: C.textPrimary,
+                          flex: 1,
+                        },
+                      ]}
+                      placeholder="Enter hotel cost"
+                      placeholderTextColor={C.textTertiary}
+                      keyboardType="numeric"
+                      value={hotelCost}
+                      onChangeText={text => setHotelCost(validateAmount(text))}
+                      maxLength={AMOUNT_MAX_LENGTH}
+                    />
+                    <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.dropdownTrigger,
+                          { backgroundColor: C.surface, borderColor: C.border },
+                        ]}
+                        onPress={() => setShowHotelDropdown(!showHotelDropdown)}
+                      >
+                        <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                          {hotelPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                        </Text>
+                        <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                      </TouchableOpacity>
+                      {showHotelDropdown && (
+                        <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setHotelPaymentMethod('self-paid');
+                              setShowHotelDropdown(false);
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setHotelPaymentMethod('company-paid');
+                              setShowHotelDropdown(false);
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* ✅ FOOD COST SECTION WITH DROPDOWN */}
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Food Cost
+                  </Text>
+                  <View style={[styles.rowContainer, { zIndex: 800 }]}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: C.surface,
+                          borderColor: C.border,
+                          color: C.textPrimary,
+                          flex: 1,
+                        },
+                      ]}
+                      placeholder="Enter food cost"
+                      placeholderTextColor={C.textTertiary}
+                      keyboardType="numeric"
+                      value={foodCost}
+                      onChangeText={text => setFoodCost(validateAmount(text))}
+                      maxLength={AMOUNT_MAX_LENGTH}
+                    />
+                    <View style={{ flex: 0.8, marginLeft: wp('2%') }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.dropdownTrigger,
+                          { backgroundColor: C.surface, borderColor: C.border },
+                        ]}
+                        onPress={() => setShowFoodDropdown(!showFoodDropdown)}
+                      >
+                        <Text style={[styles.dropdownText, { color: C.textPrimary }]} numberOfLines={1}>
+                          {foodPaymentMethod === 'self-paid' ? 'Self-Paid' : 'Company-Paid'}
+                        </Text>
+                        <ChevronDown size={wp('3%')} color={C.textSecondary} />
+                      </TouchableOpacity>
+                      {showFoodDropdown && (
+                        <View style={[styles.dropdownMenu, { backgroundColor: C.surface, borderColor: C.border }]}>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setFoodPaymentMethod('self-paid');
+                              setShowFoodDropdown(false);
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Self-Paid</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setFoodPaymentMethod('company-paid');
+                              setShowFoodDropdown(false);
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, { color: C.textPrimary }]}>Company-Paid</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.otherExpensesHeader}>
+                    <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                      Other Expenses
+                    </Text>
+                    <TouchableOpacity
+                      onPress={addOtherExpense}
+                      style={[styles.addExpenseBtn, { borderColor: C.primary }]}
+                    >
+                      <Plus size={wp('3%')} color={C.primary} />
+                      <Text style={[styles.addExpenseText, { color: C.primary }]}>
+                        Add
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {otherExpenses.map(expense => (
+                    <View key={expense.id} style={styles.otherExpenseItem}>
+                      <TextInput
+                        style={[
+                          styles.otherExpenseInput,
+                          {
+                            backgroundColor: C.surface,
+                            borderColor: C.border,
+                            color: C.textPrimary,
+                            flex: 2,
+                          },
+                        ]}
+                        placeholder="Description (max 30 chars)"
+                        placeholderTextColor={C.textTertiary}
+                        value={expense.description}
+                        onChangeText={text =>
+                          updateOtherExpense(expense.id, 'description', text)
+                        }
+                        maxLength={DESCRIPTION_MAX_LENGTH}
+                      />
+                      <TextInput
+                        style={[
+                          styles.otherExpenseInput,
+                          {
+                            backgroundColor: C.surface,
+                            borderColor: C.border,
+                            color: C.textPrimary,
+                            flex: 1,
+                          },
+                        ]}
+                        placeholder="Amount"
+                        placeholderTextColor={C.textTertiary}
+                        keyboardType="numeric"
+                        value={expense.amount}
+                        onChangeText={text =>
+                          updateOtherExpense(expense.id, 'amount', text)
+                        }
+                        maxLength={AMOUNT_MAX_LENGTH}
+                      />
+                      <TouchableOpacity
+                        onPress={() => removeOtherExpense(expense.id)}
+                      >
+                        <Trash2 size={wp('5%')} color="#E74C3C" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  <View style={styles.uploadSectionHeader}>
+                    <View>
+                      <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                        Receipt/Document (Optional)
+                      </Text>
+                      <Text
+                        style={[styles.uploadSubtitle, { color: C.textTertiary }]}
+                      >
+                        Upload 1 file only (PDF, JPG, or PNG, Max {MAX_FILE_SIZE_MB}
+                        MB) - {selectedFiles.length}/1
+                      </Text>
+                    </View>
+                  </View>
+
+                  {selectedFiles.length === 0 ? (
+                    <View style={styles.uploadButtonsContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.uploadOptionBtn,
+                          { backgroundColor: C.surface, borderColor: C.border },
+                        ]}
+                        onPress={showFilePickerOptions}
+                      >
+                        <View
+                          style={[
+                            styles.uploadIconCircle,
+                            { backgroundColor: C.primary + '15' },
+                          ]}
+                        >
+                          <FilePlus size={wp('6%')} color={C.primary} />
+                        </View>
+                        <Text
+                          style={[
+                            styles.uploadOptionTitle,
+                            { color: C.textPrimary },
+                          ]}
+                        >
+                          Upload Files
+                        </Text>
+                        <Text
+                          style={[
+                            styles.uploadOptionSubtitle,
+                            { color: C.textTertiary },
+                          ]}
+                        >
+                          PDF, JPG, PNG{`\n`}(Max {MAX_FILE_SIZE_MB}MB)
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   ) : (
-                    <Text style={styles.submitBtnText}>Submit Request</Text>
+                    <View style={styles.fileListContainer}>
+                      {selectedFiles.map(file => (
+                        <View
+                          key={file.id}
+                          style={[
+                            styles.fileItemCard,
+                            { backgroundColor: C.surface, borderColor: C.border },
+                          ]}
+                        >
+                          <View style={styles.filePreviewContainer}>
+                            {file.type === 'jpg' ||
+                              file.type === 'png' ||
+                              file.type === 'jpeg' ? (
+                              <Image
+                                source={{ uri: file.uri }}
+                                style={styles.fileThumbnail}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View
+                                style={[
+                                  styles.fileTypeIcon,
+                                  { backgroundColor: '#E74C3C15' },
+                                ]}
+                              >
+                                <FileText size={wp('7%')} color="#E74C3C" />
+                              </View>
+                            )}
+                          </View>
+
+                          <View style={styles.fileDetailsContainer}>
+                            <Text
+                              style={[styles.fileName, { color: C.textPrimary }]}
+                              numberOfLines={1}
+                            >
+                              {truncateText(file.name, 30)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.fileMetaText,
+                                { color: C.textSecondary },
+                              ]}
+                            >
+                              {formatFileSize(file.size)} •{' '}
+                              {file.type.toUpperCase()}
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.iconButton,
+                              { backgroundColor: '#E74C3C15' },
+                            ]}
+                            onPress={() => removeFile(file.id)}
+                          >
+                            <Trash2 size={wp('4%')} color="#E74C3C" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
                   )}
-                </TouchableOpacity>
-              </ScrollView>
-            </KeyboardAvoidingView>
+
+                  <Text style={[styles.inputLabel, { color: C.textSecondary }]}>
+                    Business Purpose (Optional)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textArea,
+                      {
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
+                        color: C.textPrimary,
+                      },
+                    ]}
+                    placeholder="Describe the purpose (max 200 chars)..."
+                    placeholderTextColor={C.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                    value={purpose}
+                    onChangeText={text => setPurpose(validatePurpose(text))}
+                    maxLength={PURPOSE_MAX_LENGTH}
+                  />
+
+                  {/* ✅ Summary Section */}
+                  <View style={[styles.summaryContainer, { borderTopColor: C.border }]}>
+                    {/* Row: Paid by Company (only if > 0) */}
+                    <View style={styles.summaryRow}>
+                      <Text style={[styles.reimbursableLabel, { color: C.textPrimary }]}>
+                        Total Expense
+                      </Text>
+                      <Text style={[styles.summaryValue, { color: '#5c0d0d' }]}>
+                        {calculateTotalAmount()}
+                      </Text>
+                    </View>
+                    {calculateCompanyPaidAmount() > 0 && (
+                      <>
+                        <View style={styles.summaryRow}>
+                          <Text style={[styles.summaryLabel, { color: C.textSecondary }]}>
+                            Paid by Company
+                          </Text>
+                          <Text style={[styles.summaryValue, { color: C.success || '#2ECC71' }]}>
+                            {formatCurrency(calculateCompanyPaidAmount())}
+                          </Text>
+                        </View>
+                        <View style={[styles.summaryDivider, { backgroundColor: C.border }]} />
+
+                      </>
+                    )}
+
+                    {/* Row: Reimbursable Amount (highlighted) */}
+                    <View style={styles.summaryRow}>
+                      <Text style={[styles.reimbursableLabel, { color: C.textPrimary }]}>
+                        Reimbursable Amount
+                      </Text>
+                      <Text style={[styles.reimbursableValue, { color: C.primary }]}>
+                        {formatCurrency(calculateReimbursableAmount())}
+                      </Text>
+                    </View>
+
+
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.submitBtn,
+                      {
+                        backgroundColor: submitting ? C.primary + '80' : C.primary,
+                      },
+                    ]}
+                    onPress={handleSubmitExpense}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <View style={styles.submittingContainer}>
+                        <ActivityIndicator color="#fff" />
+                        <Text style={styles.submitBtnText}>Submitting...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.submitBtnText}>Submit Request</Text>
+                    )}
+                  </TouchableOpacity>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </TouchableWithoutFeedback>
+            {/* ✅ END OF WRAPPED SECTION */}
           </View>
         </View>
       </Modal>
@@ -4201,12 +4341,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // ✅ NEW: Company Paid row styles
+  companyPaidContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: hp('1.5%'),
+    marginTop: hp('2%'),
+    borderTopWidth: 1,
+  },
+  companyPaidLabel: {
+    fontSize: wp('3.5%'),
+    fontFamily: Fonts.medium,
+  },
+  companyPaidAmount: {
+    fontSize: wp('3.8%'),
+    fontFamily: Fonts.semiBold,
+  },
   totalContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: hp('2%'),
-    marginTop: hp('2%'),
+    marginTop: hp('1%'), // ✅ Changed from hp('2%') so Company Paid row sits closer
     borderTopWidth: 1,
   },
   totalLabel: { fontSize: wp('4%'), fontFamily: Fonts.bold },
@@ -4530,6 +4687,39 @@ const styles = StyleSheet.create({
     fontSize: wp('2.5%'),
     fontFamily: Fonts.medium,
     marginTop: hp('0.5%'),
+  },
+  // ✅ Summary section styles
+  summaryContainer: {
+    marginTop: hp('2%'),
+    paddingTop: hp('1.5%'),
+    borderTopWidth: 1,
+    gap: hp('1%'),
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: hp('0.4%'),
+  },
+  summaryLabel: {
+    fontSize: wp('3.4%'),
+    fontFamily: Fonts.regular,
+  },
+  summaryValue: {
+    fontSize: wp('3.6%'),
+    fontFamily: Fonts.medium,
+  },
+  summaryDivider: {
+    height: 1,
+    marginVertical: hp('0.8%'),
+  },
+  reimbursableLabel: {
+    fontSize: wp('3.8%'),
+    fontFamily: Fonts.bold,
+  },
+  reimbursableValue: {
+    fontSize: wp('4.2%'),
+    fontFamily: Fonts.bold,
   },
 });
 

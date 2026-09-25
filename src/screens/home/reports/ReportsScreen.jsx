@@ -204,6 +204,226 @@ const convertToMinutes = (timeStr, ampm) => {
   return hour24 * 60 + minutes;
 };
 
+// const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
+//   const inMinutes = convertToMinutes(punchIn, punchInAmPm);
+//   const outMinutes = convertToMinutes(punchOut, punchOutAmPm);
+  
+//   if (inMinutes === null || outMinutes === null || outMinutes <= inMinutes) {
+//     return null;
+//   }
+
+//   const workingMinutes = outMinutes - inMinutes;
+//   let coreStatus = '';
+//   let finalStatus = '';
+//   let halfDayType = '';
+//   let deduction = 'None';
+//   let lateMinutes = 0;
+//   let statusDetails = '';
+
+//   // Check if punch in is within office hours
+//   const isWithinOfficeHours = inMinutes >= OFFICE_START && outMinutes <= OFFICE_END;
+//   const isPartialDay = outMinutes < OFFICE_END;
+
+//   // Determine if it's a morning or evening shift
+//   const isMorningShift = inMinutes >= OFFICE_START && outMinutes <= SECOND_HALF_START;
+//   const isEveningShift = inMinutes >= SECOND_HALF_START && outMinutes <= OFFICE_END;
+
+//   // Check for early departure
+//   const earlyDeparture = outMinutes < OFFICE_END;
+
+//   // Calculate based on total working hours
+//   if (workingMinutes >= FULL_DAY_HOURS - 15) { // Full day (at least 8.75 hours)
+//     coreStatus = 'PRESENT';
+//     finalStatus = 'PRESENT (Full Day)';
+//     statusDetails = 'Full Day (9:30 AM - 6:30 PM)';
+//     if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+//       lateMinutes = 0;
+//       finalStatus = 'PRESENT (Grace)';
+//     } else if (inMinutes > GRACE_END) {
+//       lateMinutes = inMinutes - OFFICE_START;
+//       finalStatus = `PRESENT (Late by ${formatMinutes(lateMinutes)})`;
+//     }
+//     if (earlyDeparture && outMinutes < OFFICE_END - 15) {
+//       const earlyMins = OFFICE_END - outMinutes;
+//       deduction = `Early Logout: ${formatMinutes(earlyMins)}`;
+//     }
+//   } 
+//   else if (workingMinutes >= HALF_DAY_HOURS - 15 && workingMinutes < FULL_DAY_HOURS - 15) {
+//     // Half day logic
+//     if (isMorningShift && inMinutes >= OFFICE_START && outMinutes <= SECOND_HALF_START) {
+//       coreStatus = 'HALF_DAY';
+//       finalStatus = 'HALF_DAY (First Half)';
+//       halfDayType = 'MORNING';
+//       statusDetails = 'First Half (9:30 AM - 2:00 PM)';
+//       if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+//         lateMinutes = 0;
+//         finalStatus = 'HALF_DAY (First Half - Grace)';
+//       } else if (inMinutes > GRACE_END) {
+//         lateMinutes = inMinutes - OFFICE_START;
+//         finalStatus = `HALF_DAY (First Half - Late by ${formatMinutes(lateMinutes)})`;
+//       }
+//     } else if (isEveningShift && inMinutes >= SECOND_HALF_START && outMinutes <= OFFICE_END) {
+//       coreStatus = 'HALF_DAY';
+//       finalStatus = 'HALF_DAY (Second Half)';
+//       halfDayType = 'EVENING';
+//       statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+//       if (inMinutes > SECOND_HALF_START && inMinutes <= SECOND_HALF_GRACE_END) {
+//         lateMinutes = 0;
+//         finalStatus = 'HALF_DAY (Second Half - Grace)';
+//       } else if (inMinutes > SECOND_HALF_GRACE_END) {
+//         lateMinutes = inMinutes - SECOND_HALF_START;
+//         finalStatus = `HALF_DAY (Second Half - Late by ${formatMinutes(lateMinutes)})`;
+//       }
+//     } else {
+//       // Fallback: determine half day based on time
+//       if (inMinutes < SECOND_HALF_START && outMinutes > SECOND_HALF_START) {
+//         coreStatus = 'HALF_DAY';
+//         finalStatus = 'HALF_DAY (First Half)';
+//         halfDayType = 'MORNING';
+//         statusDetails = 'First Half (9:30 AM - 2:00 PM)';
+//       } else {
+//         coreStatus = 'HALF_DAY';
+//         finalStatus = 'HALF_DAY (Second Half)';
+//         halfDayType = 'EVENING';
+//         statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+//       }
+//     }
+//   } 
+//   else if (workingMinutes >= SHORT_LEAVE_HOURS - 15 && workingMinutes < HALF_DAY_HOURS - 15) {
+//     // Short leave logic
+//     if (inMinutes >= OFFICE_START && outMinutes <= MORNING_SHORT_LEAVE_END) {
+//       coreStatus = 'SHORT_LEAVE';
+//       finalStatus = 'SHORT_LEAVE (Morning)';
+//       statusDetails = 'Morning Short Leave (9:30 AM - 11:30 AM)';
+//       if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+//         lateMinutes = 0;
+//         finalStatus = 'SHORT_LEAVE (Morning - Grace)';
+//       } else if (inMinutes > GRACE_END) {
+//         lateMinutes = inMinutes - OFFICE_START;
+//         finalStatus = `SHORT_LEAVE (Morning - Late by ${formatMinutes(lateMinutes)})`;
+//       }
+//     } else if (inMinutes >= EVENING_SHORT_LEAVE_START && outMinutes <= OFFICE_END) {
+//       coreStatus = 'SHORT_LEAVE';
+//       finalStatus = 'SHORT_LEAVE (Evening)';
+//       statusDetails = 'Evening Short Leave (4:30 PM - 6:30 PM)';
+//     } else if (inMinutes >= OFFICE_START && outMinutes >= MORNING_SHORT_LEAVE_END && outMinutes < SECOND_HALF_START) {
+//       coreStatus = 'PRESENT';
+//       finalStatus = 'PRESENT (Morning Short Leave)';
+//       statusDetails = 'Present with Morning Short Leave';
+//       if (inMinutes > OFFICE_START && inMinutes <= GRACE_END) {
+//         lateMinutes = 0;
+//         finalStatus = 'PRESENT (Morning Short Leave - Grace)';
+//       } else if (inMinutes > GRACE_END) {
+//         lateMinutes = inMinutes - OFFICE_START;
+//         finalStatus = `PRESENT (Morning Short Leave - Late by ${formatMinutes(lateMinutes)})`;
+//       }
+//     } else if (inMinutes >= SECOND_HALF_START && outMinutes < EVENING_SHORT_LEAVE_START) {
+//       coreStatus = 'PRESENT';
+//       finalStatus = 'PRESENT (Evening Short Leave)';
+//       statusDetails = 'Present with Evening Short Leave';
+//     } else if (inMinutes >= OFFICE_START && outMinutes < EVENING_SHORT_LEAVE_START) {
+//       coreStatus = 'ABSENT';
+//       finalStatus = 'ABSENT';
+//       statusDetails = 'Absent';
+//     } else {
+//       coreStatus = 'ABSENT';
+//       finalStatus = 'ABSENT';
+//       statusDetails = 'Absent';
+//     }
+//   } 
+//   else if (workingMinutes < SHORT_LEAVE_HOURS - 15) {
+//     // Less than 2 hours - considered absent
+//     if (inMinutes >= OFFICE_START && outMinutes >= OFFICE_START + 30) {
+//       coreStatus = 'PRESENT';
+//       finalStatus = 'PRESENT (Short Duration)';
+//       statusDetails = 'Present (Short Duration)';
+//     } else {
+//       coreStatus = 'ABSENT';
+//       finalStatus = 'ABSENT';
+//       statusDetails = 'Absent';
+//     }
+//   } else {
+//     coreStatus = 'ABSENT';
+//     finalStatus = 'ABSENT';
+//     statusDetails = 'Absent';
+//   }
+
+//   // Special case: 9:30 to 11:30 - Absent (as per your requirement)
+//   if (inMinutes === OFFICE_START && outMinutes <= MORNING_SHORT_LEAVE_END && workingMinutes < SHORT_LEAVE_HOURS) {
+//     coreStatus = 'ABSENT';
+//     finalStatus = 'ABSENT';
+//     statusDetails = 'Absent';
+//   }
+
+//   // Special case: 9:30 to 2:00 - First Half Half Day
+//   if (inMinutes === OFFICE_START && outMinutes <= SECOND_HALF_START && workingMinutes >= HALF_DAY_HOURS - 15) {
+//     coreStatus = 'HALF_DAY';
+//     finalStatus = 'HALF_DAY (First Half)';
+//     halfDayType = 'MORNING';
+//     statusDetails = 'First Half (9:30 AM - 2:00 PM)';
+//   }
+
+//   // Special case: 2:00 to 6:30 - Second Half Half Day
+//   if (inMinutes >= SECOND_HALF_START && outMinutes === OFFICE_END && workingMinutes >= HALF_DAY_HOURS - 15) {
+//     coreStatus = 'HALF_DAY';
+//     finalStatus = 'HALF_DAY (Second Half)';
+//     halfDayType = 'EVENING';
+//     statusDetails = 'Second Half (2:00 PM - 6:30 PM)';
+//   }
+
+//   // Special case: 11:45 to 6:30 - Present with Morning Short Leave
+//   if (inMinutes === 11 * 60 + 45 && outMinutes === OFFICE_END) {
+//     coreStatus = 'PRESENT';
+//     finalStatus = 'PRESENT (Morning Short Leave)';
+//     statusDetails = 'Present with Morning Short Leave';
+//   }
+
+//   // Special case: 9:30 to 4:30 - Present with Evening Short Leave
+//   if (inMinutes === OFFICE_START && outMinutes === EVENING_SHORT_LEAVE_START) {
+//     coreStatus = 'PRESENT';
+//     finalStatus = 'PRESENT (Evening Short Leave)';
+//     statusDetails = 'Present with Evening Short Leave';
+//   }
+
+//   // If still absent but working hours > 0, mark as present
+//   if (coreStatus === 'ABSENT' && workingMinutes > 30) {
+//     coreStatus = 'PRESENT';
+//     finalStatus = 'PRESENT';
+//     statusDetails = 'Present';
+//   }
+
+//   // Check for late login
+//   if (inMinutes > GRACE_END && (coreStatus === 'PRESENT' || coreStatus === 'HALF_DAY' || coreStatus === 'SHORT_LEAVE')) {
+//     lateMinutes = inMinutes - OFFICE_START;
+//   }
+
+//   // Check for early logout deduction
+//   if (outMinutes < OFFICE_END && (coreStatus === 'PRESENT' || coreStatus === 'HALF_DAY' || coreStatus === 'SHORT_LEAVE')) {
+//     const earlyMins = OFFICE_END - outMinutes;
+//     if (earlyMins > 15) {
+//       deduction = `Early Logout: ${formatMinutes(earlyMins)}`;
+//     }
+//   }
+
+//   return {
+//     punchIn: `${punchIn} ${punchInAmPm}`,
+//     punchOut: `${punchOut} ${punchOutAmPm}`,
+//     workingHours: formatMinutes(workingMinutes),
+//     workingMinutes: workingMinutes,
+//     coreStatus,
+//     finalStatus,
+//     halfDayType,
+//     deduction: deduction || 'None',
+//     lateMinutes: lateMinutes > 0 ? formatMinutes(lateMinutes) : '0',
+//     status: coreStatus,
+//     isLate: lateMinutes > 0,
+//     fullStatus: finalStatus,
+//     statusDetails: statusDetails || finalStatus,
+//   };
+// };
+
+// ── Preview Modal Component ──────────────────────────────────────
+
 const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
   const inMinutes = convertToMinutes(punchIn, punchInAmPm);
   const outMinutes = convertToMinutes(punchOut, punchOutAmPm);
@@ -219,6 +439,60 @@ const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
   let deduction = 'None';
   let lateMinutes = 0;
   let statusDetails = '';
+
+  // ─────────────────────────────────────────────────
+  // ✅ FIX #1: EVENING SHORT LEAVE
+  // On-time punch in (9:30–9:46) + punch out at 4:30 PM
+  // ─────────────────────────────────────────────────
+  if (
+    inMinutes >= OFFICE_START &&
+    inMinutes <= GRACE_END &&
+    outMinutes === EVENING_SHORT_LEAVE_START
+  ) {
+    return {
+      punchIn: `${punchIn} ${punchInAmPm}`,
+      punchOut: `${punchOut} ${punchOutAmPm}`,
+      workingHours: formatMinutes(workingMinutes),
+      workingMinutes: workingMinutes,
+      coreStatus: 'SHORT_LEAVE',
+      finalStatus: 'SHORT_LEAVE (Evening)',
+      halfDayType: '',
+      deduction: 'Evening Short Leave: 2h',
+      lateMinutes: '0',
+      status: 'SHORT_LEAVE',
+      isLate: false,
+      fullStatus: 'SHORT_LEAVE (Evening)',
+      statusDetails: 'Evening Short Leave (4:30 PM - 6:30 PM)',
+    };
+  }
+
+  // ─────────────────────────────────────────────────
+  // ✅ FIX #2: MORNING SHORT LEAVE
+  // Punch in between 9:46 AM (after grace) and 11:30 AM + punch out at 6:30 PM
+  // No grace for short leave
+  // ─────────────────────────────────────────────────
+  if (
+    inMinutes > GRACE_END &&
+    inMinutes <= MORNING_SHORT_LEAVE_END &&
+    outMinutes === OFFICE_END
+  ) {
+    const morningShortLeaveMinutes = inMinutes - OFFICE_START;
+    return {
+      punchIn: `${punchIn} ${punchInAmPm}`,
+      punchOut: `${punchOut} ${punchOutAmPm}`,
+      workingHours: formatMinutes(workingMinutes),
+      workingMinutes: workingMinutes,
+      coreStatus: 'PRESENT',
+      finalStatus: 'PRESENT (Morning Short Leave)',
+      halfDayType: '',
+      deduction: `Morning Short Leave: ${formatMinutes(morningShortLeaveMinutes)}`,
+      lateMinutes: formatMinutes(morningShortLeaveMinutes),
+      status: 'PRESENT',
+      isLate: true,
+      fullStatus: 'PRESENT (Morning Short Leave)',
+      statusDetails: 'Present with Morning Short Leave',
+    };
+  }
 
   // Check if punch in is within office hours
   const isWithinOfficeHours = inMinutes >= OFFICE_START && outMinutes <= OFFICE_END;
@@ -372,11 +646,11 @@ const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
   }
 
   // Special case: 11:45 to 6:30 - Present with Morning Short Leave
-  if (inMinutes === 11 * 60 + 45 && outMinutes === OFFICE_END) {
-    coreStatus = 'PRESENT';
-    finalStatus = 'PRESENT (Morning Short Leave)';
-    statusDetails = 'Present with Morning Short Leave';
-  }
+  // if (inMinutes === 11 * 60 + 45 && outMinutes === OFFICE_END) {
+  //   coreStatus = 'PRESENT';
+  //   finalStatus = 'PRESENT (Morning Short Leave)';
+  //   statusDetails = 'Present with Morning Short Leave';
+  // }
 
   // Special case: 9:30 to 4:30 - Present with Evening Short Leave
   if (inMinutes === OFFICE_START && outMinutes === EVENING_SHORT_LEAVE_START) {
@@ -422,7 +696,6 @@ const calculateAttendance = (punchIn, punchInAmPm, punchOut, punchOutAmPm) => {
   };
 };
 
-// ── Preview Modal Component ──────────────────────────────────────
 const PreviewModal = ({ 
   visible, 
   onClose, 
@@ -444,6 +717,7 @@ const PreviewModal = ({
       default: return C.textSecondary;
     }
   };
+console.log("previewData------->",previewData);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -2655,6 +2929,7 @@ const ReportsScreen = ({ navigation }) => {
   };
 
   const handleShowPreview = (data) => {
+    console.log('data---------->', data);
     setTempRecord(selectedRecord);
     setPreviewData(data);
     setShowPreviewModal(true);

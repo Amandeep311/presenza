@@ -92,49 +92,99 @@ const ActiveTimeDisplay = ({
   }, [breakStartTime]);
 
   // Main ticker — handles both active time and break duration
-  useEffect(() => {
-    if (!punchInTime) return;
+  // useEffect(() => {
+  //   if (!punchInTime) return;
 
-    const interval = setInterval(() => {
-      const now = new Date();
-      const punchIn = new Date(punchInTime);
+  //   const interval = setInterval(() => {
+  //     const now = new Date();
+  //     const punchIn = new Date(punchInTime);
 
-      const totalDiffMs = now - punchIn;
-      const totalHours = Math.floor(totalDiffMs / 3600000);
-      const totalMins = Math.floor((totalDiffMs % 3600000) / 60000);
-      const totalSecs = Math.floor((totalDiffMs % 60000) / 1000);
+  //     const totalDiffMs = now - punchIn;
+  //     const totalHours = Math.floor(totalDiffMs / 3600000);
+  //     const totalMins = Math.floor((totalDiffMs % 3600000) / 60000);
+  //     const totalSecs = Math.floor((totalDiffMs % 60000) / 1000);
 
-      setElapsedTime(
-        `${totalHours.toString().padStart(2, '0')}:${totalMins
-          .toString()
-          .padStart(2, '0')}:${totalSecs.toString().padStart(2, '0')}`,
-      );
+  //     setElapsedTime(
+  //       `${totalHours.toString().padStart(2, '0')}:${totalMins
+  //         .toString()
+  //         .padStart(2, '0')}:${totalSecs.toString().padStart(2, '0')}`,
+  //     );
 
-      if (isOnBreak && breakStartTime && !isBreakInitialLoad) {
-        const breakStart = new Date(breakStartTime);
-        const breakDiffMs = now - breakStart;
-        const hours = Math.floor(breakDiffMs / 3600000);
-        const mins = Math.floor((breakDiffMs % 3600000) / 60000);
-        const secs = Math.floor((breakDiffMs % 60000) / 1000);
+  //     if (isOnBreak && breakStartTime && !isBreakInitialLoad) {
+  //       const breakStart = new Date(breakStartTime);
+  //       const breakDiffMs = now - breakStart;
+  //       const hours = Math.floor(breakDiffMs / 3600000);
+  //       const mins = Math.floor((breakDiffMs % 3600000) / 60000);
+  //       const secs = Math.floor((breakDiffMs % 60000) / 1000);
 
-        if (hours > 0) {
-          setBreakDuration(
-            `${hours.toString().padStart(2, '0')}:${mins
-              .toString()
-              .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
-          );
-        } else {
-          setBreakDuration(
-            `${mins.toString().padStart(2, '0')}:${secs
-              .toString()
-              .padStart(2, '0')}`,
-          );
-        }
+  //       if (hours > 0) {
+  //         setBreakDuration(
+  //           `${hours.toString().padStart(2, '0')}:${mins
+  //             .toString()
+  //             .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
+  //         );
+  //       } else {
+  //         setBreakDuration(
+  //           `${mins.toString().padStart(2, '0')}:${secs
+  //             .toString()
+  //             .padStart(2, '0')}`,
+  //         );
+  //       }
+  //     }
+  //   }, 1000);
+
+  //   return () => clearInterval(interval);
+  // }, [punchInTime, isOnBreak, breakStartTime, isBreakInitialLoad]);
+
+  // Main ticker — handles both active time and break duration
+useEffect(() => {
+  if (!punchInTime) return;
+
+  const interval = setInterval(() => {
+    const now = new Date();
+    const punchIn = new Date(punchInTime);
+
+    // ✅ FIX: Clamp to 0 to prevent negative time display
+    const totalDiffMs = Math.max(0, now - punchIn);
+
+    const totalHours = Math.floor(totalDiffMs / 3600000);
+    const totalMins = Math.floor((totalDiffMs % 3600000) / 60000);
+    const totalSecs = Math.floor((totalDiffMs % 60000) / 1000);
+
+    setElapsedTime(
+      `${totalHours.toString().padStart(2, '0')}:${totalMins
+        .toString()
+        .padStart(2, '0')}:${totalSecs.toString().padStart(2, '0')}`,
+    );
+
+    if (isOnBreak && breakStartTime && !isBreakInitialLoad) {
+      const breakStart = new Date(breakStartTime);
+
+      // ✅ FIX: Also clamp break duration to 0
+      const breakDiffMs = Math.max(0, now - breakStart);
+
+      const hours = Math.floor(breakDiffMs / 3600000);
+      const mins = Math.floor((breakDiffMs % 3600000) / 60000);
+      const secs = Math.floor((breakDiffMs % 60000) / 1000);
+
+      if (hours > 0) {
+        setBreakDuration(
+          `${hours.toString().padStart(2, '0')}:${mins
+            .toString()
+            .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
+        );
+      } else {
+        setBreakDuration(
+          `${mins.toString().padStart(2, '0')}:${secs
+            .toString()
+            .padStart(2, '0')}`,
+        );
       }
-    }, 1000);
+    }
+  }, 1000);
 
-    return () => clearInterval(interval);
-  }, [punchInTime, isOnBreak, breakStartTime, isBreakInitialLoad]);
+  return () => clearInterval(interval);
+}, [punchInTime, isOnBreak, breakStartTime, isBreakInitialLoad]);
 
   const getBorderColor = () => {
     if (isAbsent) return C.error;

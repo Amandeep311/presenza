@@ -737,11 +737,12 @@ const LeaveScreen = ({ navigation }) => {
       total: Number(userProfile?.totalLeave) || 28.5,
       used: Number(userProfile?.totalLeaveUsed) || 0,
       remaining: Number(userProfile?.totalLeaveRemaining) || 28.5,
-      currentMonthRemainingLeave:
-        Math.round(
-          ((Number(userProfile?.previousMonthsLeaveRemaining) || 0) +
-            (Number(userProfile?.currentMonthLeaveTotal) || 0)) * 100
-        ) / 100,
+      currentMonthRemainingLeave: Number(userProfile?.leaveTillCurrentMonthTotal) || 0,
+      // currentMonthRemainingLeave:
+      //   Math.round(
+      //     ((Number(userProfile?.previousMonthsLeaveRemaining) || 0) +
+      //       (Number(userProfile?.currentMonthLeaveTotal) || 0)) * 100
+      //   ) / 100,
     },
     short: {
       totalPerMonth: 2,
@@ -764,8 +765,8 @@ const LeaveScreen = ({ navigation }) => {
   //     : 2.5;
 
   const currentMonthLeaveRemaining =
-    (Number(userProfile?.previousMonthsLeaveRemaining) || 0) +
-    (Number(userProfile?.currentMonthLeaveRemaining) || 0);
+    (Number(userProfile?.leaveTillCurrentMonthRemaining) || 0) 
+    
 
   const previousMonthsLeaveRemaining =
     userProfile.previousMonthsLeaveRemaining !== undefined

@@ -60,6 +60,7 @@ import {
 import { showToast } from '../../../components/common/ToastProvider';
 import * as ImagePicker from 'react-native-image-picker';
 import { getAccessToken } from '../../../utils/keychainHelper';
+import {BASE_URL} from '../../../utils/GlobalText';
 
 // Visit types
 const VISIT_TYPES = [
@@ -90,7 +91,7 @@ const VisitScreen = ({ navigation, route }) => {
   const today = new Date().toISOString().split('T')[0];
   const todayRecord = history?.find(r => r.date?.split('T')[0] === today);
   const hasActiveSession = todayRecord?.isPunchedIn === true;
-  
+
   // Get isVisitActive from Redux - THIS IS THE SOURCE OF TRUTH
   const isVisitActive = todayRecord?.isVisitActive === true;
 
@@ -98,7 +99,7 @@ const VisitScreen = ({ navigation, route }) => {
   // When isVisitActive is true -> punched_in (END VISIT)
   // When isVisitActive is false -> idle (START VISIT)
   const visitStatus = isVisitActive ? 'punched_in' : 'idle';
-  
+
   // Form states
   const [visitType, setVisitType] = useState(route.params?.visitType || 'CLIENT_VISIT');
   const [customerName, setCustomerName] = useState(route.params?.customerName || '');
@@ -109,15 +110,15 @@ const VisitScreen = ({ navigation, route }) => {
   const [visitPunchOutTime, setVisitPunchOutTime] = useState(null);
   const [visitDuration, setVisitDuration] = useState(0);
   const durationTimerRef = useRef(null);
-  
+
   // Image states for Visit In
   const [selectedImageIn, setSelectedImageIn] = useState(null);
   const [imageBase64In, setImageBase64In] = useState(null);
-  
+
   // Image states for Visit Out
   const [selectedImageOut, setSelectedImageOut] = useState(null);
   const [imageBase64Out, setImageBase64Out] = useState(null);
-  
+
   const [visitInResponse, setVisitInResponse] = useState(null);
   const [visitOutResponse, setVisitOutResponse] = useState(null);
   const [showRemarksModal, setShowRemarksModal] = useState(false);
@@ -135,7 +136,7 @@ const VisitScreen = ({ navigation, route }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [userCoords, setUserCoords] = useState(null);
   const [isGettingAddress, setIsGettingAddress] = useState(false);
-  
+
   // ✅ Location toast control
   const [initialLocationLoaded, setInitialLocationLoaded] = useState(false);
 
@@ -154,7 +155,7 @@ const VisitScreen = ({ navigation, route }) => {
   const loadVisitData = useCallback(() => {
     console.log('🔍 Loading visit data...');
     console.log('📊 isVisitActive:', isVisitActive);
-    
+
     if (!todayRecord) {
       console.log('ℹ️ No today record found');
       setIsLoadingState(false);
@@ -162,12 +163,12 @@ const VisitScreen = ({ navigation, route }) => {
     }
 
     const allVisits = todayRecord.sessions?.flatMap(s => s.visits || []) || [];
-    
+
     if (isVisitActive) {
       // Active visit - Load visit data for display
       console.log('✅ Active visit found - showing END VISIT');
       const activeVisit = allVisits.find(v => v.status === 'IN_PROGRESS');
-      
+
       if (activeVisit) {
         setVisitType(activeVisit.visitType || 'CLIENT_VISIT');
         setCustomerName(activeVisit.customerName || '');
@@ -175,7 +176,7 @@ const VisitScreen = ({ navigation, route }) => {
         if (activeVisit.visitIn) {
           const punchInTime = new Date(activeVisit.visitIn);
           setVisitPunchInTime(punchInTime);
-          
+
           // ✅ Calculate duration from punch in time to now
           const now = new Date();
           const diffSeconds = Math.floor((now - punchInTime) / 1000);
@@ -205,7 +206,7 @@ const VisitScreen = ({ navigation, route }) => {
       setSelectedImageOut(null);
       setImageBase64Out(null);
     }
-    
+
     setIsLoadingState(false);
   }, [todayRecord, isVisitActive]);
 
@@ -527,13 +528,13 @@ const VisitScreen = ({ navigation, route }) => {
 
   // ── Check if punch is disabled ──
   const isPunchDisabled =
-  !isSalesTeam ||
-  punchInLoading ||
-  isCheckingLocation ||
-  isProcessing ||
-  isGettingAddress ||
-  isLoadingState ||
-  !hasActiveSession;
+    !isSalesTeam ||
+    punchInLoading ||
+    isCheckingLocation ||
+    isProcessing ||
+    isGettingAddress ||
+    isLoadingState ||
+    !hasActiveSession;
 
   const getAccentColor = () => {
     if (visitStatus === 'punched_in') return C.success;
@@ -757,7 +758,7 @@ const VisitScreen = ({ navigation, route }) => {
         },
         (response) => {
           console.log('📸 Visit In Camera Response:', JSON.stringify(response, null, 2));
-          
+
           if (response.didCancel) {
             console.log('User cancelled camera for visit in');
             resolve(null);
@@ -800,7 +801,7 @@ const VisitScreen = ({ navigation, route }) => {
         },
         (response) => {
           console.log('📸 Visit Out Camera Response:', JSON.stringify(response, null, 2));
-          
+
           if (response.didCancel) {
             console.log('User cancelled camera for visit out');
             resolve(null);
@@ -838,7 +839,11 @@ const VisitScreen = ({ navigation, route }) => {
       const token = await getAccessToken();
       console.log("token----->", token);
 
-      const baseUrl = 'https://api-presenza.paulmerchants.net';
+      // const baseUrl = 'https://api-presenza.paulmerchants.net';
+
+      // export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; //Live URL
+      // const BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1';  // UAT URL
+
 
       const jsonData = {
         visitType: visitType,
@@ -869,7 +874,7 @@ const VisitScreen = ({ navigation, route }) => {
       console.log('📤 Calling Visit In API...');
       console.log('JSON Data:', jsonData);
 
-      const response = await fetch(`${baseUrl}/api/v1/attendance/visit-in`, {
+      const response = await fetch(`${BASE_URL}/attendance/visit-in`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -898,7 +903,10 @@ const VisitScreen = ({ navigation, route }) => {
   const callVisitOutAPI = useCallback(async (imageData) => {
     try {
       const token = await getAccessToken();
-      const baseUrl = 'https://api-presenza.paulmerchants.net';
+      // const baseUrl = 'https://api-presenza.paulmerchants.net';
+
+      // export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; //Live URL
+      // const BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1';  // UAT URL
 
       const jsonData = {
         remarks: visitRemarks || 'Visit completed',
@@ -927,7 +935,7 @@ const VisitScreen = ({ navigation, route }) => {
       console.log('📤 Calling Visit Out API...');
       console.log('JSON Data:', jsonData);
 
-      const response = await fetch(`${baseUrl}/api/v1/attendance/visit-out`, {
+      const response = await fetch(`${BASE_URL}/attendance/visit-out`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -990,7 +998,7 @@ const VisitScreen = ({ navigation, route }) => {
                   <Text style={[styles.remarksModalSubtitle, { color: C.textSecondary }]}>
                     Please enter your remarks for this visit *
                   </Text>
-                  
+
                   <TextInput
                     style={[
                       styles.remarksInput,
@@ -1127,10 +1135,10 @@ const VisitScreen = ({ navigation, route }) => {
                   upload: 'success',
                 });
                 showToast('Visit completed successfully', 'success');
-                
+
                 // Refresh history - This will update isVisitActive to false
                 await dispatch(getAttendanceHistory());
-                
+
                 // Navigate back after successful completion
                 setTimeout(() => {
                   navigation.goBack();
@@ -1228,7 +1236,7 @@ const VisitScreen = ({ navigation, route }) => {
           upload: 'success',
         });
         showToast('Visit started successfully', 'success');
-        
+
         // Refresh history to get updated isVisitActive
         await dispatch(getAttendanceHistory());
         console.log('✅ Visit started, refreshing history...');
@@ -1257,7 +1265,7 @@ const VisitScreen = ({ navigation, route }) => {
   const handleVisitPunchOut = async () => {
     console.log('🔄 handleVisitPunchOut called');
     console.log('📊 visitStatus:', visitStatus);
-    
+
     if (visitStatus !== 'punched_in') {
       showToast('No active visit to end', 'error');
       return;
@@ -1273,7 +1281,7 @@ const VisitScreen = ({ navigation, route }) => {
     console.log('📊 visitStatus:', visitStatus);
     console.log('📊 isSalesTeam:', isSalesTeam);
     console.log('📊 hasActiveSession:', hasActiveSession);
-    
+
     if (!isSalesTeam) {
       showToast('Visit feature is only available for sales team', 'error');
       return;

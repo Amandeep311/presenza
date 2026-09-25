@@ -2,7 +2,10 @@
 // Theme colors are now driven by ThemeContext — import useTheme() in components
 // Language strings are driven by LanguageContext — import useLanguage() in components
 
-export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1';
+// export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; //Live URL
+export const BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1';   // UAT URL
+
+
 // export const GOOGLE_API_KEY = 'AIzaSyDNY5oQOOYz1dtYXZUn4WNbJPwiOE9OENE';   //old key
 export const GOOGLE_API_KEY = 'AIzaSyA2aty_E8JFBJIIDS4hN2tIAvQCwy_yskk';
 

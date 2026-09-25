@@ -28,17 +28,9 @@ export const createExpense =
   (expenseData, receiptFile = null) =>
   async dispatch => {
     try {
-      console.log('📝 Creating expense...');
-
       dispatch({ type: CREATE_EXPENSE_REQUEST });
-
-      // Create FormData for multipart upload
       const formData = new FormData();
-
-      // Append the JSON data as a string field
       formData.append('jsonData', JSON.stringify(expenseData));
-
-      // Append receipt file if provided
       if (receiptFile && receiptFile.uri) {
         const fileUri =
           Platform.OS === 'ios'
@@ -113,7 +105,7 @@ export const createExpense =
       }
     } catch (error) {
       console.log('❌ Create expense error:', error.message);
-      console.log('❌ Error details:', error.response?.data || error);
+      console.log('❌ Error detailsss:', error.response?.data || error);
 
       const errorMessage =
         error.response?.data?.message ||
