@@ -160,7 +160,7 @@ export const sendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to send OTP',
       });
-      showToast(data.message || 'Failed to send OTP', 'error');
+      showToast(data.message , 'error');
       return { success: false, message: data.message };
     }
 

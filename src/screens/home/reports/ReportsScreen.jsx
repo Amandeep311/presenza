@@ -2041,8 +2041,12 @@ const RecordCard = ({ record, onRegularize }) => {
   const C = theme.colors;
 
   const sessions = record.sessions || [];
-  const isSalesTeam = record.employee?.departmentName?.toLowerCase().includes('sales') || false;
+  const deptName = (record.employee?.departmentName || '').toLowerCase();
+  const isSalesTeam = deptName.includes('sales');
+  const isLapTeam = deptName.includes('lap');
 
+  // ✅ Visit feature is available for both Sales and LAP teams
+  const isVisitEligible = isSalesTeam || isLapTeam;
   const isLateRecord = record.attendanceStatus === 'PRESENT' && record.isLate === true;
   const apiStatusConfig = getApiStatusConfig(record.attendanceStatus, C, t, record.isLate);
   const ApiStatusIcon = apiStatusConfig.icon;
@@ -2367,7 +2371,7 @@ const RecordCard = ({ record, onRegularize }) => {
                 </View>
               </View>
 
-              {isSalesTeam && session.visits && session.visits.length > 0 && (
+                 {isVisitEligible && session.visits && session.visits.length > 0 && (
                 <View style={cardStyles.visitsSection}>
                   <View style={cardStyles.visitsHeader}>
                     <Briefcase size={wp('3.5%')} color={C.primary} />

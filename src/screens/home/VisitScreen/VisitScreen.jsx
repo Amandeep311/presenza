@@ -60,7 +60,7 @@ import {
 import { showToast } from '../../../components/common/ToastProvider';
 import * as ImagePicker from 'react-native-image-picker';
 import { getAccessToken } from '../../../utils/keychainHelper';
-import {BASE_URL} from '../../../utils/GlobalText';
+import { BASE_URL } from '../../../utils/GlobalText';
 
 // Visit types
 const VISIT_TYPES = [
@@ -86,6 +86,8 @@ const VisitScreen = ({ navigation, route }) => {
   const { profile } = useSelector(state => state.employeeProfile);
   const department = profile?.[0]?.department || '';
   const isSalesTeam = department?.toLowerCase().includes('sales');
+  const isLapTeam = department?.toLowerCase().includes('lap');
+  const isVisitEligible = isSalesTeam || isLapTeam;
 
   // Check if user has active office session (Daily Punch In)
   const today = new Date().toISOString().split('T')[0];
@@ -528,7 +530,7 @@ const VisitScreen = ({ navigation, route }) => {
 
   // ── Check if punch is disabled ──
   const isPunchDisabled =
-    !isSalesTeam ||
+    !isVisitEligible ||
     punchInLoading ||
     isCheckingLocation ||
     isProcessing ||
@@ -539,7 +541,7 @@ const VisitScreen = ({ navigation, route }) => {
   const getAccentColor = () => {
     if (visitStatus === 'punched_in') return C.success;
     if (!hasActiveSession) return C.warning;
-    if (!isSalesTeam) return C.error;
+    if (!isVisitEligible) return C.error;
     if (showLoader || punchInLoading || isProcessing || isGettingAddress || isLoadingState) return C.primary;
     return C.primary;
   };
@@ -559,7 +561,7 @@ const VisitScreen = ({ navigation, route }) => {
       return <CheckCircle size={wp('14%')} color={C.textDark} />;
     if (!hasActiveSession)
       return <LogIn size={wp('14%')} color={C.textDark} />;
-    if (!isSalesTeam)
+    if (!isVisitEligible)
       return <XCircle size={wp('14%')} color={C.textDark} />;
     if (showLoader || punchInLoading || isProcessing || isGettingAddress) {
       const rotateValue = rotation || '0deg';
@@ -581,7 +583,7 @@ const VisitScreen = ({ navigation, route }) => {
       return 'LOADING...';
     if (visitStatus === 'punched_in')
       return 'END VISIT';
-    if (!isSalesTeam)
+    if (!isVisitEligible)
       return 'NOT AVAILABLE';
     if (!hasActiveSession)
       return 'PUNCH IN FIRST';
@@ -603,8 +605,8 @@ const VisitScreen = ({ navigation, route }) => {
       return 'Loading visit data...';
     if (visitStatus === 'punched_in')
       return 'Tap to end visit';
-    if (!isSalesTeam)
-      return 'Visit feature is only for sales team';
+    if (!isVisitEligible)
+      return 'Visit feature is only for Sales and LAP teams';
     if (!hasActiveSession)
       return 'Please punch in first';
     if (showLoader)
@@ -639,8 +641,8 @@ const VisitScreen = ({ navigation, route }) => {
       return 'Loading visit data...';
     if (visitStatus === 'punched_in')
       return 'Visit in progress';
-    if (!isSalesTeam)
-      return 'Visit feature is only for sales team';
+    if (!isVisitEligible)
+      return 'Visit feature is only for Sales and LAP teams';
     if (!hasActiveSession)
       return 'Please punch in first';
     if (showLoader)
@@ -839,12 +841,6 @@ const VisitScreen = ({ navigation, route }) => {
       const token = await getAccessToken();
       console.log("token----->", token);
 
-      // const baseUrl = 'https://api-presenza.paulmerchants.net';
-
-      // export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; //Live URL
-      // const BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1';  // UAT URL
-
-
       const jsonData = {
         visitType: visitType,
         customerName: customerName || 'Unknown Customer',
@@ -903,10 +899,6 @@ const VisitScreen = ({ navigation, route }) => {
   const callVisitOutAPI = useCallback(async (imageData) => {
     try {
       const token = await getAccessToken();
-      // const baseUrl = 'https://api-presenza.paulmerchants.net';
-
-      // export const BASE_URL = 'https://api-presenza.paulmerchants.net/api/v1'; //Live URL
-      // const BASE_URL = 'https://api-uat-presenza.paulmerchants.net/api/v1';  // UAT URL
 
       const jsonData = {
         remarks: visitRemarks || 'Visit completed',
@@ -1277,13 +1269,9 @@ const VisitScreen = ({ navigation, route }) => {
 
   // ── Main punch handler ──
   const handlePunch = async () => {
-    console.log('🔄 handlePunch called');
-    console.log('📊 visitStatus:', visitStatus);
-    console.log('📊 isSalesTeam:', isSalesTeam);
-    console.log('📊 hasActiveSession:', hasActiveSession);
 
-    if (!isSalesTeam) {
-      showToast('Visit feature is only available for sales team', 'error');
+    if (!isVisitEligible) {
+      showToast('Visit feature is only available for Sales and LAP teams', 'error');
       return;
     }
 
@@ -1333,7 +1321,7 @@ const VisitScreen = ({ navigation, route }) => {
   const renderVisitTypeSelector = () => {
     if (visitStatus !== 'idle') return null;
 
-    const isFormDisabled = !hasActiveSession || !isSalesTeam;
+    const isFormDisabled = !hasActiveSession || !isVisitEligible;
 
     return (
       <View style={styles.visitTypeContainer}>
@@ -1385,7 +1373,7 @@ const VisitScreen = ({ navigation, route }) => {
   const renderVisitForm = () => {
     if (visitStatus !== 'idle') return null;
 
-    const isFormDisabled = !hasActiveSession || !isSalesTeam;
+    const isFormDisabled = !hasActiveSession || !isVisitEligible;
 
     return (
       <View style={[styles.formContainer, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -1640,7 +1628,7 @@ const VisitScreen = ({ navigation, route }) => {
           contentContainerStyle={styles.scrollContent}
         >
           {/* Sales team badge */}
-          {isSalesTeam ? (
+          {isVisitEligible ? (
             <View
               style={[
                 styles.salesBadge,
@@ -1652,7 +1640,7 @@ const VisitScreen = ({ navigation, route }) => {
             >
               <Briefcase size={wp('3.5%')} color={C.success} />
               <Text style={[styles.salesBadgeText, { color: C.success }]}>
-                Sales Team — Visit Feature Enabled
+                {isSalesTeam ? 'Sales' : 'LAP'} Team — Visit Feature Enabled
               </Text>
             </View>
           ) : (
@@ -1667,7 +1655,7 @@ const VisitScreen = ({ navigation, route }) => {
             >
               <XCircle size={wp('3.5%')} color={C.error} />
               <Text style={[styles.salesBadgeText, { color: C.error }]}>
-                Visit Feature Only for Sales Team
+                Visit Feature Only for Sales and LAP Teams
               </Text>
             </View>
           )}
@@ -1685,7 +1673,7 @@ const VisitScreen = ({ navigation, route }) => {
             <Text style={[styles.statusCardValue, { color: C.textPrimary }]}>
               {visitStatus === 'punched_in'
                 ? 'Visit in Progress'
-                : !isSalesTeam
+                : !isVisitEligible
                   ? 'Not Available'
                   : !hasActiveSession
                     ? 'Punch In Required'
@@ -1713,7 +1701,7 @@ const VisitScreen = ({ navigation, route }) => {
                 style={[styles.mapBadge, { backgroundColor: C.primary }]}
                 onPress={handleManualLocationRefresh}
                 activeOpacity={0.8}
-                disabled={visitStatus === 'punched_in' || !isSalesTeam || isCheckingLocation || isGettingAddress}
+                disabled={visitStatus === 'punched_in' || !isVisitEligible || isCheckingLocation || isGettingAddress}
               >
                 {isCheckingLocation || isGettingAddress ? (
                   <Animated.View style={{ transform: [{ rotate: rotation || '0deg' }] }}>
@@ -1763,7 +1751,7 @@ const VisitScreen = ({ navigation, route }) => {
           {/* Punch Circle */}
           <View style={styles.punchSection}>
             {visitStatus === 'idle' &&
-              isSalesTeam &&
+              isVisitEligible &&
               hasActiveSession &&
               uiState !== 'error' && (
                 <Animated.View
@@ -1866,7 +1854,8 @@ const VisitScreen = ({ navigation, route }) => {
           </View>
 
           {/* Punch In Required Message */}
-          {!hasActiveSession && isSalesTeam && visitStatus === 'idle' && (
+          {!hasActiveSession && isVisitEligible && visitStatus === 'idle' && (
+
             <View
               style={[
                 styles.distanceInfo,

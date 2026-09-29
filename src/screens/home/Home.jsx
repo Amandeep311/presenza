@@ -214,7 +214,14 @@ const HomeScreen = ({ navigation }) => {
   const managerEmail = reportingManager?.email || '';
   const managerPhone = reportingManager?.phone || '';
 
-  const isSalesTeam = department.toLowerCase().includes('sales');
+  console.log("department=======>", department);
+
+    const isSalesTeam = department.toLowerCase().includes('sales');
+  const isLapTeam = department.toLowerCase().includes('lap');
+
+  // ✅ Visit feature is available for both Sales and LAP teams
+  const isVisitEligible = isSalesTeam || isLapTeam;
+
 
   // Attendance data
   const today = new Date().toISOString().split('T')[0];
@@ -269,8 +276,8 @@ const HomeScreen = ({ navigation }) => {
   const isVisitActive = getIsVisitActive();
 
   // ✅ Check if punch out should be disabled
-  const shouldDisablePunchOut = () => {
-    if (isSalesTeam && isVisitActive) {
+    const shouldDisablePunchOut = () => {
+    if (isVisitEligible && isVisitActive) {
       return true;
     }
     return false;
@@ -545,8 +552,8 @@ const HomeScreen = ({ navigation }) => {
       if (isPunchedIn) {
         console.log('🔴 [QUICK ACTION] User is punched in - showing punch out alert');
 
-        // Check if visit is active (Sales department only)
-        if (isSalesTeam && isVisitActive) {
+      // Check if visit is active (Sales and LAP teams)
+        if (isVisitEligible && isVisitActive) {
           console.log('🚫 [QUICK ACTION] Visit active - blocking punch out from quick action');
           Alert.alert(
             'Cannot Punch Out',
@@ -649,19 +656,20 @@ const HomeScreen = ({ navigation }) => {
     }
 
     // ============ VISIT ============
+        // ============ VISIT ============
     if (label === 'Visit') {
       console.log('📍 [QUICK ACTION] Visit action triggered');
       console.log('📊 [QUICK ACTION] Visit state:', {
-        isSalesTeam,
+        isVisitEligible,
         isPunchedIn,
         isVisitActive,
         isOnBreak,
         isAbsent
       });
 
-      if (!isSalesTeam) {
-        console.log('🚫 [QUICK ACTION] Not sales team - showing error');
-        showToast('Visit feature is only for sales team', 'error');
+      if (!isVisitEligible) {
+        console.log('🚫 [QUICK ACTION] Not Sales or LAP team - showing error');
+        showToast('Visit feature is only for Sales and LAP teams', 'error');
         return;
       }
 
@@ -868,8 +876,9 @@ const HomeScreen = ({ navigation }) => {
       return;
     }
 
-    // Check if visit is active (Sales department only)
-    if (isSalesTeam && isVisitActive) {
+        // Check if visit is active (Sales and LAP teams)
+    if (isVisitEligible && isVisitActive) {
+      console.log('🚫 [PUNCH OUT] Visit active - blocking punch out');
       console.log('🚫 [PUNCH OUT] Visit active - blocking punch out');
       console.log('📋 [PUNCH OUT] Active visit data:', getActiveVisitData());
       Alert.alert(
@@ -1125,7 +1134,8 @@ const HomeScreen = ({ navigation }) => {
     { label: t.home.kra, icon: Key, color: C.rose },
   ];
 
-  if (isSalesTeam) {
+  // ✅ UPDATED: Single push — Visit button shows once for Sales or LAP
+  if (isVisitEligible) {
     quickActions.push({
       label: 'Visit',
       icon: MapPin,
@@ -1141,10 +1151,9 @@ const HomeScreen = ({ navigation }) => {
     { label: t.attendance.weeks || 'Weeks', value: 'weeks' },
   ];
 
-  // ✅ Updated shouldShowPunchOut function
-  const shouldShowPunchOut = () => {
-    // Don't show punch out button if visit is active (Sales department only)
-    if (isSalesTeam && isVisitActive) {
+   const shouldShowPunchOut = () => {
+    // Don't show punch out button if visit is active (Sales and LAP teams)
+    if (isVisitEligible && isVisitActive) {
       return false;
     }
     return isPunchedIn && !isOnBreak;
@@ -1334,6 +1343,11 @@ const HomeScreen = ({ navigation }) => {
                 disabled = true;
               }
 
+              // ✅ NEW: Disable Visit button until user is punched in
+              if (isVisitAction && (isAbsent || !isPunchedIn)) {
+                disabled = true;
+              }
+
               // For Visit button - show green dot if visit is active
               const showVisitGreenDot = isVisitAction && isVisitActive;
 
@@ -1344,10 +1358,12 @@ const HomeScreen = ({ navigation }) => {
                 hint = 'Cannot take break when absent';
               } else if (isBreakAction && !isPunchedIn && !showGreenDot) {
                 hint = t.attendance.needCheckIn || 'Need check-in';
+              } else if (isVisitAction && isAbsent) {
+                hint = 'Cannot start visit when absent';
+              } else if (isVisitAction && !isPunchedIn) {
+                hint = t.attendance.needCheckIn || 'Need check-in';
               } else if (isVisitAction && isVisitActive) {
                 hint = 'Visit in progress';
-              } else if (isVisitAction && !isPunchedIn) {
-                hint = 'Please punch in first';
               }
 
               return (
@@ -1515,13 +1531,13 @@ const HomeScreen = ({ navigation }) => {
                     ]}
                     onPress={() => {
                       console.log('👆 [UI] Punch Out button pressed');
-                      console.log('📊 [UI] Button state:', {
+                       console.log('📊 [UI] Button state:', {
                         isLoading,
                         shouldDisablePunchOut: shouldDisablePunchOut(),
                         isPunchedIn,
                         isOnBreak,
                         isVisitActive,
-                        isSalesTeam
+                        isVisitEligible
                       });
 
                       if (!shouldDisablePunchOut()) {
