@@ -797,6 +797,31 @@ const Reimbursement = ({ navigation }) => {
     return companyPaid;
   };
 
+    // ✅ Compute the reimbursable amount from a saved expense request
+  const calculateRequestReimbursable = (request) => {
+    if (!request) return 0;
+
+    let companyPaid = 0;
+
+    if (request.expenses?.travel?.paymentMethod === 'COMPANY') {
+      companyPaid += request.expenses.travel.amount || 0;
+    }
+    if (request.expenses?.hotel?.paymentMethod === 'COMPANY') {
+      companyPaid += request.expenses.hotel.amount || 0;
+    }
+    if (request.expenses?.food?.paymentMethod === 'COMPANY') {
+      companyPaid += request.expenses.food.amount || 0;
+    }
+    (request.miscItems || []).forEach(item => {
+      if (item.paymentMethod === 'COMPANY') {
+        companyPaid += item.amount || 0;
+      }
+    });
+
+    const total = request.totalAmount || 0;
+    return Math.max(0, total - companyPaid);
+  };
+
   //  NEW: Calculate the reimbursable amount (total minus company-paid)
   const calculateReimbursableAmount = () => {
     const total = calculateTotalAmount();
@@ -3328,9 +3353,17 @@ const Reimbursement = ({ navigation }) => {
                       {truncateText(item.toLocation, 20)}
                     </Text>
                   </View>
-                  <View style={styles.cardRightActions}>
+                    <View style={styles.cardRightActions}>
+                    {/* <Text
+                      style={[
+                        styles.amountLabel,
+                        { color: C.textSecondary },
+                      ]}
+                    >
+                      Reimbursable
+                    </Text> */}
                     <Text style={[styles.amount, { color: C.primary }]}>
-                      {formatCurrency(item.totalAmount || 0)}
+                      {formatCurrency(calculateRequestReimbursable(item))}
                     </Text>
                   </View>
                 </View>
@@ -4181,6 +4214,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: wp('2%'),
+  },
+    amountLabel: {
+    fontSize: wp('2.4%'),
+    fontFamily: Fonts.regular,
+    textAlign: 'right',
+    marginBottom: hp('0.2%'),
   },
   divider: { height: 1, marginVertical: hp('1.5%') },
   cardDetails: { gap: hp('1%') },
