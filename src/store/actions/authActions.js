@@ -160,7 +160,7 @@ export const sendOtp = emp => async dispatch => {
         type: SEND_OTP_FAIL,
         payload: data.message || 'Failed to send OTP',
       });
-      showToast(data.message , 'error');
+      showToast(data.message || 'Employee not Found.', 'error');
       return { success: false, message: data.message };
     }
 
@@ -319,9 +319,13 @@ export const verifyOtp = (employeeCode, otp, fcmToken) => async dispatch => {
     if (!response.ok) {
       dispatch({
         type: VERIFY_OTP_FAIL,
-        payload: data.message || 'OTP verification failed',
+        // payload: data.message || 'OTP verification failed',
+        payload: data.message || 'Invalid OTP',
+
       });
-      showToast(data.message || 'OTP verification failed', 'error');
+      // showToast(data.message || 'OTP verification failed', 'error');
+            showToast(data.message || 'Invalid OTP', 'error');
+
       return { success: false, message: data.message };
     }
 
